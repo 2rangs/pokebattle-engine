@@ -1,5 +1,6 @@
 import type { PokemonSet, EVs, IVs, Nature } from '../types/pokemon'
 
+// ─── Showdown 포맷 파서 ───────────────────────────────────────
 export function parseShowdown(text: string): PokemonSet {
     const lines = text.trim().split('\n').map(l => l.trim()).filter(Boolean)
 
@@ -15,24 +16,17 @@ export function parseShowdown(text: string): PokemonSet {
     const evs: EVs = {}
     const ivs: IVs = {}
 
-    // 첫 줄: "Nickname (Species) (Gender) @ Item"
     const firstLine = lines[0]!
     const atSplit = firstLine.split(' @ ')
     item = atSplit[1]?.trim()
 
     const left = atSplit[0]!.trim()
-    // 성별 파싱
     const genderMatch = left.match(/\(([MF])\)\s*$/)
     if (genderMatch) {
         gender = genderMatch[1] as 'M' | 'F'
     }
 
-    // 종족명 + 닉네임 파싱
-    // "Dragonite (M)" → species: dragonite, gender: M
-    // "Garganacl" → species: garganacl
-    // "Tornadus-Therian" → species: tornadus-therian
     const speciesMatch = left.replace(/\s*\([MF]\)\s*$/, '').trim()
-    // 닉네임이 있는 경우: "Nickname (Species)"
     const nicknameMatch = speciesMatch.match(/^(.+?)\s+\((.+)\)$/)
     if (nicknameMatch) {
         nickname = nicknameMatch[1]!.trim()
@@ -52,11 +46,9 @@ export function parseShowdown(text: string): PokemonSet {
         const [key, ...rest] = line.split(':')
         const value = rest.join(':').trim()
 
-        if (key === 'Ability')     ability = value.toLowerCase().replace(' ', '-')
-        if (key === 'Shiny')       shiny = value === 'Yes'
-        if (key === 'Tera Type')   teraType = value.toLowerCase()
-        if (key === 'Nature')      // "Careful Nature"는 아래에서 처리
-        {}
+        if (key === 'Ability')   ability = value.toLowerCase().replace(' ', '-')
+        if (key === 'Shiny')     shiny = value === 'Yes'
+        if (key === 'Tera Type') teraType = value.toLowerCase()
         if (line.endsWith('Nature')) {
             nature = line.replace(' Nature', '').trim().toLowerCase() as Nature
         }
@@ -92,7 +84,6 @@ export function parseShowdown(text: string): PokemonSet {
     }
 }
 
-// 여러 세트 한 번에 파싱
 export function parseShowdownTeam(text: string): PokemonSet[] {
     return text
         .split(/\n\n+/)
@@ -111,4 +102,62 @@ function mapStat(raw: string): keyof EVs | null {
         'Spe': 'speed',
     }
     return map[raw] ?? null
+}
+
+// ─── JSON 팀 로더 ─────────────────────────────────────────────
+interface RawPokemon {
+    name:      string
+    item?:     string
+    ability:   string
+    shiny?:    boolean
+    teraType?: string
+    evs?:      Record<string, number>
+    ivs?:      Record<string, number>
+    nature:    string
+    moves:     string[]
+}
+
+interface RawTeam {
+    pokemons: RawPokemon[]
+}
+
+function toSlug(name: string): string {
+    return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+}
+
+const EV_IV_KEY_MAP: Record<string, keyof EVs> = {
+    hp:  'hp',
+    atk: 'attack',
+    def: 'defense',
+    spa: 'special_attack',
+    spd: 'special_defense',
+    spe: 'speed',
+}
+
+function mapRawStats(raw?: Record<string, number>): EVs {
+    if (!raw) return {}
+    return Object.fromEntries(
+        Object.entries(raw).map(([k, v]) => [EV_IV_KEY_MAP[k.toLowerCase()] ?? k, v])
+    ) as EVs
+}
+
+export function loadTeam(raw: RawTeam): PokemonSet[] {
+    return raw.pokemons.map(p => ({
+        species:  toSlug(p.name),
+        nickname: p.name,
+        level:    50,
+        gender:   null,
+        ability:  toSlug(p.ability),
+        nature:   p.nature.toLowerCase() as Nature,
+        item:     p.item ? toSlug(p.item) : undefined,
+        teraType: p.teraType?.toLowerCase(),
+        shiny:    p.shiny ?? false,
+        evs:      mapRawStats(p.evs),
+        ivs:      mapRawStats(p.ivs) as IVs,
+        moves:    p.moves.slice(0, 4).map(toSlug) as PokemonSet['moves'],
+    }))
+}
+
+export function loadTeamFromJSON(json: string): PokemonSet[] {
+    return loadTeam(JSON.parse(json))
 }

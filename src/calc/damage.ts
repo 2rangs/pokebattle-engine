@@ -1,6 +1,7 @@
 import type { BattlePokemon } from '../types/pokemon'
 import type { MoveData } from '../types/move'
 import type { Weather, Terrain } from '../types/effect'
+import { isDamageImmune } from '../effects/ability'
 import { getStat } from './stat'
 
 export type TypeChart = Record<string, Record<string, number>>
@@ -241,15 +242,26 @@ export function calcDamage(input: DamageCalcInput): DamageCalcResult {
             modifiers: { stab: 1, type: 1, weather: 1, terrain: 1, crit: 1, screen: 1, burn: 1, random: 1, ability: 1, item: 1 },
         }
     }
-
+    // ── 특성 면역 체크 ────────────────────────────────────
+    if (isDamageImmune(defender, move.type, move.category)) {
+        return {
+            damage: 0, effectiveness: 1, isCrit: false, isSTAB: false,
+            modifiers: { stab: 1, type: 1, weather: 1, terrain: 1, crit: 1, screen: 1, burn: 1, random: 1, ability: 0, item: 1 },
+        }
+    }
     const atkStat = move.category === 'physical' ? 'attack' : 'special_attack'
     const defStat = move.category === 'physical' ? 'defense' : 'special_defense'
 
-    // 급소: 내 하락 공격 무시, 상대 상승 방어 무시
-    const atkStages = isCrit
+// 천진 (Unaware): 상대 랭크 무시
+    const defenderHasUnaware  = defender.ability === 'unaware'
+    const attackerHasUnaware  = attacker.ability === 'unaware'
+
+// 급소: 내 하락 공격 무시, 상대 상승 방어 무시
+    const atkStages = isCrit || defenderHasUnaware
         ? { ...attacker.stages, [atkStat]: Math.max(0, attacker.stages[atkStat]) }
         : attacker.stages
-    const defStages = isCrit
+
+    const defStages = isCrit || attackerHasUnaware
         ? { ...defender.stages, [defStat]: Math.min(0, defender.stages[defStat]) }
         : defender.stages
 

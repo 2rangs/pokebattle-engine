@@ -99,10 +99,7 @@ function parsePokemon(pokemon: any, species: any) {
             pokemon.stats
                 .filter((s: any) => s.effort > 0)
                 .map((s: any) => [
-                    s.stat.name
-                        .replace('special-attack', 'special_attack')
-                        .replace('special-defense', 'special_defense'),
-                    s.effort,
+                    s.effort
                 ])
         ),
     }
