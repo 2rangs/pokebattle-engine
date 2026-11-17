@@ -68,7 +68,7 @@ describe('BattleEngine (Showdown 시뮬레이터)', () => {
     it('battle_start 시점에도 getState() 가 안전하다', () => {
         const e = new BattleEngine({ format: 'singles', seed: 1, p1: { name: 'A', team: [set('eevee', ['tackle'])] }, p2: { name: 'B', team: [set('pikachu', ['tackle'])] } })
         const phases: string[] = []
-        e.on('*', () => phases.push(e.getState().phase))
+        e.on('*', () => { phases.push(e.getState().phase); e.getRequest('p1'); e.getRawRequest('p2') })
         e.start()
         expect(phases.length).toBeGreaterThan(2)
         expect(e.getState().sides.p1.team).toHaveLength(1)

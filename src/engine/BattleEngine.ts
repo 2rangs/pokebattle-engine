@@ -794,13 +794,13 @@ export class BattleEngine {
     /** Showdown 원본 요청 (doubles 등에서 직접 사용) */
     getRawRequest(player: PlayerID): unknown {
         this.start()
-        return this.battle[player].activeRequest
+        return this.ready ? this.battle[player].activeRequest : null
     }
 
     /** 플레이어가 지금 내려야 할 결정 (singles). 필요 없으면 null */
     getRequest(player: PlayerID): BattleRequest | null {
         this.start()
-        if (this.battle.ended) return null
+        if (!this.ready || this.battle.ended) return null
         const side = this.battle[player]
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const req = side.activeRequest as any
