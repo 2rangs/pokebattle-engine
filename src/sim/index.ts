@@ -39,7 +39,7 @@ export function simulateBattle(config: BattleConfig, opts: SimulateOptions): Sim
         let progressed = false
         for (const player of ['p1', 'p2'] as PlayerID[]) {
             if (engine.battle.ended) break
-            if (!engine.getRequest(player)) continue
+            if (!engine.getRequest(player) && !engine.getTeamPreview(player)) continue
             const action = ais[player].chooseAction(engine, player) ?? engine.getAvailableActions(player)[0]
             if (!action) continue
             engine.submitAction(action)

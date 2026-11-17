@@ -2,7 +2,7 @@
 // npx tsx scripts/fuzz.ts --battles 1000000 --workers 4 [--start 0] [--out .scratch/fuzz-report.json]
 //
 // 배틀마다 (시드로 재현 가능):
-//  - 포맷: singles 85% / doubles 15%
+//  - 포맷: singles 75% / doubles 15% / triples 10%, 20% 는 팀 프리뷰(+출전 수 선택)
 //  - 팀: Showdown 랜덤배틀 세트 50% / 혼돈 팀(무작위 종·특성·도구·기술·노력치·레벨·테라) 50%
 //  - 선택: 무작위 (singles 는 엔진의 getAvailableActions, doubles 는 Showdown 요청 기반), 일부 HeuristicAI
 // 검사(불변식):
@@ -21,18 +21,18 @@ import { cpus } from 'node:os'
 
 interface Failure { battle: number; seed: number; kind: string; message: string }
 interface Stats {
-    battles: number; singles: number; doubles: number; turns: number; ties: number
+    battles: number; singles: number; doubles: number; triples: number; turns: number; ties: number
     events: number; choices: number; doublesFallbacks: number; determinismChecks: number
     failures: Failure[]; failureCount: number; kinds: Record<string, number>
 }
 
 const emptyStats = (): Stats => ({
-    battles: 0, singles: 0, doubles: 0, turns: 0, ties: 0, events: 0, choices: 0, doublesFallbacks: 0,
+    battles: 0, singles: 0, doubles: 0, triples: 0, turns: 0, ties: 0, events: 0, choices: 0, doublesFallbacks: 0,
     determinismChecks: 0, failures: [], failureCount: 0, kinds: {},
 })
 
 async function runWorker(): Promise<void> {
-    const { BattleEngine, generateRandomTeam, generateChaosTeam, PRNG, HeuristicAI } = await import('../dist/index.js')
+    const { BattleEngine, generateRandomTeam, generateChaosTeam, PRNG, HeuristicAI, ACTIVE_PER_SIDE } = await import('../dist/index.js')
     type Engine = InstanceType<typeof BattleEngine>
     const { start, end } = workerData as { start: number; end: number }
     let stats = emptyStats()
@@ -64,9 +64,12 @@ async function runWorker(): Promise<void> {
             if (!moves.length) return 'move 1'
             const { m, i } = rng.pick(moves)
             let target = ''
-            if (['normal', 'any', 'adjacentFoe'].includes(m.target ?? '')) target = ` ${rng.pick([1, 2])}`
-            else if (['adjacentAlly'].includes(m.target ?? '')) target = ` ${slot === 0 ? -2 : -1}`
-            else if (['adjacentAllyOrSelf'].includes(m.target ?? '')) target = ` ${rng.pick([-1, -2])}`
+            const n = req.active.length
+            const foes = Array.from({ length: n }, (_, i) => i + 1)
+            const allies = Array.from({ length: n }, (_, i) => -(i + 1)).filter(t => t !== -(slot + 1))
+            if (['normal', 'any', 'adjacentFoe'].includes(m.target ?? '')) target = ` ${rng.pick(foes)}`
+            else if (['adjacentAlly'].includes(m.target ?? '') && allies.length) target = ` ${rng.pick(allies)}`
+            else if (['adjacentAllyOrSelf'].includes(m.target ?? '')) target = ` ${rng.pick([...allies, -(slot + 1)])}`
             let t = ''
             if (a.canTerastallize && !tera && rng.chance(15)) { t = ' terastallize'; tera = true }
             return `move ${i + 1}${target}${t}`
@@ -76,12 +79,19 @@ async function runWorker(): Promise<void> {
     function playBattle(battleNo: number, check: boolean): { engine: Engine; hash: string } {
         const seed = battleNo
         const rng = new PRNG(seed * 7919 + 13)
-        const doubles = rng.chance(15)
-        const minSize = doubles ? 2 : 1
+        const roll = rng.int(100)
+        const format = roll < 75 ? 'singles' : roll < 90 ? 'doubles' : 'triples'
+        const doubles = format !== 'singles' // Showdown 선택 문자열로 진행하는 다중 슬롯 형식
+        const minSize = ACTIVE_PER_SIDE[format]
         const team = () => (rng.chance(50)
             ? generateRandomTeam({ seed: rng.int(0x7fffffff), format: doubles ? 'gen9randomdoublesbattle' : 'gen9randombattle', size: rng.int(minSize, 6) })
             : generateChaosTeam({ rng, size: rng.int(minSize, 6) }))
-        const engine = new BattleEngine({ format: doubles ? 'doubles' : 'singles', seed, maxTurns: 300, p1: { name: 'P1', team: team() }, p2: { name: 'P2', team: team() } }, { turnSnapshots: false })
+        const p1team = team(), p2team = team()
+        const preview = rng.chance(20)
+        const options = preview
+            ? { teamPreview: true, pickedTeamSize: rng.int(minSize, Math.min(p1team.length, p2team.length)) }
+            : undefined
+        const engine = new BattleEngine({ format, seed, maxTurns: 300, options, p1: { name: 'P1', team: p1team }, p2: { name: 'P2', team: p2team } }, { turnSnapshots: false })
         const heuristic = !doubles && rng.chance(5)
         const ais = heuristic ? { p1: new HeuristicAI({ seed }), p2: new HeuristicAI({ seed: seed + 1 }) } : null
         engine.start()
@@ -93,6 +103,13 @@ async function runWorker(): Promise<void> {
         while (!engine.battle.ended && guard++ < 5000) {
             for (const player of ['p1', 'p2'] as const) {
                 if (engine.battle.ended) break
+                const pv = engine.getTeamPreview(player)
+                if (pv) {
+                    const order = rng.shuffle(pv.team.map(p => p.id)).slice(0, pv.pick)
+                    engine.submitAction({ type: 'team', player, order }) // 실패 시 예외
+                    if (check) stats.choices++
+                    continue
+                }
                 if (doubles) {
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     const req = engine.getRawRequest(player) as any
@@ -167,6 +184,7 @@ async function runWorker(): Promise<void> {
         try {
             const { engine, hash } = playBattle(i, true)
             if (engine.battle.gameType === 'doubles') stats.doubles++
+            else if (engine.battle.gameType === 'triples') stats.triples++
             else stats.singles++
             verify(engine, i)
             if (i % 100 === 0) {
@@ -217,7 +235,7 @@ async function runMain(): Promise<void> {
         if (s >= e) return resolve()
         const worker = new Worker(file, { workerData: { start: s, end: e }, execArgv: [] })
         worker.on('message', (st: Stats) => {
-            for (const k of ['battles', 'singles', 'doubles', 'turns', 'ties', 'events', 'choices', 'doublesFallbacks', 'determinismChecks', 'failureCount'] as const) agg[k] += st[k]
+            for (const k of ['battles', 'singles', 'doubles', 'triples', 'turns', 'ties', 'events', 'choices', 'doublesFallbacks', 'determinismChecks', 'failureCount'] as const) agg[k] += st[k]
             agg.failures.push(...st.failures)
             for (const [k, v] of Object.entries(st.kinds)) agg.kinds[k] = (agg.kinds[k] ?? 0) + v
         })

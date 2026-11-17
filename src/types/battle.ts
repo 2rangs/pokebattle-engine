@@ -7,8 +7,8 @@ export type PlayerID = 'p1' | 'p2'
 
 // ─── 배틀 형식 ────────────────────────────────────────────────
 // Pokémon Showdown 시뮬레이터 기반. singles 는 편의 API(getRequest/submitAction) 지원,
-// doubles 는 submitChoice(raw Showdown 선택 문자열) 로 사용한다.
-export type BattleFormat = 'singles' | 'doubles'
+// doubles / triples 는 submitChoice(raw Showdown 선택 문자열) 로 사용한다.
+export type BattleFormat = 'singles' | 'doubles' | 'triples'
 
 // ─── 사이드 (플레이어 한 쪽) ──────────────────────────────────
 export interface Side {
@@ -50,6 +50,7 @@ export interface BattleState {
 // ─── 배틀 페이즈 ─────────────────────────────────────────────
 export type BattlePhase =
   | 'waiting_action'    // 행동 입력 대기
+  | 'team_preview'      // 팀 프리뷰: 선발 순서 / 출전 포켓몬 선택 대기
   | 'executing'         // 행동 실행 중
   | 'switching'         // 교체 대기 (기절 후 / 유턴 등)
   | 'ended'             // 배틀 종료
@@ -58,6 +59,12 @@ export type SwitchReason = 'faint' | 'self_switch' | 'revival_blessing'
 
 // ─── 플레이어 행동 ────────────────────────────────────────────
 export type Action =
+  | {
+      /** 팀 프리뷰: 출전 순서. 앞에서부터 선발, pickedTeamSize 만큼만 출전 */
+      type: 'team'
+      player: PlayerID
+      order: string[]             // 포켓몬 ID (p1_3, p1_0 …)
+    }
   | {
       type: 'move'
       player: PlayerID
@@ -88,6 +95,14 @@ export interface MoveOption {
   max_pp: number
   disabled: boolean
   disabled_reason?: string
+}
+
+/** 팀 프리뷰 요청 (engine.getTeamPreview). phase 'team_preview' 동안에만 존재 */
+export interface TeamPreviewRequest {
+  player: PlayerID
+  team: BattlePokemon[]        // 고를 수 있는 전체 파티
+  pick: number                 // 출전 수 (pickedTeamSize, 없으면 파티 전체)
+  raw?: unknown
 }
 
 export type BattleRequest =
@@ -162,6 +177,37 @@ export interface BattleConfig {
   maxTurns?: number       // 이 턴을 넘기면 무승부 (기본 1000)
   /** Showdown 포맷 ID 직접 지정 (기본: gen9customgame / gen9doublescustomgame) */
   formatid?: string
-  /** 추가 Showdown 규칙 (예: ['Sleep Clause Mod', 'Species Clause']) */
+  /** 추가 Showdown 규칙 (예: ['Sleep Clause Mod', 'Species Clause']). options 보다 나중에 적용 */
   rules?: string[]
+  /** 자주 쓰는 규칙을 타입 있는 옵션으로 */
+  options?: BattleRuleOptions
+}
+
+// ─── 규칙 옵션 ────────────────────────────────────────────────
+// 각 항목은 Showdown 규칙으로 바뀐다. 팀 단위 규칙(종/도구 클로즈, OHKO/회피 금지, 레벨 제한)은
+// 배틀 시작 시 Showdown TeamValidator 로 검사하고, 어기면 BattleError.
+export interface BattleRuleOptions {
+  /** 팀 프리뷰 (기본 false). 켜면 phase 'team_preview' 에서 { type: 'team' } 행동을 받는다 */
+  teamPreview?: boolean
+  /** 팀 프리뷰에서 출전시킬 수 (예: 6마리 중 4마리 → 4). teamPreview 를 자동으로 켠다 */
+  pickedTeamSize?: number
+  /** 모든 포켓몬 레벨을 이 값으로 고정 (Adjust Level) */
+  level?: number
+  /** 레벨 하한 / 상한 (넘으면 BattleError) */
+  minLevel?: number
+  maxLevel?: number
+  /** false 면 테라스탈 금지 (Terastal Clause). 기본 true */
+  terastal?: boolean
+  /** 같은 종 1마리 */
+  speciesClause?: boolean
+  /** 같은 도구 1개 */
+  itemClause?: boolean
+  /** 상대를 2마리 이상 잠재울 수 없음 (Sleep Clause Mod) */
+  sleepClause?: boolean
+  /** 일격기 금지 */
+  ohkoClause?: boolean
+  /** 회피율 올리는 특성·도구·기술 금지 */
+  evasionClause?: boolean
+  /** 끝나지 않는 배틀 방지 (Endless Battle Clause) */
+  endlessBattleClause?: boolean
 }

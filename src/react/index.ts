@@ -54,7 +54,7 @@ export function useBattle(config: BattleConfig | null, options: UseBattleOptions
             let acted = false
             for (const p of ['p1', 'p2'] as PlayerID[]) {
                 const bot = ai[p]
-                if (!bot || !e.getRequest(p)) continue
+                if (!bot || (!e.getRequest(p) && !e.getTeamPreview(p))) continue
                 const action = bot.chooseAction(e, p)
                 if (action) { e.submitAction(action); acted = true }
             }
