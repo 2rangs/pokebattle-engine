@@ -37,4 +37,4 @@ storybook-static/
 coverage/
 
 # Misc
-*.local
+*.local.scratch/

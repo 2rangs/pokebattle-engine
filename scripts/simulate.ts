@@ -81,8 +81,8 @@ async function main(): Promise<void> {
     const config: BattleConfig = {
         format: 'singles',
         seed,
-        p1: { name: auto ? 'AI-1' : '나', team: random ? generateRandomTeam({ rng }) : loadTeam(p1Json) },
-        p2: { name: 'AI', team: random ? generateRandomTeam({ rng }) : loadTeam(p2Json) },
+        p1: { name: auto ? 'AI-1' : '나', team: random ? generateRandomTeam({ seed: rng.int(0x7fffffff) }) : loadTeam(p1Json) },
+        p2: { name: 'AI', team: random ? generateRandomTeam({ seed: rng.int(0x7fffffff) }) : loadTeam(p2Json) },
     }
     const engine = new BattleEngine(config)
     engine.on('*', ev => {

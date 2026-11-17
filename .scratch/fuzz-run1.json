@@ -1,0 +1,30 @@
+{
+  "done": false,
+  "range": [
+    100000,
+    600000
+  ],
+  "elapsedSec": 220,
+  "ratePerSec": 119,
+  "battles": 26162,
+  "singles": 22296,
+  "doubles": 3865,
+  "turns": 514850,
+  "ties": 0,
+  "events": 3695813,
+  "choices": 1115992,
+  "doublesFallbacks": 45,
+  "determinismChecks": 262,
+  "failures": [
+    {
+      "battle": 105582,
+      "seed": 105582,
+      "kind": "exception",
+      "message": "BattleError: p1: Can't switch: The Pokémon in slot 2 can only switch in once (switch 2)\n    at _BattleEngine.submitChoice (file:///home/user/pokebattle-engine/dist/index.js:1502:13)\n    at _BattleEngine.submitAction (file:///home/user/pokebattle-engine/dist/index.js:1486:10)\n    at playBattle (file:///home/user/pokebattle-engine/scripts/fuzz.ts:112:28)\n    at runWorker (file:///home/user/pokebattle-engine/scripts/fuzz.ts:168:38)\n    at process.processTicksAndRejections (node:internal/process/tas"
+    }
+  ],
+  "failureCount": 1,
+  "kinds": {
+    "exception:BattleError: pX: Can't switch: The Pokémon in slot 2 can only switch in once ": 1
+  }
+}

@@ -1,16 +1,9 @@
 // ─── 배틀 AI ──────────────────────────────────────────────────
+// 기술 정보: Showdown Dex / 데미지 예측: @smogon/calc
+import { Dex } from '@pkmn/sim'
 import type { Action, BattleRequest, PlayerID } from '../types/battle'
-import type { BattlePokemon } from '../types/pokemon'
-import type { MoveData } from '../types/move'
 import type { BattleEngine } from '../engine/BattleEngine'
-import { calcDamage } from '../calc/damage'
-import { getTypeChart } from '../data/loader'
 import { PRNG } from '../utils/rng'
-import {
-    HAZARD_MOVES, HEAL_MOVES, SCREEN_MOVES, SELF_SWITCH_MOVES, WEATHER_MOVES, TERRAIN_MOVES,
-    getStatEffects, isSelfTargeting,
-} from '../data/moveTable'
-import { PROTECT_MOVES } from '../effects/protect'
 
 export interface BattleAI {
     readonly name: string
@@ -27,7 +20,6 @@ export class RandomAI implements BattleAI {
     chooseAction(engine: BattleEngine, player: PlayerID): Action | null {
         const actions = engine.getAvailableActions(player)
         if (actions.length === 0) return null
-        // 교체만 계속 고르지 않도록 기술 선택 비중을 높임
         const moves = actions.filter(a => a.type === 'move' && !a.terastallize)
         if (moves.length > 0 && this.rng.chance(85)) return this.rng.pick(moves)
         return this.rng.pick(actions)
@@ -39,7 +31,6 @@ export interface HeuristicAIOptions {
     seed?: number
     /** 0 = 항상 최선, 1 = 꽤 무작위 (기본 0.15) */
     randomness?: number
-    /** 테라스탈 사용 여부 (기본 true) */
     useTera?: boolean
 }
 
@@ -62,45 +53,41 @@ export class HeuristicAI implements BattleAI {
         if (!req) return null
         if (req.type === 'switch') return this.chooseSwitch(engine, req, player)
 
-        const user = req.active
-        const foe = engine.getActive(engine.foeOf(player))
+        const foePlayer = engine.foeOf(player)
+        const user = engine.getShowdownPokemon(req.active.id)!
+        const foe = engine.battle[foePlayer].active[0]
         const scored: Scored[] = []
 
         for (const opt of req.moves) {
             if (opt.disabled) continue
-            const base = { type: 'move' as const, player, pokemon_id: user.id, move_index: opt.index }
-            const score = this.scoreMove(engine, user, foe, opt.move, false)
+            const base = { type: 'move' as const, player, pokemon_id: req.active.id, move_index: opt.index }
+            const score = this.scoreMove(engine, player, opt.index, false)
             scored.push({ action: base, score })
             if (req.can_terastallize && this.useTera && opt.move.category !== 'status') {
-                const teraScore = this.scoreMove(engine, user, foe, opt.move, true)
-                // 테라스탈은 확실한 이득이 있을 때만
-                if (teraScore > score * 1.25 || (teraScore >= 100 && score < 100)) {
+                const teraScore = this.scoreMove(engine, player, opt.index, true)
+                if (teraScore > score * 1.3 || (teraScore >= 100 && score < 100)) {
                     scored.push({ action: { ...base, terastallize: true }, score: teraScore + 2 })
                 }
             }
         }
 
-        // 교체 고려: 상대가 우리를 확정적으로 잡고, 우리는 잡지 못할 때
         if (req.can_switch && foe && !foe.fainted) {
             const best = Math.max(0, ...scored.map(s => s.score))
-            const threat = this.bestDamageRatio(engine, foe, user)
-            const outspeeds = engine.getSpeed(user) > engine.getSpeed(foe)
-            const inDanger = threat >= user.hp / user.max_hp && !(outspeeds && best >= 100)
+            const threat = this.threat(engine, foePlayer, player)
+            const outspeeds = user.getActionSpeed() > foe.getActionSpeed()
+            const inDanger = threat >= user.hp / user.maxhp && !(outspeeds && best >= 100)
             for (const p of req.switches) {
-                const m = this.matchup(engine, p, foe)
+                const m = this.matchup(engine, p.id, player)
                 let score = m * 40 - 25
                 if (inDanger) score += 30
                 if (best < 25) score += 15
-                if (user.stages.attack <= -2 || user.stages.special_attack <= -2) score += 20
-                if ('curse' in user.volatile_statuses || 'seeded' in user.volatile_statuses || user.status === 'toxic' && user.status_turns > 2) score += 15
-                scored.push({ action: { type: 'switch', player, pokemon_id: user.id, switch_to_id: p.id }, score })
+                if ((user.boosts.atk ?? 0) <= -2 || (user.boosts.spa ?? 0) <= -2) score += 20
+                if (user.volatiles['curse'] || user.volatiles['leechseed'] || (user.status === 'tox' && (user.statusState as { stage?: number }).stage! > 2)) score += 15
+                scored.push({ action: { type: 'switch', player, pokemon_id: req.active.id, switch_to_id: p.id }, score })
             }
         }
 
-        if (scored.length === 0) {
-            const any = engine.getAvailableActions(player)
-            return any[0] ?? null
-        }
+        if (scored.length === 0) return engine.getAvailableActions(player)[0] ?? null
         return this.pick(scored)
     }
 
@@ -116,150 +103,133 @@ export class HeuristicAI implements BattleAI {
     }
 
     private chooseSwitch(engine: BattleEngine, req: Extract<BattleRequest, { type: 'switch' }>, player: PlayerID): Action | null {
-        const foe = engine.getActive(engine.foeOf(player))
         if (req.switches.length === 0) return null
         const scored = req.switches.map(p => ({
             action: { type: 'switch' as const, player, pokemon_id: req.active.id, switch_to_id: p.id },
-            score: (foe && !foe.fainted ? this.matchup(engine, p, foe) * 50 : 0) + p.hp / p.max_hp * 20,
+            score: this.matchup(engine, p.id, player) * 50 + p.hp / p.max_hp * 20,
         }))
         return this.pick(scored)
     }
 
-    /** 내 포켓몬 vs 상대: (내가 주는 비율) - (받는 비율) 기반 상성 점수 (-1~1 정도) */
-    private matchup(engine: BattleEngine, mine: BattlePokemon, foe: BattlePokemon): number {
-        const dealt = Math.min(1.2, this.bestDamageRatio(engine, mine, foe))
-        const taken = Math.min(1.2, this.bestDamageRatio(engine, foe, mine) * (mine.max_hp / Math.max(1, mine.hp)))
-        const faster = engine.getSpeed(mine) > engine.getSpeed(foe) ? 0.15 : 0
-        return dealt - taken + faster
-    }
-
-    /** attacker 가 defender 에게 줄 수 있는 최대 데미지 / defender 최대 HP */
-    private bestDamageRatio(engine: BattleEngine, attacker: BattlePokemon, defender: BattlePokemon): number {
+    /** 상대 현재 포켓몬 → 우리 현재 포켓몬 최대 데미지 비율 */
+    private threat(engine: BattleEngine, attacker: PlayerID, _defender: PlayerID): number {
+        const a = engine.battle[attacker].active[0]
+        if (!a) return 0
         let best = 0
-        for (const slot of attacker.moves) {
-            if (!slot || slot.move.category === 'status' || slot.pp <= 0) continue
-            const dmg = this.estimate(engine, attacker, defender, slot.move, false)
-            best = Math.max(best, dmg / defender.max_hp)
-        }
-        // 기술을 모르는 상대(공개 안 됨)는 자속 80 위력 기준으로 추정
-        if (best === 0 && attacker.moves.every(s => !s || s.move.category === 'status')) return 0.1
+        a.moveSlots.forEach((_, i) => {
+            const r = engine.previewDamage(attacker, i)
+            if (r) best = Math.max(best, r.maxPercent / 100)
+        })
         return best
     }
 
-    private estimate(engine: BattleEngine, attacker: BattlePokemon, defender: BattlePokemon, move: MoveData, tera: boolean): number {
-        const state = engine.getState()
-        const defSide = state.sides[engine.sideOf(defender)]
-        const r = calcDamage({
-            attacker, defender, move,
-            weather:   engine.effectiveWeather(),
-            terrain:   state.field.terrain,
-            typeChart: getTypeChart(),
-            randomRoll: 92,
-            reflect:   !!defSide.conditions.reflect,
-            lightScreen: !!defSide.conditions.light_screen,
-            auroraVeil:  !!defSide.conditions.aurora_veil,
-            isTerastallized: tera,
-            faintedAllies: state.sides[engine.sideOf(attacker)].team.filter(p => p.fainted).length,
-        })
-        const hits = move.meta?.max_hits ? (move.meta.min_hits === move.meta.max_hits ? move.meta.max_hits : 3) : 1
-        const acc = move.accuracy ? move.accuracy / 100 : 1
-        return r.damage * hits * acc
+    /** 벤치 포켓몬과 상대 현재 포켓몬의 상성 (대략 -1~1) */
+    private matchup(engine: BattleEngine, benchId: string, player: PlayerID): number {
+        const mine = engine.getShowdownPokemon(benchId)
+        const foe = engine.battle[engine.foeOf(player)].active[0]
+        if (!mine || !foe || foe.fainted) return 0
+        let dealt = 0
+        let taken = 0
+        for (const slot of mine.moveSlots) {
+            const move = Dex.moves.get(slot.id)
+            if (move.category === 'Status' || !move.basePower) continue
+            dealt = Math.max(dealt, typeFactor(move.type, foe.getTypes()) * (mine.getTypes().includes(move.type) ? 1.5 : 1) * move.basePower / 100)
+        }
+        for (const slot of foe.moveSlots) {
+            const move = Dex.moves.get(slot.id)
+            if (move.category === 'Status' || !move.basePower) continue
+            taken = Math.max(taken, typeFactor(move.type, mine.getTypes()) * (foe.getTypes().includes(move.type) ? 1.5 : 1) * move.basePower / 100)
+        }
+        const faster = mine.getStat('spe', false, true) > foe.getActionSpeed() ? 0.2 : 0
+        return Math.max(-1.5, Math.min(1.5, (dealt - taken) / 2 + faster)) * (mine.hp / mine.maxhp)
     }
 
-    private scoreMove(engine: BattleEngine, user: BattlePokemon, foe: BattlePokemon | undefined, move: MoveData, tera: boolean): number {
-        const state = engine.getState()
-        const userSide = state.sides[engine.sideOf(user)]
-        const foeSide = foe ? state.sides[engine.sideOf(foe)] : undefined
-        const hpRatio = user.hp / user.max_hp
+    private scoreMove(engine: BattleEngine, player: PlayerID, index: number, tera: boolean): number {
+        const user = engine.battle[player].active[0]!
+        const foe = engine.battle[engine.foeOf(player)].active[0]
+        const slot = user.moveSlots[index]
+        if (!slot) return 0
+        const move = Dex.moves.get(slot.id)
+        const hpRatio = user.hp / user.maxhp
         const foeAlive = !!foe && !foe.fainted
-        const foeBench = foeSide ? foeSide.team.filter(p => !p.fainted).length - 1 : 0
+        const foeSide = engine.battle[engine.foeOf(player)]
+        const mySide = engine.battle[player]
+        const foeBench = foeSide.pokemon.filter(p => !p.fainted && !p.isActive).length
 
-        if (move.category !== 'status') {
+        if (move.category !== 'Status') {
             if (!foeAlive) return 0
-            const dmg = this.estimate(engine, user, foe!, move, tera)
-            let score = Math.min(dmg, foe!.hp) / foe!.max_hp * 100
-            if (dmg >= foe!.hp) {
-                score = 100 + (engine.getPriority(user, move) > 0 ? 30 : 0)
-                // 상대보다 느리고 상대가 나를 잡으면, 선공기가 아닌 이상 가치 하락
-            }
-            const drain = move.meta?.drain ?? 0
-            if (drain < 0) score -= Math.abs(drain) / 100 * 25
-            if (drain > 0 && hpRatio < 0.7) score += 10
-            if (SELF_SWITCH_MOVES.has(move.name)) score += 8
-            if (move.name === 'fake-out' && (user.active_turns ?? 0) === 0) score += 35
-            if (['fake-out', 'first-impression'].includes(move.name) && (user.active_turns ?? 0) > 0) return 0
-            if (['hyper-beam', 'giga-impact'].includes(move.name) && dmg < foe!.hp) score -= 20
-            if (move.name === 'sucker-punch') score *= 0.75
-            if (move.name === 'explosion' || move.name === 'self-destruct') score = hpRatio < 0.35 ? score : score * 0.3
+            const r = engine.previewDamage(player, index, { terastallize: tera })
+            if (!r) return 0
+            const acc = move.accuracy === true ? 1 : move.accuracy / 100
+            const avgPct = (r.minPercent + r.maxPercent) / 2 * acc
+            const foeHpPct = foe!.hp / foe!.maxhp * 100
+            let score = Math.min(avgPct, foeHpPct)
+            if (r.min >= foe!.hp) score = 100 + (move.priority > 0 ? 30 : 0)
+            else if (r.max >= foe!.hp) score = Math.max(score, 70 + (move.priority > 0 ? 20 : 0))
+            if (move.recoil || move.mindBlownRecoil) score -= 10
+            if (move.drain && hpRatio < 0.7) score += 10
+            if (move.selfSwitch) score += 8
+            if (move.id === 'fakeout') score = user.activeTurns <= 1 ? score + 35 : 0
+            if (move.id === 'firstimpression' && user.activeTurns > 1) score = 0
+            if (move.self?.volatileStatus === 'mustrecharge' && r.min < foe!.hp) score -= 20
+            if (move.id === 'suckerpunch') score *= 0.75
+            if (move.selfdestruct) score = hpRatio < 0.35 ? score : score * 0.3
             return Math.max(0, score)
         }
 
-        // ── 변화기 ───────────────────────────────────────────
-        const name = move.name
-        if (name in PROTECT_MOVES) {
-            if ('protect_streak' in user.volatile_statuses) return 0
-            const poisoned = foeAlive && (foe!.status === 'toxic' || foe!.status === 'burn' || 'seeded' in foe!.volatile_statuses)
-            return poisoned ? 30 : 8
+        // ── 변화기 ─────────────────────────────────────────────
+        if (move.stallingMove) return user.volatiles['stall'] ? 0 : (foeAlive && (foe!.status === 'tox' || foe!.status === 'brn' || foe!.volatiles['leechseed']) ? 30 : 8)
+        if (move.sideCondition && move.target === 'foeSide') {
+            const cond = foeSide.sideConditions[move.sideCondition] as { layers?: number } | undefined
+            const max = move.sideCondition === 'spikes' ? 3 : move.sideCondition === 'toxicspikes' ? 2 : 1
+            if ((cond?.layers ?? (cond ? 1 : 0)) >= max || foeBench <= 0) return 0
+            return (move.sideCondition === 'stealthrock' ? 45 : 30) * (foeBench / 5 + 0.4)
         }
-        if (name in HAZARD_MOVES) {
-            const cond = HAZARD_MOVES[name]!
-            const layers = foeSide?.conditions[cond]?.layers ?? 0
-            const max = cond === 'spikes' ? 3 : cond === 'toxic_spikes' ? 2 : 1
-            if (layers >= max || foeBench <= 0) return 0
-            return (cond === 'stealth_rock' ? 45 : 30) * (foeBench / 5 + 0.4)
+        if (move.sideCondition) return mySide.sideConditions[move.sideCondition] ? 0 : (move.id === 'auroraveil' && engine.effectiveWeather() !== 'snow' ? 0 : 30)
+        if (move.weather) return engine.battle.field.weather === toWeatherId(move.weather) ? 0 : 22
+        if (move.terrain) return engine.battle.field.terrain === move.terrain ? 0 : 22
+        if (move.pseudoWeather === 'trickroom') return engine.battle.field.pseudoWeather['trickroom'] ? 0 : (foeAlive && user.getActionSpeed() < foe!.getActionSpeed() ? 40 : 0)
+        if (move.heal || move.flags.heal || move.id === 'rest' || move.id === 'strengthsap') return hpRatio > 0.75 ? 0 : (1 - hpRatio) * 90
+        if (move.id === 'wish') return (1 - hpRatio) * 60
+        if (move.id === 'substitute') return hpRatio > 0.5 && !user.volatiles['substitute'] ? 20 : 0
+        if (move.selfSwitch) return 18
+        if (move.forceSwitch) return foeAlive && foeBench > 0 && Object.values(foe!.boosts).some(b => b >= 1) ? 45 : 5
+        if (move.id === 'haze' || move.id === 'clearsmog') return foeAlive && Object.values(foe!.boosts).some(b => b >= 2) ? 50 : 0
+        if (move.id === 'defog' || move.id === 'rapidspin' || move.id === 'tidyup' || move.id === 'mortalspin' || move.id === 'courtchange') {
+            return ['stealthrock', 'spikes', 'toxicspikes', 'stickyweb'].filter(c => c in mySide.sideConditions).length * 25
         }
-        if (name in SCREEN_MOVES) {
-            const cond = SCREEN_MOVES[name]!
-            if (userSide.conditions[cond]) return 0
-            if (cond === 'aurora_veil' && engine.effectiveWeather() !== 'snow') return 0
-            return cond === 'tailwind' ? 35 : 30
+        if (move.volatileStatus && foeAlive && move.target !== 'self') {
+            if (foe!.volatiles[move.volatileStatus]) return 0
+            return move.volatileStatus === 'leechseed' ? (foe!.hasType('Grass') ? 0 : 30) : move.volatileStatus === 'confusion' ? 15 : 15
         }
-        if (name in WEATHER_MOVES) return state.field.weather === WEATHER_MOVES[name] ? 0 : 22
-        if (name in TERRAIN_MOVES) return state.field.terrain === TERRAIN_MOVES[name] ? 0 : 22
-        if (name in HEAL_MOVES || name === 'rest' || name === 'strength-sap') {
-            if (hpRatio > 0.75) return 0
-            return (1 - hpRatio) * 90
-        }
-        if (name === 'wish') return userSide.conditions.wish ? 0 : (1 - hpRatio) * 60
-        if (name === 'substitute') return hpRatio > 0.5 && !('substitute' in user.volatile_statuses) ? 20 : 0
-        if (name === 'taunt') return foeAlive && !('taunt' in foe!.volatile_statuses) ? 15 : 0
-        if (name === 'trick-room') return state.field.conditions.trick_room ? 0 : (foeAlive && engine.getSpeed(user) < engine.getSpeed(foe!) ? 40 : 0)
-        if (name === 'defog' || name === 'rapid-spin' || name === 'tidy-up') {
-            const hz = ['stealth_rock', 'spikes', 'toxic_spikes', 'sticky_web'].filter(c => c in userSide.conditions).length
-            return hz * 25
-        }
-        if (name === 'leech-seed') return foeAlive && !foe!.types.includes('grass') && !('seeded' in foe!.volatile_statuses) ? 30 : 0
-        if (name === 'yawn') return foeAlive && !foe!.status && !('yawn' in foe!.volatile_statuses) ? 25 : 0
-        if (SELF_SWITCH_MOVES.has(name)) return 18
-        if (name === 'haze') return foeAlive && Object.values(foe!.stages).some(s => s >= 2) ? 50 : 0
-        if (name === 'roar' || name === 'whirlwind') return foeAlive && foeBench > 0 && Object.values(foe!.stages).some(s => s >= 1) ? 45 : 5
-
-        const ailment = move.meta?.ailment
-        if (ailment && ailment !== 'none' && foeAlive && !isSelfTargeting(move)) {
-            if (ailment === 'confusion') return 'confusion' in foe!.volatile_statuses ? 0 : 15
-            if (foe!.status || foe!.substitute_hp > 0) return 0
-            if (ailment === 'paralysis' && (foe!.types.includes('electric') || foe!.types.includes('ground') && name === 'thunder-wave')) return 0
-            if (ailment === 'burn' && foe!.types.includes('fire')) return 0
-            if (ailment === 'poison' && (foe!.types.includes('poison') || foe!.types.includes('steel'))) return 0
-            if (ailment === 'sleep') return foe!.ability === 'insomnia' || foe!.ability === 'vital-spirit' ? 0 : 55
-            if (ailment === 'burn') return foe!.stats.attack > foe!.stats.special_attack ? 50 : 25
-            if (ailment === 'paralysis') return engine.getSpeed(foe!) > engine.getSpeed(user) ? 45 : 25
+        if (move.status && foeAlive) {
+            if (foe!.status || foe!.volatiles['substitute']) return 0
+            if (!foe!.runStatusImmunity(move.status) || (move.type === 'Electric' && !foe!.runImmunity('Electric'))) return 0
+            if (move.status === 'slp') return 55
+            if (move.status === 'brn') return foe!.storedStats.atk > foe!.storedStats.spa ? 50 : 25
+            if (move.status === 'par') return foe!.getActionSpeed() > user.getActionSpeed() ? 45 : 25
             return 38
         }
-
-        const stats = getStatEffects(move)
-        if (stats.self.length > 0) {
-            const gain = stats.self.reduce((a, s) => a + s.change, 0)
-            const maxed = stats.self.every(s => user.stages[s.stat as 'attack'] >= 4)
+        const selfBoosts = move.target === 'self' || move.target === 'allySide' || move.target === 'adjacentAllyOrSelf' ? move.boosts : move.self?.boosts
+        if (selfBoosts) {
+            const gain = Object.values(selfBoosts).reduce((a, b) => a + (b ?? 0), 0)
+            const maxed = Object.keys(selfBoosts).every(k => (user.boosts[k as keyof typeof user.boosts] ?? 0) >= 4)
             if (maxed || gain <= 0) return 0
-            const safe = !foeAlive || this.bestDamageRatio(engine, foe!, user) < hpRatio * 0.6
+            const safe = !foeAlive || this.threat(engine, engine.foeOf(player), player) < hpRatio * 0.6
             return safe ? 25 + gain * 8 : 6
         }
-        if (stats.target.length > 0 && foeAlive) {
-            return foe!.substitute_hp > 0 ? 0 : 12
-        }
+        if (move.boosts && foeAlive) return foe!.volatiles['substitute'] ? 0 : 12
         return 3
     }
+}
+
+function typeFactor(moveType: string, defTypes: string[]): number {
+    if (!Dex.getImmunity(moveType, defTypes)) return 0
+    return 2 ** Dex.getEffectiveness(moveType, defTypes)
+}
+
+function toWeatherId(w: string): string {
+    return w.toLowerCase()
 }
 
 export function createAI(kind: 'random' | 'heuristic' | 'strong', seed?: number): BattleAI {

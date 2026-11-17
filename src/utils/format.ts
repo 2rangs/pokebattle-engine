@@ -1,6 +1,7 @@
 // ─── 배틀 이벤트 → 한국어 로그 문장 ──────────────────────────
 import type { BattleEvent, PlayerID } from '../types/battle'
 import type { BattlePokemon } from '../types/pokemon'
+import { koName } from '../data/dex'
 
 export const STATUS_NAME_KO: Record<string, string> = {
     burn: '화상', freeze: '얼음', paralysis: '마비', poison: '독', toxic: '맹독', sleep: '잠듦',
@@ -48,6 +49,15 @@ export const SOURCE_NAME_KO: Record<string, string> = {
     regenerator: '재생력', substitute: '대타출동', 'belly-drum': '배북',
 }
 
+const ACTIVATE_KO: Record<string, string> = {
+    'cure-team': '파티 전원의 상태이상이 나았다!', 'clearallboost': '모든 랭크 변화가 원래대로 돌아왔다!',
+    'clearboost': '랭크 변화가 원래대로 돌아왔다!', 'clearnegativeboost': '떨어진 랭크가 원래대로 돌아왔다!',
+    'clearpositiveboost': '오른 랭크가 원래대로 돌아왔다!', 'setboost': '랭크가 변했다!', 'invertboost': '랭크 변화가 뒤집혔다!',
+    'swapboost': '랭크 변화를 서로 바꿨다!', 'copyboost': '랭크 변화를 복사했다!', 'typechange': '타입이 바뀌었다!',
+    'charging': '힘을 모으고 있다!', 'court-change': '서로의 필드 효과를 바꿨다!', 'ohko': '일격필살!',
+    'ability-suppressed': '특성이 없어졌다!',
+}
+
 export interface NameResolver {
     /** 종 slug → 표시 이름 (예: 'garchomp' → '한카리아스') */
     pokemon?: (species: string) => string
@@ -68,19 +78,39 @@ export interface FormatContext {
 
 const prettify = (slug: string) => slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 
+/** 받침에 맞춰 '이(가)' 같은 조사를 고른다 */
+export function fixParticles(text: string): string {
+    const PAIRS: Record<string, [string, string]> = {
+        '이(가)': ['이', '가'], '은(는)': ['은', '는'], '을(를)': ['을', '를'], '과(와)': ['과', '와'], '이(가)!': ['이!', '가!'],
+    }
+    return text.replace(/(.)(이\(가\)|은\(는\)|을\(를\)|과\(와\))/g, (_, prev: string, pair: string) => {
+        const code = prev.charCodeAt(0)
+        if (code < 0xac00 || code > 0xd7a3) return prev + pair
+        const hasBatchim = (code - 0xac00) % 28 !== 0
+        const [withB, withoutB] = PAIRS[pair]!
+        return prev + (hasBatchim ? withB : withoutB)
+    })
+}
+
 /** 배틀 이벤트를 한국어 문장으로 변환. 화면에 보여줄 필요 없는 이벤트는 null */
 export function formatEvent(event: BattleEvent, ctx: FormatContext, names: NameResolver = {}): string | null {
+    const text = formatEventRaw(event, ctx, names)
+    return text === null ? null : fixParticles(text)
+}
+
+function formatEventRaw(event: BattleEvent, ctx: FormatContext, names: NameResolver = {}): string | null {
     const pName = (id: string) => {
         const p = ctx.getPokemon(id)
         if (!p) return id
-        const base = p.nickname && p.nickname !== p.species ? p.nickname : (names.pokemon?.(p.species) ?? prettify(p.species))
+        const base = p.nickname && p.nickname !== p.species && p.nickname !== p.set?.species ? p.nickname
+            : (names.pokemon?.(p.species) ?? koName.species(p.species) ?? prettify(p.species))
         const owner = id.startsWith('p1') ? '' : '상대 '
         return `${owner}${base}`
     }
-    const mName = (n: string) => names.move?.(n) ?? prettify(n)
-    const aName = (n: string) => names.ability?.(n) ?? prettify(n)
-    const iName = (n: string) => names.item?.(n) ?? prettify(n)
-    const tName = (n: string) => names.type?.(n) ?? n
+    const mName = (n: string) => names.move?.(n) ?? koName.move(n) ?? prettify(n)
+    const aName = (n: string) => names.ability?.(n) ?? koName.ability(n) ?? prettify(n)
+    const iName = (n: string) => names.item?.(n) ?? koName.item(n) ?? koName.move(n) ?? prettify(n)
+    const tName = (n: string) => names.type?.(n) ?? koName.type(n) ?? n
     const sideLabel = (p: PlayerID) => ctx.sideName?.(p) ?? (p === 'p1' ? '우리 편' : '상대 편')
     const source = (s: string) => SOURCE_NAME_KO[s] ?? SIDE_CONDITION_KO[s.replace(/-/g, '_')] ?? STATUS_NAME_KO[s] ?? WEATHER_NAME_KO[s] ?? iName(s)
 
@@ -93,8 +123,11 @@ export function formatEvent(event: BattleEvent, ctx: FormatContext, names: NameR
         case 'move_fail':
             if (event.reason === 'protect') return '방어로 공격을 막았다!'
             if (event.reason === 'substitute') return '대타가 대신 막았다!'
+            if (event.reason === 'fail' || event.reason === 'no-target') return '하지만 실패했다!'
             return `하지만 실패했다! ${event.reason && !['실패', '효과가 없다'].includes(event.reason) ? `(${event.reason})` : ''}`.trim()
-        case 'cant_move':       return `${pName(event.pokemon_id)}은(는) ${CANT_MOVE_KO[event.reason] ?? event.reason}!`
+        case 'cant_move':
+            if (event.reason === 'other') return `${pName(event.pokemon_id)}은(는) 움직일 수 없다!${event.detail ? ` (${mName(event.detail)})` : ''}`
+            return `${pName(event.pokemon_id)}은(는) ${CANT_MOVE_KO[event.reason] ?? event.reason}!`
         case 'damage': {
             const p = ctx.getPokemon(event.pokemon_id)
             if (event.source === 'substitute') return `대타가 ${pName(event.pokemon_id)} 대신 공격을 받았다!`
@@ -139,6 +172,10 @@ export function formatEvent(event: BattleEvent, ctx: FormatContext, names: NameR
         case 'item_activate':   return `${pName(event.pokemon_id)}: ${iName(event.item)}`
         case 'terastallize':    return `${pName(event.pokemon_id)}이(가) ${tName(event.tera_type)} 테라스탈했다!`
         case 'hit_count':       return `${event.hits}번 맞았다!`
+        case 'activate':        return ACTIVATE_KO[event.effect]
+            ? `${event.pokemon_id ? pName(event.pokemon_id) + ': ' : ''}${ACTIVATE_KO[event.effect]}`
+            : event.pokemon_id ? `${pName(event.pokemon_id)}: ${source(event.effect)}${event.detail ? ` (${source(event.detail)})` : ''}` : null
+        case 'forme_change':    return `${pName(event.pokemon_id)}의 모습이 바뀌었다!`
         case 'message':         return event.text
         case 'battle_end':      return event.winner === 'draw' ? '무승부!' : `${sideLabel(event.winner)} 승리!`
     }

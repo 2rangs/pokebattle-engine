@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { BattleEngine } from '../../src/engine/BattleEngine'
-import { preloadData } from '../../src/data/loader'
+import { preloadData } from '../../src/data/dex'
 import { loadTeam } from '../../src/utils/parseShowdown'
 import type { BattleState, BattleEvent } from '../../src/types/battle'
 import type { BattlePokemon } from '../../src/types/pokemon'

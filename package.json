@@ -1,7 +1,7 @@
 {
   "name": "@kyasi/pokebattle-engine",
-  "version": "0.2.0",
-  "description": "Pokémon singles battle engine (Gen 9) written in TypeScript — damage calc, turn engine, AI, random teams",
+  "version": "1.0.0",
+  "description": "Pokémon Showdown 시뮬레이터 기반 배틀 엔진 — PokeAPI 슬러그/한국어 이름, @smogon/calc 데미지 계산, AI, 퍼징 테스트",
   "author": "kyasi",
   "license": "MIT",
   "type": "module",
@@ -27,19 +27,21 @@
     "build": "tsup",
     "build:watch": "tsup --watch",
     "prepare": "tsup",
-    "fetch-data": "tsx scripts/fetch-data.ts",
     "simulate": "tsx scripts/simulate.ts",
     "bench": "tsx scripts/bench.ts",
     "test": "vitest",
     "test:run": "vitest run",
-    "type-check": "tsc --noEmit -p tsconfig.build.json"
+    "type-check": "tsc --noEmit -p tsconfig.build.json",
+    "fetch-pokeapi": "NODE_USE_ENV_PROXY=1 tsx scripts/fetch-pokeapi.ts",
+    "fuzz": "tsup && node scripts/fuzz.ts"
   },
   "keywords": [
     "pokemon",
+    "showdown",
     "battle",
     "engine",
     "damage-calculator",
-    "showdown",
+    "pokeapi",
     "simulator"
   ],
   "devDependencies": {
@@ -59,5 +61,10 @@
       "optional": true
     }
   },
-  "sideEffects": false
+  "sideEffects": false,
+  "dependencies": {
+    "@pkmn/randoms": "^0.11.0",
+    "@pkmn/sim": "^0.11.0",
+    "@smogon/calc": "^0.12.0"
+  }
 }

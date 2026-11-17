@@ -1,12 +1,17 @@
 # @kyasi/pokebattle-engine
 
-A Pokémon **singles** battle engine (Gen 9 rules) in TypeScript. It includes:
+A Pokémon battle engine built on the **[Pokémon Showdown](https://github.com/smogon/pokemon-showdown) simulator**.
 
-- **Damage calculator**: Gen 9 order with 4096-based modifier rounding, variable-power and type-changing moves, Tera STAB, screens, weather, terrain, abilities and items.
-- **Turn engine**: action ordering, mid-turn switches (U-turn and similar), faint replacements, hazards, field and side conditions, and end-of-turn effects.
-- **Seeded RNG**: the same seed reproduces the same battle.
-- **AI**: `RandomAI` and `HeuristicAI`, plus a random team generator and an automatic battle simulator.
-- **Korean battle log formatter**, a Showdown team parser and exporter, and a React hook.
+- **Battle mechanics:** Showdown's simulator ([`@pkmn/sim`](https://github.com/pkmn/ps), a browser-friendly package of `smogon/pokemon-showdown/sim`). Every Gen 9 move, ability and item interaction behaves exactly as it does on Showdown.
+- **Damage calculator:** [`@smogon/calc`](https://github.com/smogon/damage-calc), the engine behind the Showdown damage calculator (calc.pokemonshowdown.com).
+- **Pokémon data / names:** [PokeAPI](https://pokeapi.co).
+  - All 1,351 PokeAPI Pokémon slugs (`urshifu-single-strike`, `kings-shield` …), forms included, are mapped to Showdown IDs.
+  - Korean names for Pokémon, moves, abilities, items, types and natures.
+- **This package adds on top:**
+  - A slug-based team and action API plus validation (`getRequest` / `submitAction`).
+  - Typed events converted from Showdown protocol logs, emitted as each log line is written.
+  - Korean battle logs with correct particles (이/가, 은/는 …).
+  - AI, Showdown random-battle teams, a React hook, and fuzz testing.
 
 ## Install
 
@@ -14,132 +19,119 @@ A Pokémon **singles** battle engine (Gen 9 rules) in TypeScript. It includes:
 npm install github:2rangs/pokebattle-engine
 ```
 
-`dist/` is not committed. The `prepare` script builds it with tsup during install.
-
-## Quick start
+## Usage
 
 ```ts
-import { preloadData, BattleEngine, HeuristicAI, formatEvent, parseShowdownTeam } from '@kyasi/pokebattle-engine'
-
-await preloadData() // load species, move and type data (lazy chunks)
+import { BattleEngine, HeuristicAI, formatEvent, parseShowdownTeam, generateRandomTeam } from '@kyasi/pokebattle-engine'
 
 const engine = new BattleEngine({
-  format: 'singles',
-  seed: 42,
-  p1: { name: 'Me', team: parseShowdownTeam(myTeamText) },
-  p2: { name: 'CPU', team: parseShowdownTeam(cpuTeamText) },
+  format: 'singles',                     // 'doubles' also supported (submitChoice)
+  seed: 42,                              // same seed → same battle
+  p1: { name: 'Me',  team: parseShowdownTeam(showdownText) },
+  p2: { name: 'CPU', team: generateRandomTeam({ seed: 7 }) },   // Showdown random-battle sets
 })
 
 engine.on('*', ev => {
   const line = formatEvent(ev, { getPokemon: id => engine.getPokemon(id) })
-  if (line) console.log(line)
+  if (line) console.log(line)            // "한카리아스의 지진!" "효과가 굉장했다! 상대 타부자고에게 196 데미지 (-100%)"
 })
 
-const cpu = new HeuristicAI({ seed: 1 })
-
-// Check what each player has to decide, then submit actions
-const req = engine.getRequest('p1')            // { type: 'move' | 'switch', moves, switches, can_terastallize … }
+const req = engine.getRequest('p1')      // { type: 'move' | 'switch', moves, switches, can_terastallize, forced … }
 engine.submitAction({ type: 'move', player: 'p1', pokemon_id: req!.active.id, move_index: 0, terastallize: true })
-engine.submitAction(cpu.chooseAction(engine, 'p2')!)
+engine.submitAction(new HeuristicAI().chooseAction(engine, 'p2')!)
+
+engine.previewDamage('p1', 0)            // damage preview of my move against the current state (@smogon/calc)
 ```
+
+### Team format (`PokemonSet`)
+
+```ts
+{ species: 'great-tusk', ability: 'protosynthesis', item: 'booster-energy', nature: 'jolly',
+  level: 50, teraType: 'steel', evs: { attack: 252, speed: 252 }, moves: ['headlong-rush', 'ice-spinner', 'rapid-spin', 'knock-off'] }
+```
+
+- **Names:** PokeAPI slugs, Showdown names and Showdown IDs are all accepted.
+- **Defaults:** IVs default to 31 and EVs to 0.
+- **Validation:** unknown names throw `BattleError`.
 
 ### Battle flow
 
 | `state.phase` | Meaning | What to do |
 |---|---|---|
-| `waiting_action` | Waiting for both players' actions | Each player calls `submitAction(move | switch)` |
-| `switching` | A replacement is needed after a faint, or a mid-turn switch after U-turn and similar | Only the players listed in `state.pending_switches` submit a `switch` |
-| `ended` | The battle is over | Read `state.winner` |
+| `waiting_action` | Waiting for this turn's actions | Both sides `submitAction` (move/switch) |
+| `switching` | Replacement after a faint / U-turn etc. / Revival Blessing | Only the sides in `state.pending_switches` submit a `switch` |
+| `ended` | The battle is over | `state.winner` |
 
-- `getRequest(player)` returns the decision that player must make now, or `null` if none.
-- `getAvailableActions(player)` returns every legal `Action`.
-- Invalid actions throw `BattleError`.
+- `getRequest(player)` returns a decision based on Showdown's request, plus details hidden from the request:
+  - Hidden trapping (Shadow Tag etc.) and hidden disables (Imprison) are reflected from live state.
+  - Revival Blessing offers only fainted Pokémon (`reason: 'revival_blessing'`).
+  - Recharge, charging and rampage turns force the move (`forced: true`).
+- **Doubles:** use `getRawRequest(player)` + `submitChoice(player, 'move 1 2, switch 3')`.
+- **State:** `getState()` / `snapshot()` return state for display, and `engine.battle` is the Showdown `Battle` object itself.
 
-### Automatic simulation / random teams
+### Events
 
-```ts
-import { simulateBattle, generateRandomTeam, PRNG, HeuristicAI, RandomAI } from '@kyasi/pokebattle-engine'
+Every Showdown protocol message becomes a typed `BattleEvent` (`move_use`, `damage`, `heal`, `switch`, `faint`, `status_apply`, `stat_change`, `weather_change`, `terrain_change`, `side_start`, `ability_trigger`, `item_consume`, `terastallize`, `forme_change` …).
 
-const rng = new PRNG(7)
-const result = simulateBattle(
-  { format: 'singles', seed: 7, p1: { name: 'A', team: generateRandomTeam({ rng }) }, p2: { name: 'B', team: generateRandomTeam({ rng }) } },
-  { p1: new HeuristicAI(), p2: new RandomAI() },
-)
-console.log(result.winner, result.turns)
-```
-
-`generateRandomTeam({ learnsets })` picks only legal moves when you pass learnsets. Without them, moves are chosen by type and category.
+- `damage` / `heal` carry exact amounts plus `hp_after`, `effectiveness` and `crit`.
+- HP and status changes that Showdown applies without a log line (Regenerator, Natural Cure …) also get compensating events.
+- So replaying the event stream alone matches the simulator's HP exactly; the fuzz test checks this.
 
 ### Damage calculator
 
 ```ts
-import { createBattlePokemon, calcDamageSummary, getTypeChart } from '@kyasi/pokebattle-engine'
+import { calculateDamage } from '@kyasi/pokebattle-engine'
 
-const atk = createBattlePokemon({ species: 'garchomp', level: 50, nature: 'jolly', ability: 'rough-skin', gender: null,
-  evs: { attack: 252, speed: 252 }, moves: ['earthquake'] }, 'a')
-const def = createBattlePokemon({ species: 'gholdengo', level: 50, nature: 'timid', ability: 'good-as-gold', gender: null,
-  evs: { hp: 4 }, moves: ['shadow-ball'] }, 'b')
-
-calcDamageSummary({ attacker: atk, defender: def, move: atk.moves[0]!.move, weather: null, terrain: null, typeChart: getTypeChart() })
-// → { min, max, range: [16 rolls], koText: '확정 1타' … }
+calculateDamage(
+  { species: 'garchomp', level: 50, nature: 'jolly', evs: { attack: 252, speed: 252 } },
+  { species: 'gholdengo', level: 50, evs: { hp: 4 } },
+  'earthquake',
+  { weather: 'sandstorm', reflect: false, isCrit: false },
+)
+// → { range: [180, …, 212], min: 180, max: 212, minPercent: 110.4, maxPercent: 130.1, koText: '확정 1타', desc: '252 Atk Garchomp Earthquake vs. …' }
 ```
 
-### React
+### Data
 
-```tsx
-import { useBattle } from '@kyasi/pokebattle-engine/react'
+- `getSpecies(slug)`, `getMove(slug)`: Showdown data in engine format, including Korean names.
+- `koName.species | move | ability | item | type | nature`: Korean names from PokeAPI.
+- `speciesSlug(showdownId)`, `speciesToShowdown(slug)` …: convert names in both directions.
 
-const { state, requests, submit, log } = useBattle(config, { ai: { p2: new HeuristicAI() } })
+## Testing
+
+```bash
+npm test                                 # unit tests (mapping coverage, abilities, switching, calc parity …)
+npm run fuzz -- --battles 100000 --workers 4
 ```
 
-## Implemented mechanics (summary)
+### Fuzz tests (`scripts/fuzz.ts`)
 
-- **Status conditions:**
-  - Sleep lasts 1–3 turns.
-  - Freeze has a 20% thaw chance each turn, and thawing moves cure it.
-  - Paralysis has a 25% chance to prevent action.
-  - Burn halves physical damage (Guts and Facade are exempt) and deals 1/16 HP each turn.
-  - Poison and Toxic deal residual damage (Toxic increases each turn).
-  - Confusion and flinching are implemented.
-- **Field and side conditions:**
-  - Weather: sun, rain, sand, snow and the primal weathers, with weather rocks extending duration to 8 turns.
-  - Terrains.
-  - Reflect, Light Screen and Aurora Veil (Light Clay extends them).
-  - Tailwind, Trick Room, Gravity, Safeguard, Mist and Wish.
-  - Hazards: Stealth Rock, Spikes, Toxic Spikes and Sticky Web; Heavy-Duty Boots blocks them. Rapid Spin, Defog, Mortal Spin and similar moves remove them.
-- **Moves:**
-  - Protect variants with consecutive-use decay, plus their contact penalties.
-  - Charge moves, with Power Herb and the weather exceptions.
-  - Recharge moves and rampage moves such as Outrage.
-  - Self-switching (U-turn, Volt Switch, Parting Shot, Shed Tail …) and forced switching (Dragon Tail, Roar).
-  - Multi-hit moves (Skill Link, Loaded Dice), fixed-damage moves and OHKO moves.
-  - Drain, recoil, Struggle, Sucker Punch, Fake Out, Knock Off, Salt Cure, Stone Axe and others.
-- **Items:**
-  - Choice items lock you into one move.
-  - Life Orb, Leftovers, Black Sludge, Focus Sash, Sitrus Berry, Lum Berry and other berries.
-  - Rocky Helmet, Air Balloon, Weakness Policy, Booster Energy, Assault Vest, Covert Cloak and others.
-- **Abilities:** about 120, including:
-  - Intimidate, weather and terrain setters, Protosynthesis and Quark Drive.
-  - Absorbing abilities and Levitate.
-  - Multiscale, Sturdy, Regenerator, Magic Bounce, Prankster, Contrary, Unaware, Mold Breaker, Supreme Overlord and others.
-- **Terastallization:** type change, Tera STAB (2× when the Tera type matches an original type), a 60 base-power floor, Tera Blast, and once per battle.
+Each battle is reproducible from its seed and varies three things:
 
-### Not supported yet
+- **Format:** singles 85% / doubles 15%.
+- **Teams:** Showdown random-battle sets 50%, or "chaos teams" (random species, abilities, items, moves, EVs/IVs, levels 1–100, tera types).
+- **Choices:** random or heuristic AI.
 
-- Doubles. `format: 'doubles'` throws `BattleError`.
-- Mega Evolution and Dynamax.
-- Doubles-only moves (Helping Hand, Ally Switch …), Transform, Metronome and similar.
+Invariants checked:
 
-Unimplemented moves fail with `move_fail(reason: '미구현 기술')`.
+1. No exceptions.
+2. Every action the engine offers (singles) is accepted by Showdown.
+3. Zero unhandled protocol messages.
+4. Every event refers to a real Pokémon.
+5. **HP rebuilt from events alone equals the simulator's actual HP** (every Pokémon).
+6. Faint count and winner are consistent.
+7. Determinism: re-running the same seed gives the same log (1% sample).
+
+The full 10 million battles run in parallel shards on GitHub Actions ("Fuzz (sharded)" workflow → Run workflow; default 10 shards × 1,000,000). The CI workflow runs 10,000 battles on every push.
 
 ## Scripts
 
 ```bash
-npm test                  # vitest
-npm run type-check
-npm run build             # tsup → dist (ESM + CJS + d.ts)
-npm run simulate          # play against the AI in the terminal (--auto: AI vs AI, --random: random teams, --seed N)
-npm run bench -- 500      # HeuristicAI vs RandomAI over many battles + stability check
-npm run fetch-data        # re-fetch the source data from PokeAPI
-npx tsx scripts/compact-data.ts  # source data → src/data/compact (trimmed to engine fields)
+npm run simulate -- --auto --random      # watch AI vs AI in the terminal (without --auto you play against the AI)
+npm run bench -- 500                     # HeuristicAI vs RandomAI
+npm run fetch-pokeapi                    # refresh PokeAPI data (src/data/pokeapi.json)
 ```
+
+## License
+
+MIT. Pokémon Showdown, @pkmn/sim and @smogon/calc are MIT. PokeAPI data is publicly available (see PokeAPI's terms of use). Pokémon is a trademark of Nintendo / Game Freak.

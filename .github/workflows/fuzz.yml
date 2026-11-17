@@ -1,0 +1,74 @@
+name: Fuzz (sharded)
+
+# 대량 퍼징: 기본 10 샤드 × 1,000,000 = 10,000,000 배틀
+# Actions 탭 → "Fuzz (sharded)" → Run workflow
+on:
+  workflow_dispatch:
+    inputs:
+      battles_per_shard:
+        description: 'Battles per shard'
+        default: '1000000'
+      shards:
+        description: 'Number of shards (max 20)'
+        default: '10'
+      start:
+        description: 'First battle seed'
+        default: '0'
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - id: m
+        run: echo "matrix=$(python3 -c "print(list(range(int('${{ inputs.shards }}'))))")" >> "$GITHUB_OUTPUT"
+
+  fuzz:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Fuzz shard ${{ matrix.shard }}
+        run: |
+          PER=${{ inputs.battles_per_shard }}
+          START=$(( ${{ inputs.start }} + ${{ matrix.shard }} * PER ))
+          node scripts/fuzz.ts --battles "$PER" --start "$START" --workers "$(nproc)" --out "fuzz-shard-${{ matrix.shard }}.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fuzz-shard-${{ matrix.shard }}
+          path: fuzz-shard-${{ matrix.shard }}.json
+
+  summary:
+    needs: fuzz
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: reports
+      - name: Summarize
+        run: |
+          python3 - <<'PY'
+          import json, glob
+          tot = {'battles': 0, 'failureCount': 0, 'kinds': {}}
+          for f in glob.glob('reports/**/*.json', recursive=True):
+              d = json.load(open(f))
+              tot['battles'] += d['battles']; tot['failureCount'] += d['failureCount']
+              for k, v in d.get('kinds', {}).items(): tot['kinds'][k] = tot['kinds'].get(k, 0) + v
+          print(json.dumps(tot, indent=2))
+          with open('summary.md', 'w') as s:
+              s.write(f"## Fuzz: {tot['battles']:,} battles, {tot['failureCount']} failures\n\n```json\n{json.dumps(tot['kinds'], indent=2)}\n```\n")
+          PY
+          cat summary.md >> "$GITHUB_STEP_SUMMARY"

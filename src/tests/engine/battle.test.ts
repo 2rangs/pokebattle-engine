@@ -1,59 +1,68 @@
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect } from 'vitest'
+import { Dex, toID } from '@pkmn/sim'
 import {
-    BattleEngine, BattleError, preloadData, simulateBattle, HeuristicAI, RandomAI,
-    generateRandomTeam, PRNG, parseShowdownTeam, exportShowdownTeam, calcDamage, getTypeChart,
-    createBattlePokemon, formatEvent,
+    BattleEngine, BattleError, simulateBattle, HeuristicAI, RandomAI, generateRandomTeam, generateChaosTeam,
+    parseShowdownTeam, exportShowdownTeam, calculateDamage, formatEvent, getSpecies, getMove, koName,
+    listPokeApiSpecies, speciesToShowdown, speciesSlug, PRNG,
 } from '../../index'
 import type { Action, BattleConfig, BattleEvent, PlayerID } from '../../types/battle'
 import type { PokemonSet } from '../../types/pokemon'
-
-beforeAll(async () => {
-    await preloadData()
-})
 
 const set = (species: string, moves: string[], extra: Partial<PokemonSet> = {}): PokemonSet => ({
     species, level: 50, gender: null, ability: '', nature: 'hardy',
     moves: moves as PokemonSet['moves'], evs: {}, ivs: {}, ...extra,
 })
 
-function battle(p1: PokemonSet[], p2: PokemonSet[], seed = 1): BattleEngine {
-    const cfg: BattleConfig = { format: 'singles', seed, p1: { name: 'P1', team: p1 }, p2: { name: 'P2', team: p2 } }
-    const e = new BattleEngine(cfg)
+function battle(p1: PokemonSet[], p2: PokemonSet[], seed = 1, format: BattleConfig['format'] = 'singles'): BattleEngine {
+    const e = new BattleEngine({ format, seed, p1: { name: 'P1', team: p1 }, p2: { name: 'P2', team: p2 } })
     e.start()
     return e
 }
-
-const move = (e: BattleEngine, player: PlayerID, idx: 0 | 1 | 2 | 3 = 0, tera = false): Action => ({
-    type: 'move', player, pokemon_id: e.getActive(player).id, move_index: idx, terastallize: tera || undefined,
-})
-const sw = (e: BattleEngine, player: PlayerID, to: string): Action => ({
-    type: 'switch', player, pokemon_id: e.getActive(player).id, switch_to_id: to,
-})
+const move = (e: BattleEngine, player: PlayerID, idx: 0 | 1 | 2 | 3 = 0, tera = false): Action =>
+    ({ type: 'move', player, pokemon_id: e.getActive(player).id, move_index: idx, terastallize: tera || undefined })
+const sw = (e: BattleEngine, player: PlayerID, to: string): Action =>
+    ({ type: 'switch', player, pokemon_id: e.getActive(player).id, switch_to_id: to })
 const events = <T extends BattleEvent['type']>(e: BattleEngine, type: T) =>
     e.getState().log.filter((ev): ev is Extract<BattleEvent, { type: T }> => ev.type === type)
 
-describe('BattleEngine 기본 흐름', () => {
-    it('선두 등장 + 턴 진행', () => {
+// ─── PokeAPI ↔ Showdown 데이터 ─────────────────────────────────
+describe('PokeAPI ↔ Showdown 매핑', () => {
+    it('PokeAPI 의 모든 포켓몬(폼 포함)이 Showdown 종으로 연결된다', () => {
+        const all = listPokeApiSpecies()
+        expect(all.length).toBeGreaterThan(1300)
+        const unmapped = all.filter(s => !Dex.species.get(speciesToShowdown(s.slug)).exists)
+        expect(unmapped.map(s => s.slug)).toEqual([])
+    })
+    it('Showdown → PokeAPI 역매핑은 기본 폼 슬러그', () => {
+        expect(speciesSlug('urshifu')).toBe('urshifu-single-strike')
+        expect(speciesSlug('Urshifu-Rapid-Strike')).toBe('urshifu-rapid-strike')
+        expect(speciesSlug('greattusk')).toBe('great-tusk')
+    })
+    it('한국어 이름 (PokeAPI)', () => {
+        expect(koName.species('garchomp')).toBe('한카리아스')
+        expect(koName.move('earthquake')).toBe('지진')
+        expect(koName.ability('intimidate')).toBe('위협')
+        expect(koName.item('leftovers')).toBe('먹다남은음식')
+        expect(koName.type('fire')).toBe('불꽃')
+    })
+    it('getSpecies / getMove 는 Showdown 데이터', () => {
+        const chomp = getSpecies('garchomp')!
+        expect(chomp.base_stats.attack).toBe(130)
+        expect(chomp.abilities.map(a => a.name)).toContain('rough-skin')
+        const eq = getMove('earthquake')!
+        expect(eq).toMatchObject({ power: 100, type: 'ground', category: 'physical' })
+        expect(getMove('kings-shield')!.priority).toBe(4)
+    })
+})
+
+// ─── 기본 흐름 ───────────────────────────────────────────────
+describe('BattleEngine (Showdown 시뮬레이터)', () => {
+    it('턴 진행 + 이벤트', () => {
         const e = battle([set('garchomp', ['earthquake'])], [set('blissey', ['soft-boiled'])])
-        expect(e.getState().phase).toBe('waiting_action')
         e.submitActions(move(e, 'p1'), move(e, 'p2'))
         expect(e.getState().turn).toBe(2)
-        expect(events(e, 'move_use').length).toBe(2)
-    })
-
-    it('같은 시드 → 같은 결과 (재현성)', () => {
-        const run = (seed: number) => {
-            const rng = new PRNG(seed)
-            const cfg: BattleConfig = {
-                format: 'singles', seed,
-                p1: { name: 'A', team: generateRandomTeam({ rng }) },
-                p2: { name: 'B', team: generateRandomTeam({ rng }) },
-            }
-            const r = simulateBattle(cfg, { p1: new HeuristicAI({ seed }), p2: new HeuristicAI({ seed: seed + 1 }) })
-            return JSON.stringify(r.log.filter(ev => ev.type !== 'turn_end'))
-        }
-        expect(run(42)).toBe(run(42))
-        expect(run(42)).not.toBe(run(43))
+        expect(events(e, 'move_use').map(ev => ev.move.name)).toEqual(expect.arrayContaining(['earthquake', 'soft-boiled']))
+        expect(e.unhandledProtocol.size).toBe(0)
     })
 
     it('잘못된 행동은 BattleError', () => {
@@ -63,223 +72,167 @@ describe('BattleEngine 기본 흐름', () => {
         expect(() => e.submitAction({ type: 'move', player: 'p1', pokemon_id: 'p1_0', move_index: 3 })).toThrow(BattleError)
     })
 
-    it('doubles 포맷은 명시적으로 거부', () => {
-        expect(() => new BattleEngine({ format: 'doubles', p1: { name: 'a', team: [set('pikachu', ['tackle'])] }, p2: { name: 'b', team: [set('pikachu', ['tackle'])] } }))
-            .toThrow(BattleError)
+    it('잘못된 팀은 BattleError', () => {
+        expect(() => battle([set('notamon', ['tackle'])], [set('eevee', ['tackle'])])).toThrow(BattleError)
+        expect(() => battle([set('eevee', ['notamove'])], [set('eevee', ['tackle'])])).toThrow(BattleError)
+        expect(() => new BattleEngine({ format: 'doubles', p1: { name: 'a', team: [set('eevee', ['tackle'])] }, p2: { name: 'b', team: [set('eevee', ['tackle'])] } })).toThrow(BattleError)
     })
 
-    it('기절 → 교체 페이즈 → 다음 턴', () => {
-        const e = battle(
-            [set('garchomp', ['earthquake'], { level: 100, nature: 'adamant', evs: { attack: 252 } })],
-            [set('pikachu', ['splash']), set('eevee', ['tackle'])],
-        )
+    it('기절 → 교체 요청 → 다음 턴', () => {
+        const e = battle([set('garchomp', ['earthquake'], { level: 100 })], [set('pikachu', ['splash'], { level: 5 }), set('eevee', ['tackle'])])
         e.submitActions(move(e, 'p1'), move(e, 'p2'))
         expect(e.getState().phase).toBe('switching')
-        expect(e.getRequest('p2')?.type).toBe('switch')
+        expect(e.getRequest('p2')).toMatchObject({ type: 'switch', reason: 'faint' })
         expect(e.getRequest('p1')).toBeNull()
         e.submitAction(sw(e, 'p2', 'p2_1'))
         expect(e.getState().phase).toBe('waiting_action')
         expect(e.getActive('p2').species).toBe('eevee')
     })
 
-    it('모두 쓰러지면 배틀 종료', () => {
-        const e = battle([set('garchomp', ['earthquake'], { level: 100 })], [set('pikachu', ['splash'], { level: 5 })])
-        e.submitActions(move(e, 'p1'), move(e, 'p2'))
-        expect(e.getState().phase).toBe('ended')
-        expect(e.getState().winner).toBe('p1')
-    })
-})
-
-describe('턴 중 교체 (유턴)', () => {
-    it('유턴 → 교체 요청 → 남은 행동 재개', () => {
+    it('유턴: 턴 중간 교체 요청', () => {
         const e = battle(
             [set('scizor', ['u-turn'], { evs: { speed: 252 }, nature: 'jolly' }), set('blissey', ['soft-boiled'])],
             [set('slowbro', ['tackle'])],
         )
         e.submitActions(move(e, 'p1'), move(e, 'p2'))
-        expect(e.getState().phase).toBe('switching')
-        expect(e.getState().pending_switches?.p1).toBe('self_switch')
-        // 상대의 행동은 아직 실행되지 않음
+        expect(e.getRequest('p1')).toMatchObject({ type: 'switch', reason: 'self_switch' })
         expect(events(e, 'move_use').filter(ev => ev.pokemon_id === 'p2_0').length).toBe(0)
         e.submitAction(sw(e, 'p1', 'p1_1'))
-        // 교체 후 상대 기술이 새로 나온 포켓몬에게
-        const foeMove = events(e, 'move_use').find(ev => ev.pokemon_id === 'p2_0')
-        expect(foeMove?.target_id).toBe('p1_1')
-        expect(e.getState().phase).toBe('waiting_action')
-    })
-})
-
-describe('상태이상', () => {
-    it('화상: 물리 데미지 약 절반 (이중 적용 없음)', () => {
-        const atk = createBattlePokemon(set('garchomp', ['earthquake']), 'p1_0')
-        const def = createBattlePokemon(set('blissey', ['soft-boiled']), 'p2_0')
-        const eq = atk.moves[0]!.move
-        const base = { defender: def, move: eq, weather: null, terrain: null, typeChart: getTypeChart(), randomRoll: 100 }
-        const normal = calcDamage({ ...base, attacker: atk }).damage
-        const burned = calcDamage({ ...base, attacker: { ...atk, status: 'burn' } }).damage
-        expect(burned / normal).toBeGreaterThan(0.45)
-        expect(burned / normal).toBeLessThan(0.55)
+        expect(events(e, 'move_use').find(ev => ev.pokemon_id === 'p2_0')?.target_id).toBe('p1_1')
     })
 
-    it('수면: 1~3턴 동안 행동 불가', () => {
-        const e = battle([set('breloom', ['spore'], { evs: { speed: 252 } })], [set('snorlax', ['tackle'])])
-        e.submitActions(move(e, 'p1'), move(e, 'p2'))
-        expect(e.getActive('p2').status).toBe('sleep')
-        const sleepTurns = e.getActive('p2').status_turns
-        // 카운터 2~4 로 시작, 첫 행동 시도에서 1 감소 → 남은 1~3
-        expect(sleepTurns).toBeGreaterThanOrEqual(1)
-        expect(sleepTurns).toBeLessThanOrEqual(3)
-        expect(events(e, 'cant_move').some(ev => ev.reason === 'sleep')).toBe(true)
-    })
-
-    it('얼음 상태는 행동하지 못한다', () => {
-        const e = battle([set('pikachu', ['splash'])], [set('eevee', ['tackle'])])
-        e.getActive('p2').status = 'freeze'
-        let froze = 0
-        for (let i = 0; i < 5 && e.getState().phase === 'waiting_action'; i++) {
-            e.submitActions(move(e, 'p1'), move(e, 'p2'))
-        }
-        froze = events(e, 'cant_move').filter(ev => ev.reason === 'freeze').length
-        expect(froze).toBeGreaterThan(0)
-    })
-
-    it('맹독은 턴마다 데미지 증가', () => {
-        const e = battle([set('toxapex', ['toxic'])], [set('blissey', ['splash'])])
-        e.submitActions(move(e, 'p1'), move(e, 'p2'))
-        e.submitActions(move(e, 'p1'), move(e, 'p2'))
-        const toxic = events(e, 'damage').filter(ev => ev.source === 'toxic').map(ev => ev.amount)
-        expect(toxic.length).toBe(2)
-        expect(toxic[1]!).toBeGreaterThan(toxic[0]!)
-    })
-})
-
-describe('필드 / 사이드', () => {
-    it('스텔스록: 리자몽 교체 시 1/2', () => {
-        const e = battle([set('garchomp', ['stealth-rock'])], [set('blissey', ['splash']), set('charizard', ['splash'])])
-        e.submitActions(move(e, 'p1'), move(e, 'p2'))
-        e.submitActions(move(e, 'p1'), sw(e, 'p2', 'p2_1'))
-        const zard = e.getPokemon('p2_1')!
-        const rock = events(e, 'damage').find(ev => ev.source === 'stealth-rock')
-        expect(rock?.amount).toBe(Math.floor(zard.max_hp / 2))
-    })
-
-    it('리플렉터: 물리 데미지 감소 + 5턴 후 해제', () => {
-        const e = battle([set('blissey', ['reflect'])], [set('snorlax', ['splash'])])
-        e.submitActions(move(e, 'p1'), move(e, 'p2'))
-        expect(e.getSide('p1').conditions.reflect).toBeDefined()
-        for (let i = 0; i < 5; i++) e.submitActions(move(e, 'p1'), move(e, 'p2'))
-        expect(events(e, 'side_end').some(ev => ev.condition === 'reflect')).toBe(true)
-    })
-
-    it('트릭룸: 느린 쪽이 먼저', () => {
+    it('부활의기원: 기절한 포켓몬 중에서 선택', () => {
         const e = battle(
-            [set('snorlax', ['trick-room', 'tackle'])],
-            [set('jolteon', ['splash'], { evs: { speed: 252 } })],
+            [set('pawmot', ['revival-blessing', 'splash'], { level: 100, evs: { speed: 252 } }), set('magikarp', ['splash'], { level: 1 })],
+            [set('garchomp', ['earthquake'], { level: 100 })],
         )
+        // 잉어킹을 먼저 쓰러뜨리기 위해 교체
+        e.submitActions(sw(e, 'p1', 'p1_1'), move(e, 'p2'))
+        e.submitAction(sw(e, 'p1', 'p1_0'))
         e.submitActions(move(e, 'p1', 0), move(e, 'p2'))
-        e.submitActions(move(e, 'p1', 1), move(e, 'p2'))
-        const t2 = e.getState().log.slice(e.getState().log.findIndex(ev => ev.type === 'turn_start' && ev.turn === 2))
-        const firstMove = t2.find(ev => ev.type === 'move_use') as Extract<BattleEvent, { type: 'move_use' }>
-        expect(firstMove.pokemon_id).toBe('p1_0')
+        const req = e.getRequest('p1')
+        expect(req).toMatchObject({ type: 'switch', reason: 'revival_blessing' })
+        expect(req!.switches.map(p => p.id)).toEqual(['p1_1'])
     })
 
-    it('먹다남은음식: 턴 종료 1/16 회복', () => {
-        const e = battle([set('snorlax', ['splash'], { item: 'leftovers' })], [set('pikachu', ['thunderbolt'])])
+    it('숨은 구속 (그림자밟기): 교체 선택지 없음', () => {
+        const e = battle([set('eevee', ['tackle']), set('pikachu', ['tackle'])], [set('wobbuffet', ['splash'], { ability: 'shadow-tag' })])
+        const req = e.getRequest('p1')
+        expect(req?.type).toBe('move')
+        expect(req!.switches).toEqual([])
+    })
+
+    it('같은 시드 → 같은 결과', () => {
+        const run = (seed: number) => {
+            const cfg: BattleConfig = { format: 'singles', seed, p1: { name: 'A', team: generateRandomTeam({ seed }) }, p2: { name: 'B', team: generateRandomTeam({ seed: seed + 1 }) } }
+            const r = simulateBattle(cfg, { p1: new HeuristicAI({ seed }), p2: new HeuristicAI({ seed: seed + 1 }) })
+            return r.engine.protocolLog.filter(l => !l.startsWith('|t:|')).join('\n')
+        }
+        expect(run(42)).toBe(run(42))
+        expect(run(42)).not.toBe(run(43))
+    })
+
+    it('doubles: Showdown 선택 문자열', () => {
+        const e = battle(
+            [set('incineroar', ['fake-out', 'flare-blitz']), set('amoonguss', ['spore', 'pollen-puff'])],
+            [set('rillaboom', ['fake-out', 'wood-hammer']), set('flutter-mane', ['moonblast', 'shadow-ball'])],
+            3, 'doubles',
+        )
+        e.submitChoice('p1', 'move 1 1, move 1 2')
+        e.submitChoice('p2', 'move 2 1, move 1 2')
+        expect(e.getState().turn).toBe(2)
+        expect(events(e, 'move_use').length).toBeGreaterThanOrEqual(3)
+        expect(e.unhandledProtocol.size).toBe(0)
+    })
+})
+
+// ─── 특성 ────────────────────────────────────────────────────
+describe('특성이 결과에 반영된다', () => {
+    it('부유: 땅 기술 무효', () => {
+        const e = battle([set('garchomp', ['earthquake'])], [set('rotom-wash', ['splash'], { ability: 'levitate' })])
         e.submitActions(move(e, 'p1'), move(e, 'p2'))
-        expect(events(e, 'heal').some(ev => ev.source === 'leftovers')).toBe(true)
+        expect(events(e, 'immune').some(ev => ev.pokemon_id === 'p2_0')).toBe(true)
+        expect(e.getActive('p2').hp).toBe(e.getActive('p2').max_hp)
     })
-
     it('위협: 등장 시 상대 공격 -1', () => {
         const e = battle([set('gyarados', ['splash'], { ability: 'intimidate' })], [set('garchomp', ['earthquake'])])
         expect(e.getActive('p2').stages.attack).toBe(-1)
+        expect(events(e, 'ability_trigger').some(ev => ev.ability === 'intimidate')).toBe(true)
     })
-
-    it('가뭄: 등장 시 쾌청', () => {
-        const e = battle([set('torkoal', ['splash'], { ability: 'drought' })], [set('garchomp', ['earthquake'])])
+    it('가뭄: 쾌청 → 엽록소 스피드 2배', () => {
+        const e = battle([set('torkoal', ['splash'], { ability: 'drought' })], [set('venusaur', ['splash'], { ability: 'chlorophyll' })])
         expect(e.getState().field.weather).toBe('sun')
+        const venu = e.getActive('p2')
+        expect(e.getSpeed(venu)).toBe(venu.stats.speed * 2)
+    })
+    it('멀티스케일: 풀 HP 에서 데미지 반감 (계산기)', () => {
+        const atk = { species: 'weavile', level: 50, evs: { attack: 252 }, nature: 'jolly' }
+        const full = calculateDamage(atk, { species: 'dragonite', ability: 'multiscale' }, 'ice-shard')
+        const none = calculateDamage(atk, { species: 'dragonite', ability: 'inner-focus' }, 'ice-shard')
+        expect(full.max).toBeLessThan(none.max * 0.6)
+    })
+    it('황금몸: 상대의 변화기 무효', () => {
+        const e = battle([set('breloom', ['spore'], { evs: { speed: 252 } })], [set('gholdengo', ['splash'], { ability: 'good-as-gold' })])
+        e.submitActions(move(e, 'p1'), move(e, 'p2'))
+        expect(e.getActive('p2').status).toBeNull()
+        expect(events(e, 'immune').length).toBeGreaterThan(0)
+    })
+    it('매직미러: 변화기 반사', () => {
+        const e = battle([set('breloom', ['spore'])], [set('hatterene', ['splash'], { ability: 'magic-bounce' })])
+        e.submitActions(move(e, 'p1'), move(e, 'p2'))
+        expect(e.getActive('p1').status === 'sleep' || e.getActive('p1').types.includes('grass')).toBe(true)
+        expect(e.getActive('p2').status).toBeNull()
+    })
+    it('재생력: 교체 시 1/3 회복 (조용한 회복도 이벤트로)', () => {
+        const e = battle(
+            [set('toxapex', ['splash'], { ability: 'regenerator' }), set('blissey', ['splash'])],
+            [set('garchomp', ['dragon-claw'])],
+        )
+        e.submitActions(move(e, 'p1'), move(e, 'p2'))
+        const hurt = e.getPokemon('p1_0')!.hp
+        e.submitActions(sw(e, 'p1', 'p1_1'), move(e, 'p2'))
+        expect(e.getPokemon('p1_0')!.hp).toBeGreaterThan(hurt)
+        expect(events(e, 'heal').some(ev => ev.pokemon_id === 'p1_0' && ev.source === 'regenerator')).toBe(true)
+    })
+    it('부스트에너지 + 고대활성', () => {
+        const e = battle([set('great-tusk', ['headlong-rush'], { ability: 'protosynthesis', item: 'booster-energy' })], [set('blissey', ['splash'])])
+        expect(e.getActive('p1').item).toBeNull()
+        expect(e.getActive('p1').volatile_statuses).toHaveProperty('paradox_boost')
     })
 })
 
-describe('기술 메커니즘', () => {
-    it('파괴광선: 다음 턴 반동', () => {
-        const e = battle([set('snorlax', ['hyper-beam'], { ability: 'no-guard' })], [set('blissey', ['soft-boiled'])])
-        e.submitActions(move(e, 'p1'), move(e, 'p2'))
-        expect(e.getActive('p1').must_recharge).toBe(true)
-        expect(e.getRequest('p1')?.type === 'move' && e.getRequest('p1')).toMatchObject({ forced: true })
-        e.submitActions(move(e, 'p1'), move(e, 'p2'))
-        expect(events(e, 'cant_move').some(ev => ev.reason === 'recharge')).toBe(true)
+// ─── 계산기 (Showdown 계산기와 동일) ────────────────────────────
+describe('calculateDamage (@smogon/calc)', () => {
+    it('Lv50 양기 252 한카리아스 지진 → 4 HP 타부자고: 180~212, 확정 1타', () => {
+        const r = calculateDamage(
+            { species: 'garchomp', level: 50, nature: 'jolly', evs: { attack: 252, speed: 252 } },
+            { species: 'gholdengo', level: 50, evs: { hp: 4 } },
+            'earthquake',
+        )
+        expect([r.min, r.max]).toEqual([180, 212])
+        expect(r.koText).toBe('확정 1타')
+        expect(r.effectiveness).toBe(2)
+        expect(r.isSTAB).toBe(true)
+        expect(r.range).toHaveLength(16)
     })
-
-    it('구애스카프: 다른 기술 잠김', () => {
-        const e = battle([set('garchomp', ['earthquake', 'dragon-claw'], { item: 'choice-scarf' })], [set('blissey', ['soft-boiled'])])
-        e.submitActions(move(e, 'p1', 0), move(e, 'p2'))
-        const req = e.getRequest('p1')
-        expect(req?.type).toBe('move')
-        if (req?.type === 'move') {
-            expect(req.moves.find(m => m.index === 1)?.disabled).toBe(true)
-            expect(req.moves.find(m => m.index === 0)?.disabled).toBe(false)
-        }
+    it('날씨/벽/급소/테라스탈 반영', () => {
+        const atk = { species: 'charizard', level: 50, nature: 'modest', evs: { special_attack: 252 } }
+        const def = { species: 'blissey', level: 50, evs: { hp: 252 } }
+        const base = calculateDamage(atk, def, 'flamethrower')
+        expect(calculateDamage(atk, def, 'flamethrower', { weather: 'sun' }).max).toBeGreaterThan(base.max)
+        expect(calculateDamage(atk, def, 'flamethrower', { lightScreen: true }).max).toBeLessThan(base.max)
+        expect(calculateDamage(atk, def, 'flamethrower', { isCrit: true }).max).toBeGreaterThan(base.max)
+        expect(calculateDamage({ ...atk, teraType: 'fire', terastallized: true }, def, 'flamethrower').max).toBeGreaterThan(base.max)
     })
-
-    it('방어: 공격을 막는다', () => {
-        const e = battle([set('garchomp', ['earthquake'])], [set('blissey', ['protect'], { evs: { speed: 252 } })])
-        e.submitActions(move(e, 'p1'), move(e, 'p2'))
-        expect(events(e, 'move_fail').some(ev => ev.reason === 'protect')).toBe(true)
-        expect(e.getActive('p2').hp).toBe(e.getActive('p2').max_hp)
-    })
-
-    it('솔라빔: 1턴 모으고 2턴째 공격 (강제)', () => {
-        const e = battle([set('venusaur', ['solar-beam', 'tackle'])], [set('blissey', ['splash'])])
-        e.submitActions(move(e, 'p1'), move(e, 'p2'))
-        expect(events(e, 'damage').length).toBe(0)
-        const req = e.getRequest('p1')
-        expect(req?.type === 'move' && req.forced).toBe(true)
-        e.submitActions(move(e, 'p1', 0), move(e, 'p2'))
-        expect(events(e, 'damage').some(ev => ev.pokemon_id === 'p2_0')).toBe(true)
-    })
-
-    it('테라스탈: 타입 변경 + 1회 제한', () => {
-        const e = battle([set('dragonite', ['extreme-speed'], { teraType: 'normal' })], [set('blissey', ['splash'])])
-        expect(e.getRequest('p1')).toMatchObject({ can_terastallize: true })
-        e.submitActions(move(e, 'p1', 0, true), move(e, 'p2'))
-        expect(e.getActive('p1').types).toEqual(['normal'])
-        expect(events(e, 'terastallize').length).toBe(1)
-        expect(e.getRequest('p1')).toMatchObject({ can_terastallize: false })
-    })
-
-    it('PP 가 모두 떨어지면 발버둥', () => {
-        const e = battle([set('pikachu', ['thunderbolt'])], [set('blissey', ['soft-boiled'])])
-        e.getActive('p1').moves[0]!.pp = 0
-        const req = e.getRequest('p1')
-        expect(req?.type === 'move' && req.moves[0]!.index).toBe(-1)
+    it('엔진 미리보기 = 계산기', () => {
+        const e = battle([set('garchomp', ['earthquake'], { nature: 'jolly', evs: { attack: 252 } })], [set('gholdengo', ['splash'], { evs: { hp: 4 } })])
+        const r = e.previewDamage('p1', 0)!
+        expect([r.min, r.max]).toEqual([180, 212])
     })
 })
 
-describe('AI / 시뮬레이션', () => {
-    it('HeuristicAI 는 RandomAI 를 이긴다 (다수결)', () => {
-        let wins = 0
-        const N = 30
-        for (let i = 0; i < N; i++) {
-            const rng = new PRNG(500 + i)
-            const r = simulateBattle({
-                format: 'singles', seed: i,
-                p1: { name: 'H', team: generateRandomTeam({ rng, size: 3 }) },
-                p2: { name: 'R', team: generateRandomTeam({ rng, size: 3 }) },
-            }, { p1: new HeuristicAI({ seed: i }), p2: new RandomAI(i) })
-            if (r.winner === 'p1') wins++
-        }
-        expect(wins / N).toBeGreaterThan(0.6)
-    })
-
-    it('formatEvent 는 한국어 로그를 만든다', () => {
-        const e = battle([set('garchomp', ['earthquake'])], [set('blissey', ['soft-boiled'])])
-        e.submitActions(move(e, 'p1'), move(e, 'p2'))
-        const lines = e.getState().log.map(ev => formatEvent(ev, { getPokemon: id => e.getPokemon(id) })).filter(Boolean)
-        expect(lines.join('\n')).toContain('데미지')
-    })
-})
-
-describe('Showdown 포맷', () => {
+// ─── 팀 / 포맷 ────────────────────────────────────────────────
+describe('팀 입출력', () => {
     const text = `Great Tusk @ Booster Energy
 Ability: Protosynthesis
 Tera Type: Steel
@@ -290,29 +243,68 @@ Jolly Nature
 - Rapid Spin
 - Knock Off
 
-Kingambit @ Leftovers
-Ability: Supreme Overlord
+Urshifu-Rapid-Strike @ Choice Band
+Ability: Unseen Fist
 Level: 100
 Adamant Nature
 IVs: 0 Spe
-- Swords Dance
-- Kowtow Cleave
-- Iron Head
-- Sucker Punch`
+- Surging Strikes
+- Close Combat
+- U-turn
+- Aqua Jet`
 
-    it('파싱 (여러 단어 기술/특성 포함)', () => {
+    it('Showdown 텍스트 → PokeAPI 슬러그 세트', () => {
         const team = parseShowdownTeam(text)
         expect(team).toHaveLength(2)
-        expect(team[0]).toMatchObject({ species: 'great-tusk', item: 'booster-energy', ability: 'protosynthesis', teraType: 'steel', nature: 'jolly' })
+        expect(team[0]).toMatchObject({ species: 'great-tusk', item: 'booster-energy', ability: 'protosynthesis', teraType: 'steel', nature: 'jolly', level: 50 })
         expect(team[0]!.moves).toEqual(['headlong-rush', 'ice-spinner', 'rapid-spin', 'knock-off'])
-        expect(team[0]!.evs).toEqual({ hp: 252, attack: 4, speed: 252 })
-        expect(team[1]).toMatchObject({ level: 100, ivs: { speed: 0 } })
+        expect(team[1]).toMatchObject({ species: 'urshifu-rapid-strike', level: 100, ivs: { speed: 0 } })
     })
-
-    it('내보내기 → 다시 파싱 (왕복)', () => {
+    it('내보내기 → 다시 가져오기 (왕복)', () => {
         const team = parseShowdownTeam(text)
         const again = parseShowdownTeam(exportShowdownTeam(team))
         expect(again.map(p => p.moves)).toEqual(team.map(p => p.moves))
         expect(again.map(p => p.species)).toEqual(team.map(p => p.species))
     })
+    it('랜덤배틀 세트는 그대로 배틀 가능', () => {
+        for (let s = 0; s < 20; s++) {
+            const e = battle(generateRandomTeam({ seed: s }), generateRandomTeam({ seed: s + 100 }), s)
+            expect(e.getRequest('p1')).not.toBeNull()
+        }
+    })
 })
+
+// ─── AI / 포맷터 ─────────────────────────────────────────────
+describe('AI / 한국어 로그', () => {
+    it('HeuristicAI 는 RandomAI 를 이긴다 (다수결)', () => {
+        let wins = 0
+        const N = 30
+        for (let i = 0; i < N; i++) {
+            const r = simulateBattle({
+                format: 'singles', seed: i,
+                p1: { name: 'H', team: generateRandomTeam({ seed: 1000 + i, size: 3 }) },
+                p2: { name: 'R', team: generateRandomTeam({ seed: 2000 + i, size: 3 }) },
+            }, { p1: new HeuristicAI({ seed: i }), p2: new RandomAI(i) })
+            if (r.winner === 'p1') wins++
+        }
+        expect(wins / N).toBeGreaterThan(0.6)
+    })
+    it('formatEvent: 한국어 이름 + 올바른 조사', () => {
+        const e = battle([set('garchomp', ['earthquake'], { level: 100 })], [set('pikachu', ['splash'], { level: 5 })])
+        e.submitActions(move(e, 'p1'), move(e, 'p2'))
+        const text = e.getState().log.map(ev => formatEvent(ev, { getPokemon: id => e.getPokemon(id) })).filter(Boolean).join('\n')
+        expect(text).toContain('한카리아스의 지진!')
+        expect(text).toContain('상대 피카츄는 쓰러졌다!')
+    })
+    it('혼돈 팀도 끝까지 진행된다 (표본)', () => {
+        for (let i = 0; i < 25; i++) {
+            const rng = new PRNG(i)
+            const r = simulateBattle({ format: 'singles', seed: i, maxTurns: 300, p1: { name: 'A', team: generateChaosTeam({ rng }) }, p2: { name: 'B', team: generateChaosTeam({ rng }) } },
+                { p1: new RandomAI(i), p2: new RandomAI(i + 1) })
+            expect(r.engine.battle.ended).toBe(true)
+            expect(r.engine.unhandledProtocol.size).toBe(0)
+        }
+    })
+})
+
+void toID

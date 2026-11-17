@@ -1,123 +1,34 @@
-import type { PokemonSet, EVs, IVs, Nature, Stats } from '../types/pokemon'
+import { Teams } from '@pkmn/sim'
+import type { PokemonSet, EVs, IVs, Nature } from '../types/pokemon'
 import { toId } from './id'
+import { fromShowdownSet, toShowdownSet } from '../showdown/sets'
 
-const STAT_FROM_SHOWDOWN: Record<string, keyof Stats> = {
-    HP: 'hp', Atk: 'attack', Def: 'defense', SpA: 'special_attack', SpD: 'special_defense', Spe: 'speed',
-}
-const STAT_TO_SHOWDOWN: Record<keyof Stats, string> = {
-    hp: 'HP', attack: 'Atk', defense: 'Def', special_attack: 'SpA', special_defense: 'SpD', speed: 'Spe',
-}
-
-function parseSpread(value: string): Partial<Stats> {
-    const out: Partial<Stats> = {}
-    for (const entry of value.split('/')) {
-        const [num, stat] = entry.trim().split(/\s+/)
-        const key = STAT_FROM_SHOWDOWN[stat ?? '']
-        if (key && num !== undefined && !Number.isNaN(parseInt(num))) out[key] = parseInt(num)
-    }
-    return out
-}
-
-// ─── Showdown 포맷 파서 ───────────────────────────────────────
+// ─── Showdown 포맷 파서 (Showdown Teams.import 사용) ───────────
 export function parseShowdown(text: string, defaultLevel = 50): PokemonSet {
-    const lines = text.trim().split('\n').map(l => l.trim()).filter(Boolean)
-    if (lines.length === 0) throw new Error('빈 세트입니다')
-
-    const moves: string[] = []
-    let nickname: string | undefined
-    let ability = ''
-    let nature: Nature = 'hardy'
-    let teraType: string | undefined
-    let shiny = false
-    let level = defaultLevel
-    let evs: EVs = {}
-    let ivs: IVs = {}
-
-    const firstLine = lines[0]!
-    const [left, itemPart] = firstLine.split(' @ ')
-    const item = itemPart?.trim() ? toId(itemPart.trim()) : undefined
-
-    let rest = left!.trim()
-    let gender: 'M' | 'F' | null = null
-    const genderMatch = rest.match(/\s*\(([MF])\)\s*$/)
-    if (genderMatch) {
-        gender = genderMatch[1] as 'M' | 'F'
-        rest = rest.slice(0, genderMatch.index).trim()
-    }
-    let species: string
-    const nicknameMatch = rest.match(/^(.+?)\s+\((.+)\)$/)
-    if (nicknameMatch) {
-        nickname = nicknameMatch[1]!.trim()
-        species = toId(nicknameMatch[2]!)
-    } else {
-        species = toId(rest)
-    }
-
-    for (let i = 1; i < lines.length; i++) {
-        const line = lines[i]!
-        if (line.startsWith('- ') || line.startsWith('~ ')) {
-            // "Hidden Power [Fire]" 같은 표기 대응
-            moves.push(toId(line.slice(2).replace(/\[.*\]/, '')))
-            continue
-        }
-        if (/^\w+ Nature$/.test(line)) {
-            nature = toId(line.replace(/ Nature$/, '')) as Nature
-            continue
-        }
-        const idx = line.indexOf(':')
-        if (idx === -1) continue
-        const key = line.slice(0, idx).trim()
-        const value = line.slice(idx + 1).trim()
-        switch (key) {
-            case 'Ability':   ability = toId(value); break
-            case 'Shiny':     shiny = value.toLowerCase() === 'yes'; break
-            case 'Tera Type': teraType = toId(value); break
-            case 'Level':     level = parseInt(value) || defaultLevel; break
-            case 'EVs':       evs = parseSpread(value); break
-            case 'IVs':       ivs = parseSpread(value); break
-        }
-    }
-
-    return {
-        species, nickname, level, gender, ability, nature, item, teraType, shiny,
-        moves: moves.slice(0, 4) as PokemonSet['moves'],
-        evs, ivs,
-    }
+    const team = parseShowdownTeam(text, defaultLevel)
+    if (team.length === 0) throw new Error('빈 세트입니다')
+    return team[0]!
 }
 
 export function parseShowdownTeam(text: string, defaultLevel = 50): PokemonSet[] {
-    return text
-        .replace(/\r\n/g, '\n')
-        .split(/\n\s*\n+/)
-        .map(s => s.trim())
-        .filter(s => s && !s.startsWith('==='))
-        .map(s => parseShowdown(s, defaultLevel))
+    const normalized = text.replace(/\r\n/g, '\n')
+    const sets = Teams.import(normalized) ?? []
+    return sets.map(ps => {
+        const set = fromShowdownSet(ps)
+        // "Level:" 줄이 없으면 Showdown 기본값(100) 대신 defaultLevel
+        const block = normalized.split(/\n\s*\n/).find(b => b.includes(ps.species) || (ps.name && b.includes(ps.name)))
+        if (block && !/^\s*Level:/m.test(block)) set.level = defaultLevel
+        return set
+    })
 }
 
 // ─── Showdown 포맷 내보내기 ──────────────────────────────────
-const title = (slug: string) => slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
-
 export function exportShowdown(set: PokemonSet): string {
-    const name = set.nickname && set.nickname !== set.species ? `${set.nickname} (${title(set.species)})` : title(set.species)
-    const lines = [`${name}${set.gender ? ` (${set.gender})` : ''}${set.item ? ` @ ${title(set.item)}` : ''}`]
-    if (set.ability) lines.push(`Ability: ${title(set.ability)}`)
-    if (set.level && set.level !== 100) lines.push(`Level: ${set.level}`)
-    if (set.shiny) lines.push('Shiny: Yes')
-    if (set.teraType) lines.push(`Tera Type: ${title(set.teraType)}`)
-    const spread = (s: Partial<Stats> | undefined, skip: number) => Object.entries(s ?? {})
-        .filter(([, v]) => v !== undefined && v !== skip)
-        .map(([k, v]) => `${v} ${STAT_TO_SHOWDOWN[k as keyof Stats]}`).join(' / ')
-    const ev = spread(set.evs, 0)
-    if (ev) lines.push(`EVs: ${ev}`)
-    lines.push(`${title(set.nature)} Nature`)
-    const iv = spread(set.ivs, 31)
-    if (iv) lines.push(`IVs: ${iv}`)
-    for (const m of set.moves) if (m) lines.push(`- ${title(m)}`)
-    return lines.join('\n')
+    return Teams.export([toShowdownSet(set, false)]).trim()
 }
 
 export function exportShowdownTeam(team: PokemonSet[]): string {
-    return team.map(exportShowdown).join('\n\n')
+    return Teams.export(team.map(s => toShowdownSet(s, false))).trim()
 }
 
 // ─── JSON 팀 로더 ─────────────────────────────────────────────

@@ -13,8 +13,8 @@ async function main(): Promise<void> {
         const heuristicFirst = i % 2 === 0
         const r = simulateBattle({
             format: 'singles', seed: i,
-            p1: { name: 'p1', team: generateRandomTeam({ rng }) },
-            p2: { name: 'p2', team: generateRandomTeam({ rng }) },
+            p1: { name: 'p1', team: generateRandomTeam({ seed: rng.int(0x7fffffff) }) },
+            p2: { name: 'p2', team: generateRandomTeam({ seed: rng.int(0x7fffffff) }) },
         }, {
             p1: heuristicFirst ? new HeuristicAI({ seed: i }) : new RandomAI(i),
             p2: heuristicFirst ? new RandomAI(i) : new HeuristicAI({ seed: i }),
