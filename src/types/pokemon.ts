@@ -58,15 +58,23 @@ export interface NatureEffect {
 // ─── 전투 중 포켓몬 상태 ──────────────────────────────────────
 export interface BattlePokemon {
   // 기본 정보
-  id: string                    // 고유 ID (같은 종이 2마리일 경우 구분)
+  id: string                    // 고유 ID (p1_0, p2_3 …)
+  side?: 'p1' | 'p2'            // 소속 진영
   set: PokemonSet
   species: string
   nickname: string
   level: number
   gender: 'M' | 'F' | null
   ability: string               // 현재 활성화된 특성 (변경 가능)
+  base_ability?: string         // 원래 특성
   item: string | null           // 현재 지닌물건 (소비/교체 반영)
-  types: [string, string?]      // 현재 타입 (타입변화 반영)
+  types: [string, string?]      // 현재 타입 (테라스탈/타입변화 반영)
+  original_types?: [string, string?] // 원래 타입 (STAB 판정용)
+  weight?: number               // 무게 (hg, 1/10 kg)
+
+  // 테라스탈
+  tera_type?: string | null
+  terastallized?: boolean
 
   // HP
   hp: number                    // 현재 HP
@@ -83,7 +91,7 @@ export interface BattlePokemon {
 
   // 상태이상
   status: PrimaryStatus
-  status_turns: number          // 수면/맹독 턴 카운트
+  status_turns: number          // 수면 남은 턴 / 맹독 경과 턴
 
   // 휘발성 상태 (여러 개 동시 가능)
   volatile_statuses: Partial<Record<VolatileStatus, DurationEffect>>
@@ -96,4 +104,12 @@ export interface BattlePokemon {
   trapped: boolean              // 교체 불가 여부
   transformed: boolean          // 변신 여부
   fainted: boolean
+
+  // 확장 전투 정보 (엔진이 관리)
+  active_turns?: number         // 필드에 나온 후 지난 턴 수 (속이다/첫인상 판정)
+  choice_lock?: string | null   // 구애 아이템으로 고정된 기술
+  locked_move?: { index: number; turns: number; kind: 'charge' | 'rampage' } | null
+  moved_this_turn?: boolean
+  damaged_this_turn?: number
+  item_consumed?: string | null // 소비한 아이템 (열매/풍선 등)
 }

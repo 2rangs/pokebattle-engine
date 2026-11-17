@@ -1,6 +1,8 @@
 import type { BattlePokemon } from '../types/pokemon'
 import type { BattleState, BattleEvent, PlayerID } from '../types/battle'
 import type { Weather, Terrain } from '../types/effect'
+import type { MoveData } from '../types/move'
+import { SOUND_MOVES, BULLET_MOVES, WIND_MOVES, POWDER_MOVES } from '../data/moveTable'
 
 // ─── 특성 진입 효과 (등장 시 발동) ───────────────────────────
 export interface AbilityEntryResult {
@@ -137,35 +139,30 @@ export function isStatusImmune(pokemon: BattlePokemon, status: string, weather: 
 }
 
 // ─── 데미지 면역 체크 ────────────────────────────────────────
+// 특성으로 인한 기술 무효 (타입 상성 0 은 calcDamage 에서 처리)
+const MOLD_BREAKERS = new Set(['mold-breaker', 'teravolt', 'turboblaze'])
+
 export function isDamageImmune(
     defender: BattlePokemon,
     moveType: string,
     category: string,
+    move?:    MoveData,
+    attacker?: BattlePokemon,
 ): boolean {
+    if (attacker && MOLD_BREAKERS.has(attacker.ability)) return false
     const ability = defender.ability
+    const name = move?.name ?? ''
 
-    // 방진: 가루기술 면역
-    if (ability === 'overcoat' || ability === 'magic-guard') {
-        // magic-guard는 간접데미지 면역 (직접 기술은 해당 없음)
-    }
-
-    // 플래시파이어: 불꽃 면역
-    if (ability === 'flash-fire' && moveType === 'fire') return true
-
-    // 전동기/피뢰침: 전기 면역
-    if ((ability === 'motor-drive' || ability === 'lightning-rod') && moveType === 'electric') return true
-
-    // 저수/물흡수: 물 면역
+    if (ability === 'levitate' && moveType === 'ground' && name !== 'thousand-arrows') return true
+    if ((ability === 'flash-fire' || ability === 'well-baked-body') && moveType === 'fire') return true
+    if ((ability === 'volt-absorb' || ability === 'motor-drive' || ability === 'lightning-rod') && moveType === 'electric') return true
     if ((ability === 'water-absorb' || ability === 'storm-drain' || ability === 'dry-skin') && moveType === 'water') return true
-
-    // 초식: 풀 면역
     if (ability === 'sap-sipper' && moveType === 'grass') return true
-
-    // 방음: 음파기술 면역
-    if (ability === 'soundproof' && category === 'sound') return true
-
-    // 총알 방어: 탄환기술 면역
-    if (ability === 'bulletproof' && category === 'bullet') return true
+    if (ability === 'earth-eater' && moveType === 'ground') return true
+    if (ability === 'soundproof' && (category === 'sound' || SOUND_MOVES.has(name))) return true
+    if (ability === 'bulletproof' && (category === 'bullet' || BULLET_MOVES.has(name))) return true
+    if (ability === 'wind-rider' && WIND_MOVES.has(name)) return true
+    if (ability === 'overcoat' && POWDER_MOVES.has(name)) return true
 
     return false
 }
@@ -182,7 +179,7 @@ export function onDefenderHit(
     attacker: BattlePokemon,
     defender: BattlePokemon,
     moveType: string,
-    damage:   number,
+    _damage:  number,
 ): OnHitResult {
     const result: OnHitResult = { events: [] }
     const ability = defender.ability
