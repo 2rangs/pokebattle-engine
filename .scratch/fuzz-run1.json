@@ -4,27 +4,40 @@
     100000,
     600000
   ],
-  "elapsedSec": 220,
-  "ratePerSec": 119,
-  "battles": 26162,
-  "singles": 22296,
-  "doubles": 3865,
-  "turns": 514850,
-  "ties": 0,
-  "events": 3695813,
-  "choices": 1115992,
-  "doublesFallbacks": 45,
-  "determinismChecks": 262,
+  "elapsedSec": 660,
+  "ratePerSec": 122,
+  "battles": 80756,
+  "singles": 68739,
+  "doubles": 12014,
+  "turns": 1599972,
+  "ties": 1,
+  "events": 11490133,
+  "choices": 3469132,
+  "doublesFallbacks": 124,
+  "determinismChecks": 808,
   "failures": [
     {
       "battle": 105582,
       "seed": 105582,
       "kind": "exception",
       "message": "BattleError: p1: Can't switch: The Pokémon in slot 2 can only switch in once (switch 2)\n    at _BattleEngine.submitChoice (file:///home/user/pokebattle-engine/dist/index.js:1502:13)\n    at _BattleEngine.submitAction (file:///home/user/pokebattle-engine/dist/index.js:1486:10)\n    at playBattle (file:///home/user/pokebattle-engine/scripts/fuzz.ts:112:28)\n    at runWorker (file:///home/user/pokebattle-engine/scripts/fuzz.ts:168:38)\n    at process.processTicksAndRejections (node:internal/process/tas"
+    },
+    {
+      "battle": 280986,
+      "seed": 280986,
+      "kind": "exception",
+      "message": "BattleError: p1: Can't switch: The Pokémon in slot 4 can only switch in once (switch 4)\n    at _BattleEngine.submitChoice (file:///home/user/pokebattle-engine/dist/index.js:1502:13)\n    at _BattleEngine.submitAction (file:///home/user/pokebattle-engine/dist/index.js:1486:10)\n    at playBattle (file:///home/user/pokebattle-engine/scripts/fuzz.ts:112:28)\n    at runWorker (file:///home/user/pokebattle-engine/scripts/fuzz.ts:168:38)\n    at process.processTicksAndRejections (node:internal/process/tas"
+    },
+    {
+      "battle": 450519,
+      "seed": 450519,
+      "kind": "exception",
+      "message": "BattleError: p1: Can't switch: The Pokémon in slot 4 can only switch in once (switch 4)\n    at _BattleEngine.submitChoice (file:///home/user/pokebattle-engine/dist/index.js:1502:13)\n    at _BattleEngine.submitAction (file:///home/user/pokebattle-engine/dist/index.js:1486:10)\n    at playBattle (file:///home/user/pokebattle-engine/scripts/fuzz.ts:112:28)\n    at runWorker (file:///home/user/pokebattle-engine/scripts/fuzz.ts:168:38)\n    at process.processTicksAndRejections (node:internal/process/tas"
     }
   ],
-  "failureCount": 1,
+  "failureCount": 3,
   "kinds": {
-    "exception:BattleError: pX: Can't switch: The Pokémon in slot 2 can only switch in once ": 1
+    "exception:BattleError: pX: Can't switch: The Pokémon in slot 2 can only switch in once ": 1,
+    "exception:BattleError: pX: Can't switch: The Pokémon in slot 4 can only switch in once ": 2
   }
 }

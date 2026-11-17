@@ -65,6 +65,15 @@ describe('BattleEngine (Showdown 시뮬레이터)', () => {
         expect(e.unhandledProtocol.size).toBe(0)
     })
 
+    it('battle_start 시점에도 getState() 가 안전하다', () => {
+        const e = new BattleEngine({ format: 'singles', seed: 1, p1: { name: 'A', team: [set('eevee', ['tackle'])] }, p2: { name: 'B', team: [set('pikachu', ['tackle'])] } })
+        const phases: string[] = []
+        e.on('*', () => phases.push(e.getState().phase))
+        e.start()
+        expect(phases.length).toBeGreaterThan(2)
+        expect(e.getState().sides.p1.team).toHaveLength(1)
+    })
+
     it('잘못된 행동은 BattleError', () => {
         const e = battle([set('pikachu', ['thunderbolt'])], [set('eevee', ['tackle'])])
         expect(() => e.submitAction({ type: 'move', player: 'p1', pokemon_id: 'p2_0', move_index: 0 })).toThrow(BattleError)

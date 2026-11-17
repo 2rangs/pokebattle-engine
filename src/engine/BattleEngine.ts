@@ -560,7 +560,7 @@ export class BattleEngine {
 
     // ─── 상태 조회 ──────────────────────────────────────────────
     get phase(): BattleState['phase'] {
-        if (!this.started) return 'waiting_action'
+        if (!this.ready) return 'waiting_action'
         if (this.battle.ended) return 'ended'
         if (SIDES.some(p => this.battle[p].requestState === 'switch')) return 'switching'
         return 'waiting_action'
@@ -577,7 +577,7 @@ export class BattleEngine {
     }
 
     get winner(): PlayerID | 'draw' | null {
-        if (!this.battle.ended) return null
+        if (!this.ready || !this.battle.ended) return null
         const w = this.battle.winner
         return w === this.battle.p1.name ? 'p1' : w === this.battle.p2.name ? 'p2' : 'draw'
     }
@@ -589,7 +589,7 @@ export class BattleEngine {
         const pending: Partial<Record<PlayerID, SwitchReason>> = {}
         for (const p of SIDES) {
             const side = this.battle[p]
-            if (this.started && side.requestState === 'switch' && !side.isChoiceDone()) {
+            if (this.ready && side.requestState === 'switch' && !side.isChoiceDone()) {
                 pending[p] = side.active.some(a => a && a.fainted) ? 'faint' : 'self_switch'
             }
         }
@@ -597,6 +597,14 @@ export class BattleEngine {
         for (const [id, st] of Object.entries(f.pseudoWeather)) {
             const key = FIELD_FROM_PS[id]
             if (key) conditions[key] = { turns_remaining: (st as { duration?: number }).duration ?? Infinity }
+        }
+        if (!this.ready) {
+            return {
+                format: this.config.format,
+                sides: { p1: this.buildSide('p1'), p2: this.buildSide('p2') },
+                field: { weather: null, weather_turns: null, terrain: null, terrain_turns: null, conditions: {}, turn: 0 },
+                turn: 1, phase: 'waiting_action', winner: null, log: withLog ? this.events : [], seed: this.seed,
+            }
         }
         return {
             format: this.config.format,
@@ -620,7 +628,7 @@ export class BattleEngine {
 
     private buildSide(player: PlayerID): Side {
         const side: PSSide = this.battle[player]
-        if (!this.started) {
+        if (!this.ready || !side) {
             return { id: player, name: this.config[player].name, team: [], active: [], conditions: {}, used_dynamax: false, dynamax_turns: 0 }
         }
         const team = this.teamOrder(player).map(p => this.view(p))
