@@ -40,7 +40,7 @@ export { toId } from './utils/id'
 export { parseShowdown, parseShowdownTeam, exportShowdown, exportShowdownTeam, loadTeam, loadTeamFromJSON } from './utils/parseShowdown'
 export {
     formatEvent, STATUS_NAME_KO, STAT_NAME_KO, WEATHER_NAME_KO, TERRAIN_NAME_KO,
-    SIDE_CONDITION_KO, FIELD_CONDITION_KO, VOLATILE_NAME_KO, CANT_MOVE_KO,
+    SIDE_CONDITION_KO, FIELD_CONDITION_KO, VOLATILE_NAME_KO, CANT_MOVE_KO, SOURCE_NAME_KO,
 } from './utils/format'
 export type { NameResolver, FormatContext } from './utils/format'
 

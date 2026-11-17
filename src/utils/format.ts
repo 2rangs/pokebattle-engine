@@ -39,6 +39,15 @@ export const CANT_MOVE_KO: Record<string, string> = {
     truant: '게으름을 피우고 있다',
 }
 
+/** 데미지/회복 출처 (기술·도구·상태 외) */
+export const SOURCE_NAME_KO: Record<string, string> = {
+    drain: '흡수', recoil: '반동', confusion: '혼란', crash: '착지 실패', 'leech-seed': '씨뿌리기', curse: '저주',
+    bind: '조이기', 'salt-cure': '소금절이', 'grassy-terrain': '그래스필드', 'aqua-ring': '아쿠아링', ingrain: '뿌리박기',
+    'pain-split': '아픔나누기', 'liquid-ooze': '해감액', 'poison-heal': '포이즌힐', 'rain-dish': '젖은접시',
+    'ice-body': '아이스바디', 'dry-skin': '건조피부', 'solar-power': '선파워', 'bad-dreams': '나이트메어',
+    regenerator: '재생력', substitute: '대타출동', 'belly-drum': '배북',
+}
+
 export interface NameResolver {
     /** 종 slug → 표시 이름 (예: 'garchomp' → '한카리아스') */
     pokemon?: (species: string) => string
@@ -73,7 +82,7 @@ export function formatEvent(event: BattleEvent, ctx: FormatContext, names: NameR
     const iName = (n: string) => names.item?.(n) ?? prettify(n)
     const tName = (n: string) => names.type?.(n) ?? n
     const sideLabel = (p: PlayerID) => ctx.sideName?.(p) ?? (p === 'p1' ? '우리 편' : '상대 편')
-    const source = (s: string) => SIDE_CONDITION_KO[s.replace(/-/g, '_')] ?? STATUS_NAME_KO[s] ?? WEATHER_NAME_KO[s] ?? iName(s)
+    const source = (s: string) => SOURCE_NAME_KO[s] ?? SIDE_CONDITION_KO[s.replace(/-/g, '_')] ?? STATUS_NAME_KO[s] ?? WEATHER_NAME_KO[s] ?? iName(s)
 
     switch (event.type) {
         case 'battle_start':    return `${event.p1} vs ${event.p2} 배틀 시작!`
