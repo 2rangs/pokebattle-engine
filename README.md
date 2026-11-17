@@ -1,11 +1,5 @@
 # @kyasi/pokebattle-engine
 
-**English** · [한국어](README.ko.md)
-
-![The playground running a singles battle on the engine](docs/screenshots/playground.png)
-
-*The [playground](playground/) running a battle on this engine. Try it at [2rangs.github.io/portfolio/pokebattle-engine](https://2rangs.github.io/portfolio/pokebattle-engine/).*
-
 A Pokémon battle engine built on the **[Pokémon Showdown](https://github.com/smogon/pokemon-showdown) simulator**.
 
 - **Battle mechanics:** Showdown's simulator ([`@pkmn/sim`](https://github.com/pkmn/ps), a browser-friendly package of `smogon/pokemon-showdown/sim`). Every Gen 9 move, ability and item interaction behaves exactly as it does on Showdown.
