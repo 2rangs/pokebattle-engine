@@ -46,6 +46,16 @@ export type VolatileStatus =
     | 'paradox_boost'
     | 'slow_start'
     | 'unburden'
+    | 'flash_fire'
+    | 'wish'
+    | 'telekinesis'
+    | 'roost'
+    | 'salt_cure'
+    | 'destiny_bond'
+    | 'stockpile'
+    | 'charge'
+    | 'minimize'
+    | 'defense_curl'
 
 // ─── 날씨 ──────────────────────────────────────────────────────
 export type Weather =
@@ -79,6 +89,7 @@ export type SideCondition =
     | 'lucky_chant'
     | 'safeguard'
     | 'mist'
+    | 'wish'
 
 // ─── 필드 전체 이펙트 ────────────────────────────────────────
 export type FieldCondition =

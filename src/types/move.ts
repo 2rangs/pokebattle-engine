@@ -15,6 +15,8 @@ export type MoveTarget =
   | 'random-opponent'
   | 'specific-move'
   | 'fainting-pokemon'
+  | 'ally'
+  | 'user-or-ally'
 
 // ─── 기술 메타 데이터 ─────────────────────────────────────────
 export interface MoveMeta {
@@ -51,6 +53,11 @@ export interface MoveData {
   effect: string
   meta: MoveMeta | null
   stat_changes: StatChange[]
+  /** Showdown 이름 (예: "King's Shield") */
+  showdown?: string
+  /** Showdown 기술 플래그 (contact, sound, punch …) */
+  flags?: string[]
+  nameKo?: string | null
 }
 
 // ─── 전투 중 기술 슬롯 (PP 소모 반영) ────────────────────────

@@ -12,7 +12,7 @@ interface NatureEffect {
     hindered: BattleStatKey | null
 }
 
-const NATURE_TABLE: Record<Nature, NatureEffect> = {
+export const NATURE_TABLE: Record<Nature, NatureEffect> = {
     hardy:   { boosted: null,              hindered: null },
     docile:  { boosted: null,              hindered: null },
     serious: { boosted: null,              hindered: null },
@@ -144,12 +144,8 @@ export function getStat(pokemon: BattlePokemon, stat: BattleStatKey, opts: GetSt
     const { weather, terrain, ignoreAbility = false, ignoreItem = false } = opts
 
     if (!ignoreAbility) {
-        // ── 화상: 물리공격 0.5× ─────────────────────────────
-        if (stat === 'attack' && status === 'burn') {
-            if (!['guts', 'marvel-scale'].includes(ability)) {
-                value = Math.floor(value * 0.5)
-            }
-        }
+        // ── 화상: 물리 데미지 0.5× 는 damage.ts (calcBurnMod) 에서 처리 ──
+        //    (예전에는 여기서도 공격을 반감해 화상 보정이 이중 적용되었음)
 
         // ── 마비: 스피드 0.5× ────────────────────────────────
         if (stat === 'speed' && status === 'paralysis') {

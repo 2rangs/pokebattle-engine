@@ -1,7 +1,7 @@
 {
   "name": "@kyasi/pokebattle-engine",
-  "version": "0.1.0",
-  "description": "Pokémon battle engine written in TypeScript",
+  "version": "1.0.0",
+  "description": "Pokémon Showdown 시뮬레이터 기반 배틀 엔진 — PokeAPI 슬러그/한국어 이름, @smogon/calc 데미지 계산, AI, 퍼징 테스트",
   "author": "kyasi",
   "license": "MIT",
   "type": "module",
@@ -10,28 +10,40 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "require": "./dist/index.cjs",
-      "types": "./dist/index.d.ts"
+      "require": "./dist/index.cjs"
     },
     "./react": {
+      "types": "./dist/react/index.d.ts",
       "import": "./dist/react/index.js",
-      "require": "./dist/react/index.cjs",
-      "types": "./dist/react/index.d.ts"
+      "require": "./dist/react/index.cjs"
     }
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsup src/index.ts",
+    "build": "tsup",
     "build:watch": "tsup --watch",
-    "fetch-data": "tsx scripts/fetch-data.ts",
+    "prepare": "tsup",
     "simulate": "tsx scripts/simulate.ts",
+    "bench": "tsx scripts/bench.ts",
     "test": "vitest",
-    "type-check": "tsc --noEmit"
+    "test:run": "vitest run",
+    "type-check": "tsc --noEmit -p tsconfig.build.json",
+    "fetch-pokeapi": "NODE_USE_ENV_PROXY=1 tsx scripts/fetch-pokeapi.ts",
+    "fuzz": "tsup && node scripts/fuzz.ts"
   },
-  "keywords": [],
+  "keywords": [
+    "pokemon",
+    "showdown",
+    "battle",
+    "engine",
+    "damage-calculator",
+    "pokeapi",
+    "simulator"
+  ],
   "devDependencies": {
     "@types/node": "^25.5.0",
     "@types/react": "^19.2.14",
@@ -48,5 +60,11 @@
     "react": {
       "optional": true
     }
+  },
+  "sideEffects": false,
+  "dependencies": {
+    "@pkmn/randoms": "^0.11.0",
+    "@pkmn/sim": "^0.11.0",
+    "@smogon/calc": "^0.12.0"
   }
 }

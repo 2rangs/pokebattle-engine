@@ -10,12 +10,12 @@
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "./dist",
-    "rootDir": "./src",
-    "skipLibCheck": true,
+        "skipLibCheck": true,
     "resolveJsonModule": true,
     "esModuleInterop": true,
     "ignoreDeprecations": "6.0",
-    "types": ["node"]
+    "types": ["node"],
+    "paths": { "@kyasi/pokebattle-engine": ["./src/index.ts"] }
   },
   "include": ["src", "scripts", "tests"],
   "exclude": ["node_modules", "dist"]

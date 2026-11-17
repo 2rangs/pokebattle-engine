@@ -1,530 +1,990 @@
-import type { BattleConfig, BattleState, BattleEvent, Action, PlayerID, Side } from '../types/battle'
-import type { BattlePokemon } from '../types/pokemon'
-import type { Weather, Terrain } from '../types/effect'
-import { calcAllStats, createInitialStages } from '../calc/stat'
-import { onSwitchIn } from '../effects/ability'
-import { calcWeatherDamage } from '../effects/weather'
-import { calcStatusDamage, tickToxic } from '../effects/status'
-import { calcLeechSeedDamage, calcBindDamage, calcCurseDamage, calcAquaRingHeal, calcIngrainHeal, tickVolatile } from '../effects/volatile'
-import { TurnManager } from './TurnManager'
-import {getMove, getSpecies} from '../data/loader'
+// ─── 배틀 엔진 (Pokémon Showdown 시뮬레이터 래퍼) ───────────────
+// 실제 배틀 처리는 Showdown 의 Battle(@pkmn/sim)이 담당하고, 이 클래스는
+//  - PokeAPI 슬러그 기반 팀/행동 ↔ Showdown 선택 문자열 변환
+//  - Showdown 프로토콜 로그 → 타입이 있는 BattleEvent 변환 (로그가 쓰이는 즉시)
+//  - 화면용 상태(BattleState/BattlePokemon) 조회
+// 를 담당한다.
+import { Battle, Dex, toID } from '@pkmn/sim'
+import type { Pokemon as PSPokemon, Side as PSSide } from '@pkmn/sim'
+import type {
+    Action, BattleConfig, BattleEvent, BattleEventType, BattleRequest, BattleState, CantMoveReason,
+    MoveOption, PlayerID, Side, SwitchReason,
+} from '../types/battle'
+import type { BattlePokemon, PokemonSet, StatStages } from '../types/pokemon'
+import type { FieldCondition, PrimaryStatus, SideCondition, Terrain, Weather } from '../types/effect'
+import type { MoveData, MoveSlot } from '../types/move'
+import { toShowdownSet } from '../showdown/sets'
+import { getMove, speciesSlug, abilitySlug, itemSlug, moveSlug, STAT_FROM_PS } from '../data/dex'
+import { speciesToShowdown, toSlug } from '../showdown/ids'
+import { PRNG } from '../utils/rng'
+import { calculateDamage, type CalcPokemonInput, type DamageResult } from '../calc/damage'
 
 type AnyEventListener = (event: BattleEvent) => void
 
+export interface EngineOptions {
+    /** turn_end 이벤트에 상태 스냅샷 포함 (기본 true). 대량 시뮬레이션은 false 권장 */
+    turnSnapshots?: boolean
+}
+
+export class BattleError extends Error {
+    constructor(message: string) {
+        super(message)
+        this.name = 'BattleError'
+    }
+}
+
+// ─── Showdown ↔ 엔진 코드 매핑 ─────────────────────────────────
+export const STATUS_FROM_PS: Record<string, PrimaryStatus> = {
+    brn: 'burn', par: 'paralysis', slp: 'sleep', frz: 'freeze', psn: 'poison', tox: 'toxic',
+}
+export const WEATHER_FROM_PS: Record<string, Weather> = {
+    sunnyday: 'sun', desolateland: 'harsh_sun', raindance: 'rain', primordialsea: 'heavy_rain',
+    sandstorm: 'sandstorm', snow: 'snow', snowscape: 'snow', hail: 'snow', deltastream: 'strong_winds',
+}
+export const TERRAIN_FROM_PS: Record<string, Terrain> = {
+    electricterrain: 'electric', grassyterrain: 'grassy', mistyterrain: 'misty', psychicterrain: 'psychic',
+}
+const FIELD_FROM_PS: Record<string, FieldCondition> = {
+    trickroom: 'trick_room', gravity: 'gravity', magicroom: 'magic_room', wonderroom: 'wonder_room',
+    mudsport: 'mud_sport', watersport: 'water_sport',
+}
+export const SIDE_FROM_PS: Record<string, SideCondition> = {
+    reflect: 'reflect', lightscreen: 'light_screen', auroraveil: 'aurora_veil', spikes: 'spikes',
+    toxicspikes: 'toxic_spikes', stealthrock: 'stealth_rock', stickyweb: 'sticky_web', tailwind: 'tailwind',
+    luckychant: 'lucky_chant', safeguard: 'safeguard', mist: 'mist',
+}
+const VOLATILE_FROM_PS: Record<string, string> = {
+    confusion: 'confusion', flinch: 'flinch', leechseed: 'seeded', partiallytrapped: 'bound', attract: 'infatuation',
+    curse: 'curse', nightmare: 'nightmare', aquaring: 'aqua_ring', ingrain: 'ingrain', magnetrise: 'magnet_rise',
+    taunt: 'taunt', encore: 'encore', torment: 'torment', disable: 'disable', healblock: 'heal_block',
+    embargo: 'embargo', yawn: 'yawn', protect: 'protect', kingsshield: 'kings_shield', spikyshield: 'spiky_shield',
+    banefulbunker: 'baneful_bunker', silktrap: 'silk_trap', burningbulwark: 'burning_bulwark', obstruct: 'obstruct',
+    endure: 'endure', focusenergy: 'focus_energy', dragoncheer: 'focus_energy', mustrecharge: 'recharging',
+    substitute: 'substitute', protosynthesis: 'paradox_boost', quarkdrive: 'paradox_boost', slowstart: 'slow_start',
+    unburden: 'unburden', flashfire: 'flash_fire', roost: 'roost', saltcure: 'salt_cure', destinybond: 'destiny_bond',
+    stockpile: 'stockpile', charge: 'charge', minimize: 'minimize', defensecurl: 'defense_curl', telekinesis: 'telekinesis',
+}
+const CANT_FROM_PS: Record<string, CantMoveReason> = {
+    par: 'paralysis', slp: 'sleep', frz: 'freeze', flinch: 'flinch', recharge: 'recharge', mustrecharge: 'recharge',
+    taunt: 'taunt', nopp: 'no_pp', attract: 'infatuation', truant: 'truant',
+}
+const PROTECT_EFFECTS = new Set([
+    'protect', 'kingsshield', 'spikyshield', 'banefulbunker', 'silktrap', 'burningbulwark', 'obstruct',
+    'maxguard', 'detect', 'matblock', 'quickguard', 'wideguard', 'craftyshield',
+])
+/** 처리할 필요 없는 프로토콜 메시지 */
+const IGNORED = new Set([
+    't:', 'gametype', 'player', 'gen', 'tier', 'rule', 'start', 'upkeep', '', 'teamsize', 'clearpoke', 'poke',
+    'teampreview', 'j', 'l', 'title', 'inactive', 'inactiveoff', 'debug', 'error', 'bigerror', 'request', 'sentchoice',
+    'done', 'html', 'uhtml', 'raw', 'seed', 'variation', 'timestamp', 'chat', 'c', 'updatepoke', 'chatmsg',
+    'chatmsg-raw', '-mustrecharge', '-anim', '-hint', '-center', '-combine', '-waiting', '-zpower', '-zbroken',
+    '-primal', '-burst', '-mega', '-candynamax', '-clearpoke', 'askreg', 'uhtmlchange', 'bigerror',
+])
+
+const SIDES: PlayerID[] = ['p1', 'p2']
+
+/** 숫자 시드 → Showdown PRNG 시드 */
+function toPSSeed(seed: number): [number, number, number, number] {
+    const r = new PRNG(seed)
+    return [r.int(0x10000), r.int(0x10000), r.int(0x10000), r.int(0x10000)]
+}
+
+/** "[from] item: Life Orb" → 'life-orb' 같은 슬러그 */
+function effectSlug(effect: string): string {
+    const e = effect.replace(/^\[from\]\s*/, '').trim()
+    const m = e.match(/^(item|ability|move):\s*(.+)$/)
+    if (m) {
+        const name = m[2]!
+        if (m[1] === 'item') return itemSlug(name)
+        if (m[1] === 'ability') return abilitySlug(name)
+        return moveSlug(name)
+    }
+    const id = toID(e)
+    if (STATUS_FROM_PS[id]) return STATUS_FROM_PS[id]!
+    if (WEATHER_FROM_PS[id]) return WEATHER_FROM_PS[id]!
+    return toSlug(e)
+}
+
+const stripPrefix = (s: string | undefined) => (s ?? '').replace(/^(move|ability|item):\s*/, '')
+
 export class BattleEngine {
-    private state: BattleState
+    readonly battle: Battle
+    readonly seed: number
+    readonly maxTurns: number
+    private config: BattleConfig
     private listeners: Map<string, AnyEventListener[]> = new Map()
-    private turnManager: TurnManager
+    private started = false
+    private ready = false
+    private events: BattleEvent[] = []
+    private ids = new WeakMap<PSPokemon, string>()
+    private byId = new Map<string, PSPokemon>()
+    private sets = new Map<string, PokemonSet>()
 
-    constructor(config: BattleConfig) {
-        this.state = this.initState(config)
-        this.turnManager = new TurnManager(this)
-    }
+    // 프로토콜 파서 상태
+    private splitState = 0              // 1: 다음 줄이 비밀(정확한 HP), 2: 그 다음 공개 줄은 건너뜀
+    private lastHp = new Map<string, number>()
+    private lastStatus = new Map<string, string>()
+    private replaying = false
+    private lastActive: Record<PlayerID, string[]> = { p1: [], p2: [] }
+    private pendingHit = new Map<string, { crit?: boolean; eff?: number }>()
+    private lastMove: { user: string; move: MoveData } | null = null
+    private unknownLines = new Map<string, number>()
 
-    // ─── 상태 조회 ──────────────────────────────────────────────
-    getState(): Readonly<BattleState> {
-        return this.state
-    }
+    readonly options: EngineOptions
 
-    getPokemon(id: string): BattlePokemon | undefined {
-        for (const side of Object.values(this.state.sides)) {
-            const found = side.team.find(p => p.id === id)
-            if (found) return found
+    constructor(config: BattleConfig, options: EngineOptions = {}) {
+        this.config = config
+        this.options = options
+        this.seed = config.seed ?? Math.floor(Math.random() * 0x7fffffff)
+        this.maxTurns = config.maxTurns ?? 1000
+        if (!config.p1?.team?.length || !config.p2?.team?.length) {
+            throw new BattleError('양쪽 팀에 최소 1마리의 포켓몬이 필요합니다')
         }
-    }
-
-    getActivePokemon(player: PlayerID): BattlePokemon[] {
-        return this.state.sides[player].active
-    }
-
-    // ─── 이벤트 이미터 ──────────────────────────────────────────
-    on(eventType: string, listener: AnyEventListener): void {
-        if (!this.listeners.has(eventType)) {
-            this.listeners.set(eventType, [])
+        if (config.format === 'doubles' && (config.p1.team.length < 2 || config.p2.team.length < 2)) {
+            throw new BattleError('doubles 배틀은 양쪽 팀에 최소 2마리가 필요합니다')
         }
+        const base = config.formatid ?? (config.format === 'doubles' ? 'gen9doublescustomgame' : 'gen9customgame')
+        const rules = ['!Team Preview', ...(config.rules ?? [])]
+        const formatid = `${base}@@@${rules.join(',')}`
+        if (!Dex.formats.get(formatid).exists) throw new BattleError(`알 수 없는 포맷: ${base}`)
+        this.battle = new Battle({ formatid: formatid as never, seed: toPSSeed(this.seed) as never })
+        // 로그가 쓰이는 즉시 이벤트로 변환 (상태가 그 시점과 정확히 일치)
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
+        const self = this
+        const log: string[] = []
+        log.push = function (...lines: string[]) {
+            const n = Array.prototype.push.apply(this, lines)
+            if (self.ready) for (const line of lines) self.parseLine(line)
+            return n
+        }
+        ;(this.battle as unknown as { log: string[] }).log = log
+    }
+
+    /** 하위 호환 (데이터가 이미 동기 로드됨) */
+    static async create(config: BattleConfig): Promise<BattleEngine> {
+        return new BattleEngine(config)
+    }
+
+    // ─── 시작 ──────────────────────────────────────────────────
+    /** 팀 등록 + 선두 등장. getRequest/submitAction 시 자동 호출된다 */
+    start(): void {
+        if (this.started) return
+        this.started = true
+        const teams = SIDES.map(player => {
+            const team = this.config[player].team.slice(0, 6)
+            const ps = team.map(set => {
+                try {
+                    return toShowdownSet(set)
+                } catch (err) {
+                    throw new BattleError(`${player}: ${(err as Error).message}`)
+                }
+            })
+            return { player, team, ps }
+        })
+        this.emit({ type: 'battle_start', p1: this.config.p1.name, p2: this.config.p2.name, seed: this.seed })
+        for (const { player, team, ps } of teams) {
+            this.battle.setPlayer(player, { name: this.config[player].name, team: ps })
+            this.battle[player].pokemon.forEach((p, i) => {
+                const id = `${player}_${i}`
+                this.ids.set(p, id)
+                this.byId.set(id, p)
+                this.sets.set(id, team[i]!)
+            })
+        }
+        // 이벤트 기준선 = start() 직후 상태 (두 번째 setPlayer 에서 등장 특성까지 이미 처리됨)
+        for (const player of SIDES) for (const p of this.battle[player].pokemon) {
+            this.lastHp.set(this.idOf(p), p.hp)
+            this.lastStatus.set(this.idOf(p), p.status)
+        }
+        // 두 번째 setPlayer 에서 배틀이 시작되며 쓰인 로그를 ID 연결 후 처리
+        this.ready = true
+        this.replaying = true
+        for (const line of [...this.battle.log]) this.parseLine(line)
+        this.replaying = false
+    }
+
+    // ─── 이벤트 ────────────────────────────────────────────────
+    on(eventType: BattleEventType | '*', listener: AnyEventListener): () => void {
+        if (!this.listeners.has(eventType)) this.listeners.set(eventType, [])
         this.listeners.get(eventType)!.push(listener)
+        return () => this.off(eventType, listener)
     }
 
-    off(eventType: string, listener: AnyEventListener): void {
+    off(eventType: BattleEventType | '*', listener: AnyEventListener): void {
         const list = this.listeners.get(eventType)
         if (!list) return
         const idx = list.indexOf(listener)
         if (idx !== -1) list.splice(idx, 1)
     }
 
-    emit(event: BattleEvent): void {
-        this.state.log.push(event)
-        const typed = this.listeners.get(event.type) ?? []
-        for (const fn of typed) fn(event)
-        const all = this.listeners.get('*') ?? []
-        for (const fn of all) fn(event)
+    private emit(event: BattleEvent): void {
+        this.events.push(event)
+        for (const fn of this.listeners.get(event.type) ?? []) fn(event)
+        for (const fn of this.listeners.get('*') ?? []) fn(event)
     }
 
-    // ─── 행동 제출 ──────────────────────────────────────────────
-    submitAction(action: Action): void {
-        if (this.state.phase !== 'waiting_action' && this.state.phase !== 'switching') {
-            throw new Error(`Cannot submit action in phase: ${this.state.phase}`)
-        }
-        this.turnManager.queueAction(action)
+    /** Showdown 원본 프로토콜 로그 */
+    get protocolLog(): readonly string[] {
+        return this.battle.log
+    }
 
-        // switching 페이즈는 교체가 필요한 쪽만 체크
-        if (this.state.phase === 'switching') {
-            if (this.isSwitchingComplete()) {
-                this.turnManager.executeTurn(this.state)
-                if (!this.checkBattleEnd()) {
-                    if (this.checkNeedSwitch()) {
-                        // 아직 교체 필요한 쪽 있음
-                    } else {
-                        this.state = { ...this.state, turn: this.state.turn + 1, phase: 'waiting_action' }
-                        this.emit({ type: 'turn_end', turn: this.state.turn, state: this.state })
-                    }
-                }
-            }
+    /** 처리하지 못한 프로토콜 메시지 종류 (테스트에서 0 이어야 함) */
+    get unhandledProtocol(): ReadonlyMap<string, number> {
+        return this.unknownLines
+    }
+
+    // ─── 프로토콜 → 이벤트 ─────────────────────────────────────
+    private resolve(ref: string | undefined): PSPokemon | undefined {
+        if (!ref) return undefined
+        const m = ref.match(/^(p[1-4])([a-c])?:\s*(.*)$/)
+        if (!m) return undefined
+        const side = this.battle[m[1] as PlayerID]
+        if (!side) return undefined
+        if (m[2]) {
+            const p = side.active[m[2].charCodeAt(0) - 97]
+            if (p) return p
+        }
+        const name = m[3]!.trim()
+        return side.pokemon.find(p => p.name === name)
+    }
+
+    private idOf(p: PSPokemon | undefined): string {
+        return p ? this.ids.get(p) ?? '' : ''
+    }
+
+    /**
+     * 로그 없이 바뀐 HP/상태 보정 (재생력·자연회복은 Showdown 이 교체 시 조용히 처리한다).
+     * 이벤트만으로 상태를 재구성하는 클라이언트가 어긋나지 않도록 보정 이벤트를 낸다.
+     */
+    private reconcile(p: PSPokemon, reason: string): void {
+        const id = this.idOf(p)
+        if (!id || this.replaying) return
+        const prev = this.lastHp.get(id)
+        const now = Math.max(0, p.hp)
+        if (prev !== undefined && prev !== now && !p.fainted) {
+            this.lastHp.set(id, now)
+            const source = now > prev && toID(p.ability) === 'regenerator' ? 'regenerator' : reason
+            if (now > prev) this.emit({ type: 'heal', pokemon_id: id, amount: now - prev, source, hp_after: now })
+            else this.emit({ type: 'damage', pokemon_id: id, amount: prev - now, source, hp_after: now })
+        }
+        const prevStatus = this.lastStatus.get(id) ?? ''
+        if (prevStatus !== p.status) {
+            this.lastStatus.set(id, p.status)
+            if (prevStatus && !p.status && !p.fainted) this.emit({ type: 'status_remove', pokemon_id: id, status: STATUS_FROM_PS[prevStatus] ?? prevStatus })
+            else if (p.status && !prevStatus) this.emit({ type: 'status_apply', pokemon_id: id, status: STATUS_FROM_PS[p.status] ?? p.status, source: reason })
+        }
+    }
+
+    private reconcileAll(reason: string): void {
+        for (const player of SIDES) for (const p of this.battle[player].pokemon) this.reconcile(p, reason)
+    }
+
+    private parseLine(line: string): void {
+        if (!line.startsWith('|')) {
+            if (this.splitState === 2) this.splitState = 0 // addSplit 의 빈 공개 줄
             return
         }
-
-        if (this.turnManager.isReady()) {
-            this.executeTurn()
+        const parts = line.slice(1).split('|')
+        const cmd = parts[0]!
+        if (cmd === 'split') { this.splitState = 1; return }
+        if (this.splitState === 1) {
+            this.splitState = 2
+        } else if (this.splitState === 2) {
+            this.splitState = 0
+            return // 공개용 줄 (비밀 줄과 같은 내용, HP 만 % 단위)
         }
-    }
+        const args = parts.slice(1)
+        const kw = args.filter(a => a.startsWith('['))
+        const from = kw.find(a => a.startsWith('[from]'))
+        const pos = args.filter(a => !a.startsWith('['))
+        if (IGNORED.has(cmd)) return
 
-    private isSwitchingComplete(): boolean {
-        for (const [player, side] of Object.entries(this.state.sides) as [PlayerID, Side][]) {
-            const needsSwitch = side.active.every(p => p.fainted) && side.team.some(p => !p.fainted)
-            if (needsSwitch && !this.turnManager.queueHas(player as PlayerID)) {
-                return false
-            }
-        }
-        return true
-    }
-
-    // ─── 턴 실행 ────────────────────────────────────────────────
-    private executeTurn(): void {
-        this.state = { ...this.state, phase: 'executing' }
-        this.emit({ type: 'turn_start', turn: this.state.turn })
-        this.turnManager.executeTurn(this.state)
-        this.runEndOfTurn()
-
-        if (!this.checkBattleEnd()) {
-            if (this.checkNeedSwitch()) {
-                this.state = { ...this.state, phase: 'switching' }
-            } else {
-                this.state = { ...this.state, turn: this.state.turn + 1, phase: 'waiting_action' }
-                this.emit({ type: 'turn_end', turn: this.state.turn, state: this.state })
-            }
-        }
-    }
-
-    // ─── 턴 종료 처리 ───────────────────────────────────────────
-    private runEndOfTurn(): void {
-        const { field } = this.state
-        const allActive = this.getAllActive()
-
-        for (const pokemon of allActive) {
-            if (pokemon.fainted) continue
-
-            // 날씨 데미지
-            const weatherDmg = calcWeatherDamage(pokemon, field.weather)
-            if (weatherDmg) {
-                this.applyDamage(pokemon.id, weatherDmg.damage, 'weather')
-            }
-
-            // 상태이상 데미지
-            const statusDmg = calcStatusDamage(pokemon, Math.random)
-            if (statusDmg) {
-                if (statusDmg.cured) {
-                    this.cureStatus(pokemon.id)
-                } else if (statusDmg.damage > 0) {
-                    this.applyDamage(pokemon.id, statusDmg.damage, pokemon.status ?? 'status')
+        switch (cmd) {
+            case 'turn': {
+                this.reconcileAll('sync')
+                const turn = Number(pos[0])
+                if (turn > 1) {
+                    // 대량 시뮬레이션에서는 스냅샷 생략 가능 (options.turnSnapshots = false)
+                    this.emit({ type: 'turn_end', turn, state: this.options.turnSnapshots === false ? (null as unknown as BattleState) : this.snapshot() })
                 }
+                this.emit({ type: 'turn_start', turn })
+                if (turn > this.maxTurns && !this.battle.ended) this.battle.tie()
+                return
             }
-
-            // 맹독 턴 증가
-            if (pokemon.status === 'toxic') {
-                this.updatePokemon(pokemon.id, p => ({ ...p, status_turns: tickToxic(p) }))
+            case 'switch':
+            case 'drag':
+            case 'replace': {
+                const p = this.resolve(pos[0])
+                const player = pos[0]!.slice(0, 2) as PlayerID
+                const slot = Math.max(0, (pos[0]!.charCodeAt(2) || 97) - 97)
+                const inId = this.idOf(p)
+                const out = this.lastActive[player][slot] ?? ''
+                const outPoke = out ? this.byId.get(out) : undefined
+                if (outPoke && outPoke !== p) this.reconcile(outPoke, 'switch-out')
+                if (p) this.reconcile(p, 'switch-in')
+                this.lastActive[player][slot] = inId
+                this.emit({ type: 'switch', player, out_id: out === inId ? '' : out, in_id: inId, forced: cmd === 'drag' || undefined })
+                return
             }
-
-            // 씨뿌리기
-            const leechDmg = calcLeechSeedDamage(pokemon)
-            if (leechDmg > 0) {
-                this.applyDamage(pokemon.id, leechDmg, 'seeded')
-                // TODO: 씨뿌린 쪽 회복
+            case 'move': {
+                const user = this.resolve(pos[0])
+                const move = getMove(toID(pos[1] ?? '')) ?? ({
+                    id: 0, name: toSlug(pos[1] ?? ''), type: 'typeless', category: 'status', power: null, accuracy: null,
+                    pp: 1, priority: 0, target: 'selected-pokemon', effect_chance: null, effect: '', meta: null, stat_changes: [],
+                } as MoveData)
+                this.lastMove = { user: this.idOf(user), move }
+                this.emit({ type: 'move_use', pokemon_id: this.idOf(user), move, target_id: this.idOf(this.resolve(pos[2])) })
+                return
             }
-
-            // 감기기
-            const bindDmg = calcBindDamage(pokemon)
-            if (bindDmg > 0) {
-                this.applyDamage(pokemon.id, bindDmg, 'bound')
+            case 'cant': {
+                const reasonRaw = stripPrefix(pos[1])
+                const reason = CANT_FROM_PS[toID(reasonRaw)] ?? 'other'
+                this.emit({ type: 'cant_move', pokemon_id: this.idOf(this.resolve(pos[0])), reason, detail: reason === 'other' ? toSlug(reasonRaw) : undefined })
+                return
             }
-
-            // 저주
-            const curseDmg = calcCurseDamage(pokemon)
-            if (curseDmg > 0) {
-                this.applyDamage(pokemon.id, curseDmg, 'curse')
+            case '-crit':
+            case '-supereffective':
+            case '-resisted': {
+                const id = this.idOf(this.resolve(pos[0]))
+                const cur = this.pendingHit.get(id) ?? {}
+                if (cmd === '-crit') cur.crit = true
+                else cur.eff = cmd === '-supereffective' ? 2 : 0.5
+                this.pendingHit.set(id, cur)
+                return
             }
-
-            // 아쿠아링
-            const aquaHeal = calcAquaRingHeal(pokemon)
-            if (aquaHeal > 0) {
-                this.applyHeal(pokemon.id, aquaHeal, 'aqua_ring')
-            }
-
-            // 뿌리박기
-            const ingrainHeal = calcIngrainHeal(pokemon)
-            if (ingrainHeal > 0) {
-                this.applyHeal(pokemon.id, ingrainHeal, 'ingrain')
-            }
-
-            // 휘발성 상태 tick
-            this.tickVolatileStatuses(pokemon.id)
-        }
-
-        this.tickWeather()
-        this.tickTerrain()
-    }
-
-    // ─── 데미지 적용 ────────────────────────────────────────────
-    applyDamage(pokemonId: string, amount: number, source: string): void {
-        const pokemon = this.getPokemon(pokemonId)
-        if (!pokemon || pokemon.fainted) return
-
-        const actual = Math.min(amount, pokemon.hp)
-        this.updatePokemon(pokemonId, p => ({ ...p, hp: p.hp - actual }))
-        this.emit({ type: 'damage', pokemon_id: pokemonId, amount: actual, source })
-
-        const updated = this.getPokemon(pokemonId)!
-        if (updated.hp <= 0) {
-            this.faintPokemon(pokemonId)
-        }
-    }
-
-    // ─── 회복 적용 ──────────────────────────────────────────────
-    applyHeal(pokemonId: string, amount: number, source: string): void {
-        const pokemon = this.getPokemon(pokemonId)
-        if (!pokemon || pokemon.fainted) return
-
-        const actual = Math.min(amount, pokemon.max_hp - pokemon.hp)
-        if (actual <= 0) return
-        this.updatePokemon(pokemonId, p => ({ ...p, hp: p.hp + actual }))
-        this.emit({ type: 'heal', pokemon_id: pokemonId, amount: actual, source })
-    }
-
-    // ─── 기절 처리 ──────────────────────────────────────────────
-    faintPokemon(pokemonId: string): void {
-        this.updatePokemon(pokemonId, p => ({ ...p, hp: 0, fainted: true }))
-        this.emit({ type: 'faint', pokemon_id: pokemonId })
-    }
-
-    // ─── 상태이상 적용 ──────────────────────────────────────────
-    applyStatus(pokemonId: string, status: string): void {
-        this.updatePokemon(pokemonId, p => ({
-            ...p,
-            status: status as BattlePokemon['status'],
-            status_turns: 0,
-        }))
-        this.emit({ type: 'status_apply', pokemon_id: pokemonId, status })
-    }
-
-    // ─── 상태이상 해제 ──────────────────────────────────────────
-    cureStatus(pokemonId: string): void {
-        const pokemon = this.getPokemon(pokemonId)
-        if (!pokemon?.status) return
-        const status = pokemon.status
-        this.updatePokemon(pokemonId, p => ({ ...p, status: null, status_turns: 0 }))
-        this.emit({ type: 'status_remove', pokemon_id: pokemonId, status })
-    }
-
-    // ─── 스탯 랭크 변경 ─────────────────────────────────────────
-    applyStatChange(pokemonId: string, stat: string, change: number): void {
-        const normalizedStat = stat
-            .replace('special-attack',  'special_attack')
-            .replace('special-defense', 'special_defense')
-
-        this.updatePokemon(pokemonId, p => {
-            const current = p.stages[normalizedStat as keyof typeof p.stages] ?? 0
-            const next    = Math.max(-6, Math.min(6, current + change))
-            const actual  = next - current
-            if (actual === 0) return p
-            return { ...p, stages: { ...p.stages, [normalizedStat]: next } }
-        })
-        this.emit({ type: 'stat_change', pokemon_id: pokemonId, stat: normalizedStat, stages: change })
-    }
-
-    // ─── 교체 처리 ──────────────────────────────────────────────
-    switchPokemon(player: PlayerID, outId: string, inId: string): void {
-        const side = this.state.sides[player]
-        const outIdx = side.active.findIndex(p => p.id === outId)
-        const incoming = side.team.find(p => p.id === inId)
-        if (outIdx === -1 || !incoming) return
-
-        const cleanIncoming = {
-            ...incoming,
-            stages:            createInitialStages(),
-            volatile_statuses: {},
-            substitute_hp:     0,
-            trapped:           false,
-            must_recharge:     false,
-        }
-
-        const newActive = [...side.active]
-        newActive[outIdx] = cleanIncoming
-
-        this.state = {
-            ...this.state,
-            sides: {
-                ...this.state.sides,
-                [player]: { ...side, active: newActive },
-            },
-        }
-
-        this.emit({ type: 'switch', player, out_id: outId, in_id: inId })
-
-        const entryResult = onSwitchIn(cleanIncoming, this.state)
-        for (const event of entryResult.events) {
-            this.emit(event)
-        }
-        if (entryResult.weatherChange) {
-            this.setWeather(entryResult.weatherChange, 'ability')
-        }
-        if (entryResult.terrainChange) {
-            this.setTerrain(entryResult.terrainChange, 'ability')
-        }
-        if (entryResult.statChanges) {
-            for (const sc of entryResult.statChanges) {
-                this.applyStatChange(sc.targetId, sc.stat, sc.change)
-            }
-        }
-        if (this.state.phase === 'switching' && !this.checkNeedSwitch()) {
-            this.state = { ...this.state, turn: this.state.turn + 1, phase: 'waiting_action' }
-            this.emit({ type: 'turn_end', turn: this.state.turn, state: this.state })
-        }
-    }
-
-    // ─── 날씨 변경 ──────────────────────────────────────────────
-    setWeather(weather: Weather, source: string): void {
-        this.state = {
-            ...this.state,
-            field: {
-                ...this.state.field,
-                weather,
-                weather_turns: weather ? { turns_remaining: 5 } : null,
-            },
-        }
-        this.emit({ type: 'weather_change', weather, source })
-    }
-
-    // ─── 필드 변경 ──────────────────────────────────────────────
-    setTerrain(terrain: Terrain, source: string): void {
-        this.state = {
-            ...this.state,
-            field: {
-                ...this.state.field,
-                terrain,
-                terrain_turns: terrain ? { turns_remaining: 5 } : null,
-            },
-        }
-        this.emit({ type: 'terrain_change', terrain, source })
-    }
-
-    // ─── 날씨 틱 ────────────────────────────────────────────────
-    private tickWeather(): void {
-        const { weather, weather_turns } = this.state.field
-        if (!weather || !weather_turns) return
-        if (weather_turns.turns_remaining === Infinity) return
-
-        const next = weather_turns.turns_remaining - 1
-        if (next <= 0) {
-            this.state = {
-                ...this.state,
-                field: { ...this.state.field, weather: null, weather_turns: null },
-            }
-            this.emit({ type: 'weather_change', weather: null, source: 'end' })
-        } else {
-            this.state = {
-                ...this.state,
-                field: { ...this.state.field, weather_turns: { turns_remaining: next } },
-            }
-        }
-    }
-
-    // ─── 필드 틱 ────────────────────────────────────────────────
-    private tickTerrain(): void {
-        const { terrain, terrain_turns } = this.state.field
-        if (!terrain || !terrain_turns) return
-        if (terrain_turns.turns_remaining === Infinity) return
-
-        const next = terrain_turns.turns_remaining - 1
-        if (next <= 0) {
-            this.state = {
-                ...this.state,
-                field: { ...this.state.field, terrain: null, terrain_turns: null },
-            }
-            this.emit({ type: 'terrain_change', terrain: null, source: 'end' })
-        } else {
-            this.state = {
-                ...this.state,
-                field: { ...this.state.field, terrain_turns: { turns_remaining: next } },
-            }
-        }
-    }
-
-    // ─── 휘발성 상태 틱 ────────────────────────────────────────
-    private tickVolatileStatuses(pokemonId: string): void {
-        this.updatePokemon(pokemonId, p => {
-            const next = { ...p.volatile_statuses }
-            for (const key of Object.keys(next) as (keyof typeof next)[]) {
-                const effect = next[key]
-                if (!effect) continue
-                const ticked = tickVolatile(key, effect)
-                if (!ticked) {
-                    delete next[key]
-                } else {
-                    next[key] = ticked
-                }
-            }
-            return { ...p, volatile_statuses: next }
-        })
-    }
-
-    // ─── 배틀 종료 체크 ─────────────────────────────────────────
-    private checkBattleEnd(): boolean {
-        for (const [player, side] of Object.entries(this.state.sides) as [PlayerID, Side][]) {
-            const allFainted = side.team.every(p => p.fainted)
-            if (allFainted) {
-                const winner: PlayerID = player === 'p1' ? 'p2' : 'p1'
-                this.state = { ...this.state, phase: 'ended', winner }
-                this.emit({ type: 'battle_end', winner })
-                return true
-            }
-        }
-        return false
-    }
-    private checkNeedSwitch(): boolean {
-        for (const side of Object.values(this.state.sides)) {
-            const activeAllFainted = side.active.every(p => p.fainted)
-            const hasAlive = side.team.some(p => !p.fainted)
-            if (activeAllFainted && hasAlive) return true
-        }
-        return false
-    }
-    // ─── 헬퍼 ───────────────────────────────────────────────────
-    getAllActive(): BattlePokemon[] {
-        return Object.values(this.state.sides).flatMap(s => s.active)
-    }
-
-    updatePokemon(id: string, updater: (p: BattlePokemon) => BattlePokemon): void {
-        for (const player of ['p1', 'p2'] as PlayerID[]) {
-            const side = this.state.sides[player]
-            const teamIdx = side.team.findIndex(p => p.id === id)
-            if (teamIdx !== -1) {
-                const newTeam = [...side.team]
-                newTeam[teamIdx] = updater(newTeam[teamIdx]!)
-
-                const activeIdx = side.active.findIndex(p => p.id === id)
-                const newActive = [...side.active]
-                if (activeIdx !== -1) {
-                    newActive[activeIdx] = newTeam[teamIdx]!
-                }
-
-                this.state = {
-                    ...this.state,
-                    sides: {
-                        ...this.state.sides,
-                        [player]: { ...side, team: newTeam, active: newActive },
-                    },
+            case '-damage':
+            case '-heal':
+            case '-sethp': {
+                const p = this.resolve(pos[0])
+                if (!p) return
+                const id = this.idOf(p)
+                const prev = this.lastHp.get(id) ?? p.maxhp
+                const now = Math.max(0, p.hp)
+                this.lastHp.set(id, now)
+                const source = from ? effectSlug(from) : cmd === '-sethp' ? 'pain-split' : (this.lastMove?.move.name ?? 'move')
+                if (now < prev) {
+                    const hit = !from ? this.pendingHit.get(id) : undefined
+                    this.pendingHit.delete(id)
+                    this.emit({
+                        type: 'damage', pokemon_id: id, amount: prev - now, source, hp_after: now,
+                        effectiveness: !from && cmd === '-damage' ? (hit?.eff ?? 1) : undefined,
+                        crit: hit?.crit || undefined,
+                    })
+                } else if (now > prev) {
+                    this.emit({ type: 'heal', pokemon_id: id, amount: now - prev, source, hp_after: now })
                 }
                 return
             }
+            case 'faint': {
+                const p = this.resolve(pos[0])
+                if (p) {
+                    this.lastHp.set(this.idOf(p), 0)
+                    this.lastStatus.set(this.idOf(p), p.status)
+                }
+                this.emit({ type: 'faint', pokemon_id: this.idOf(p) })
+                return
+            }
+            case '-status': {
+                const sp = this.resolve(pos[0])
+                if (sp) this.lastStatus.set(this.idOf(sp), sp.status)
+                this.emit({ type: 'status_apply', pokemon_id: this.idOf(sp), status: STATUS_FROM_PS[pos[1] ?? ''] ?? pos[1] ?? '', source: from ? effectSlug(from) : this.lastMove?.move.name })
+                return
+            }
+            case '-curestatus': {
+                const sp = this.resolve(pos[0])
+                if (sp) this.lastStatus.set(this.idOf(sp), sp.status)
+                this.emit({ type: 'status_remove', pokemon_id: this.idOf(sp), status: STATUS_FROM_PS[pos[1] ?? ''] ?? pos[1] ?? '' })
+                return
+            }
+            case '-cureteam':
+                this.emit({ type: 'activate', pokemon_id: this.idOf(this.resolve(pos[0])) || undefined, effect: 'cure-team' })
+                return
+            case '-boost':
+            case '-unboost': {
+                const n = Number(pos[2] ?? 0) * (cmd === '-unboost' ? -1 : 1)
+                this.emit({ type: 'stat_change', pokemon_id: this.idOf(this.resolve(pos[0])), stat: STAT_FROM_PS[pos[1] ?? ''] ?? pos[1] ?? '', stages: n, actual: n })
+                return
+            }
+            case '-setboost': case '-clearboost': case '-clearallboost': case '-clearpositiveboost':
+            case '-clearnegativeboost': case '-invertboost': case '-swapboost': case '-copyboost':
+                this.emit({ type: 'activate', pokemon_id: this.idOf(this.resolve(pos[0])) || undefined, effect: cmd.slice(1) })
+                return
+            case '-weather': {
+                if (kw.includes('[upkeep]')) return
+                const w = WEATHER_FROM_PS[toID(pos[0] ?? '')] ?? null
+                this.emit({ type: 'weather_change', weather: w, source: from ? effectSlug(from) : (w ? this.lastMove?.move.name ?? 'move' : 'end') })
+                return
+            }
+            case '-fieldstart':
+            case '-fieldend': {
+                const id = toID(stripPrefix(pos[0]))
+                if (TERRAIN_FROM_PS[id]) {
+                    this.emit({ type: 'terrain_change', terrain: cmd === '-fieldstart' ? TERRAIN_FROM_PS[id]! : null, source: from ? effectSlug(from) : cmd === '-fieldstart' ? toSlug(stripPrefix(pos[0])) : 'end' })
+                } else if (FIELD_FROM_PS[id]) {
+                    this.emit({ type: cmd === '-fieldstart' ? 'field_start' : 'field_end', condition: FIELD_FROM_PS[id]! })
+                } else {
+                    this.emit({ type: 'activate', effect: toSlug(stripPrefix(pos[0])) })
+                }
+                return
+            }
+            case '-fieldactivate':
+                this.emit({ type: 'activate', effect: toSlug(stripPrefix(pos[0])) })
+                return
+            case '-sidestart':
+            case '-sideend': {
+                const player = (pos[0] ?? '').slice(0, 2) as PlayerID
+                const id = toID(stripPrefix(pos[1]))
+                const cond = SIDE_FROM_PS[id]
+                if (!cond) { this.emit({ type: 'activate', effect: toSlug(stripPrefix(pos[1])) }); return }
+                if (cmd === '-sidestart') {
+                    const layers = (this.battle[player]?.sideConditions[id] as { layers?: number } | undefined)?.layers
+                    this.emit({ type: 'side_start', player, condition: cond, layers })
+                } else {
+                    this.emit({ type: 'side_end', player, condition: cond })
+                }
+                return
+            }
+            case 'swap': {
+                // 사이드체인지 (doubles): 같은 진영 내 위치 교환
+                const p = this.resolve(pos[0])
+                const player = (pos[0] ?? '').slice(0, 2) as PlayerID
+                const list = this.battle[player].active
+                this.lastActive[player] = list.map(x => this.idOf(x))
+                this.emit({ type: 'activate', pokemon_id: this.idOf(p), effect: 'ally-switch' })
+                return
+            }
+            case '-swapsideconditions':
+                this.emit({ type: 'activate', effect: 'court-change' })
+                return
+            case '-start':
+            case '-end': {
+                const p = this.resolve(pos[0])
+                const effRaw = stripPrefix(pos[1])
+                const effId = toID(effRaw)
+                if (effId === 'typechange' || effId === 'typeadd') {
+                    this.emit({ type: 'activate', pokemon_id: this.idOf(p), effect: 'typechange', detail: pos[2] })
+                    return
+                }
+                const key = VOLATILE_FROM_PS[effId]
+                    ?? (effId.startsWith('protosynthesis') || effId.startsWith('quarkdrive') ? 'paradox_boost'
+                        : effId.startsWith('stockpile') ? 'stockpile' : effId.startsWith('perish') ? 'perish_song' : toSlug(effRaw))
+                this.emit({ type: cmd === '-start' ? 'volatile_apply' : 'volatile_remove', pokemon_id: this.idOf(p), volatile: key })
+                return
+            }
+            case '-singleturn':
+            case '-singlemove': {
+                const effId = toID(stripPrefix(pos[1]))
+                this.emit({ type: 'volatile_apply', pokemon_id: this.idOf(this.resolve(pos[0])), volatile: VOLATILE_FROM_PS[effId] ?? toSlug(stripPrefix(pos[1])) })
+                return
+            }
+            case '-activate': {
+                const p = this.resolve(pos[0])
+                const effRaw = stripPrefix(pos[1])
+                const effId = toID(effRaw)
+                if (PROTECT_EFFECTS.has(effId) && this.lastMove) {
+                    this.emit({ type: 'move_fail', pokemon_id: this.lastMove.user, move: this.lastMove.move, reason: 'protect' })
+                    return
+                }
+                if (effId === 'substitute' && kw.includes('[damage]')) {
+                    this.emit({ type: 'damage', pokemon_id: this.idOf(p), amount: 0, source: 'substitute' })
+                    return
+                }
+                this.emit({ type: 'activate', pokemon_id: this.idOf(p) || undefined, effect: toSlug(effRaw), detail: pos[2] ? toSlug(stripPrefix(pos[2])) : undefined })
+                return
+            }
+            case '-ability':
+                this.emit({ type: 'ability_trigger', pokemon_id: this.idOf(this.resolve(pos[0])), ability: abilitySlug(pos[1] ?? ''), effect: from ? effectSlug(from) : (pos[2] ?? '') })
+                return
+            case '-endability':
+                this.emit({ type: 'activate', pokemon_id: this.idOf(this.resolve(pos[0])), effect: 'ability-suppressed' })
+                return
+            case '-item':
+                this.emit({ type: 'item_activate', pokemon_id: this.idOf(this.resolve(pos[0])), item: itemSlug(pos[1] ?? ''), effect: from ? effectSlug(from) : 'reveal' })
+                return
+            case '-enditem':
+                this.emit({ type: 'item_consume', pokemon_id: this.idOf(this.resolve(pos[0])), item: itemSlug(pos[1] ?? '') })
+                return
+            case '-terastallize':
+                this.emit({ type: 'terastallize', pokemon_id: this.idOf(this.resolve(pos[0])), tera_type: toID(pos[1] ?? '') })
+                return
+            case 'detailschange':
+            case '-formechange':
+            case '-transform': {
+                const p = this.resolve(pos[0])
+                const species = cmd === '-transform'
+                    ? speciesSlug(this.resolve(pos[1])?.species.id ?? '')
+                    : speciesSlug((pos[1] ?? '').split(',')[0]!)
+                this.emit({ type: 'forme_change', pokemon_id: this.idOf(p), species })
+                return
+            }
+            case '-miss':
+                this.emit({ type: 'move_miss', pokemon_id: this.idOf(this.resolve(pos[0])), move: this.lastMove?.move ?? getMove('struggle')!, target_id: this.idOf(this.resolve(pos[1])) })
+                return
+            case '-fail':
+            case '-block':
+            case '-nothing':
+            case '-notarget': {
+                const p = this.resolve(pos[0])
+                let reason = pos[1] ? toSlug(stripPrefix(pos[1])) : (cmd === '-notarget' ? 'no-target' : 'fail')
+                if (reason === 'move' || reason === '') reason = 'fail'
+                this.emit({ type: 'move_fail', pokemon_id: this.lastMove?.user || this.idOf(p), move: this.lastMove?.move ?? getMove('struggle')!, reason })
+                return
+            }
+            case '-immune':
+                this.emit({ type: 'immune', pokemon_id: this.idOf(this.resolve(pos[0])), source: from ? effectSlug(from) : 'type' })
+                return
+            case '-hitcount':
+                this.emit({ type: 'hit_count', pokemon_id: this.idOf(this.resolve(pos[0])), hits: Number(pos[1] ?? 1) })
+                return
+            case '-prepare':
+                this.emit({ type: 'activate', pokemon_id: this.idOf(this.resolve(pos[0])), effect: 'charging', detail: toSlug(pos[1] ?? '') })
+                return
+            case '-ohko':
+                this.emit({ type: 'activate', effect: 'ohko' })
+                return
+            case '-message':
+            case 'message':
+                this.emit({ type: 'message', text: pos[0] ?? '' })
+                return
+            case 'win':
+                this.reconcileAll('sync')
+                this.emit({ type: 'battle_end', winner: this.battle.p1.name === pos[0] ? 'p1' : 'p2' })
+                return
+            case 'tie':
+                this.emit({ type: 'battle_end', winner: 'draw' })
+                return
+            default:
+                this.unknownLines.set(cmd, (this.unknownLines.get(cmd) ?? 0) + 1)
         }
     }
 
-    // ─── 초기 상태 생성 ─────────────────────────────────────────
-    private initState(config: BattleConfig): BattleState {
-        const makeSide = (player: PlayerID, playerConfig: BattleConfig['p1']): Side => {
-            const team = playerConfig.team.map((set, i) => {
-                const speciesData = getSpecies(set.species)
+    // ─── 상태 조회 ──────────────────────────────────────────────
+    get phase(): BattleState['phase'] {
+        if (!this.ready) return 'waiting_action'
+        if (this.battle.ended) return 'ended'
+        if (SIDES.some(p => this.battle[p].requestState === 'switch')) return 'switching'
+        return 'waiting_action'
+    }
 
-                const baseStats = speciesData?.base_stats ?? {
-                    hp: 45, attack: 45, defense: 45,
-                    special_attack: 45, special_defense: 45, speed: 45,
-                }
-                const types = (speciesData?.types ?? ['normal']) as [string, string?]
-                const stats  = calcAllStats(baseStats, set.level, set.nature, set.evs, set.ivs)
-                const max_hp = stats.hp
+    /** 현재 상태 (매 호출마다 새로 만든 객체) */
+    getState(): BattleState {
+        return this.buildState(true)
+    }
 
-                const pokemon: BattlePokemon = {
-                    id:                `${player}_${i}`,
-                    set,
-                    species:           set.species,
-                    nickname:          set.nickname ?? set.species,
-                    level:             set.level,
-                    gender:            set.gender,
-                    ability:           set.ability,
-                    item:              set.item ?? null,
-                    types,
-                    hp:                max_hp,
-                    max_hp,
-                    stats,
-                    stages:            createInitialStages(),
-// initState 내부 moves 부분 교체
-                    moves: (set.moves.filter(Boolean).map(m => {
-                        const moveData = getMove(m!)
-                        return {
-                            move: moveData ?? {
-                                id: 0, name: m!, type: 'normal',
-                                category: 'physical' as const,
-                                power: 50, accuracy: 100, pp: 20, priority: 0,
-                                target: 'selected-pokemon' as const,
-                                effect_chance: null, effect: '', meta: null, stat_changes: [],
-                            },
-                            pp:            moveData?.pp ?? 20,
-                            max_pp:        moveData?.pp ?? 20,
-                            disabled:      false,
-                            encore_locked: false,
-                        }
-                    }) as unknown) as BattlePokemon['moves'],
-                    status:            null,
-                    status_turns:      0,
-                    volatile_statuses: {},
-                    substitute_hp:     0,
-                    last_move_used:    null,
-                    last_move_target:  null,
-                    must_recharge:     false,
-                    trapped:           false,
-                    transformed:       false,
-                    fainted:           false,
-                }
-                return pokemon
-            })
+    /** 상태 (로그 제외) */
+    snapshot(): BattleState {
+        return this.buildState(false)
+    }
 
-            return {
-                id:            player,
-                team,
-                active:        [team[0]!],
-                conditions:    {},
-                used_dynamax:  false,
-                dynamax_turns: 0,
+    get winner(): PlayerID | 'draw' | null {
+        if (!this.ready || !this.battle.ended) return null
+        const w = this.battle.winner
+        return w === this.battle.p1.name ? 'p1' : w === this.battle.p2.name ? 'p2' : 'draw'
+    }
+
+    private buildState(withLog: boolean): BattleState {
+        const f = this.battle.field
+        const weatherId = f.weather as string
+        const terrainId = f.terrain as string
+        const pending: Partial<Record<PlayerID, SwitchReason>> = {}
+        for (const p of SIDES) {
+            const side = this.battle[p]
+            if (this.ready && side.requestState === 'switch' && !side.isChoiceDone()) {
+                pending[p] = side.active.some(a => a && a.fainted) ? 'faint' : 'self_switch'
             }
         }
-
-        return {
-            format: config.format,
-            sides: {
-                p1: makeSide('p1', config.p1),
-                p2: makeSide('p2', config.p2),
-            },
-            field: {
-                weather:       null,
-                weather_turns: null,
-                terrain:       null,
-                terrain_turns: null,
-                conditions:    {},
-                turn:          0,
-            },
-            turn:   1,
-            phase:  'waiting_action',
-            winner: null,
-            log:    [],
+        const conditions: Partial<Record<FieldCondition, { turns_remaining: number }>> = {}
+        for (const [id, st] of Object.entries(f.pseudoWeather)) {
+            const key = FIELD_FROM_PS[id]
+            if (key) conditions[key] = { turns_remaining: (st as { duration?: number }).duration ?? Infinity }
         }
+        if (!this.ready) {
+            return {
+                format: this.config.format,
+                sides: { p1: this.buildSide('p1'), p2: this.buildSide('p2') },
+                field: { weather: null, weather_turns: null, terrain: null, terrain_turns: null, conditions: {}, turn: 0 },
+                turn: 1, phase: 'waiting_action', winner: null, log: withLog ? this.events : [], seed: this.seed,
+            }
+        }
+        return {
+            format: this.config.format,
+            sides: { p1: this.buildSide('p1'), p2: this.buildSide('p2') },
+            field: {
+                weather: WEATHER_FROM_PS[weatherId] ?? null,
+                weather_turns: weatherId ? { turns_remaining: (f.weatherState as { duration?: number }).duration ?? Infinity } : null,
+                terrain: TERRAIN_FROM_PS[terrainId] ?? null,
+                terrain_turns: terrainId ? { turns_remaining: (f.terrainState as { duration?: number }).duration ?? Infinity } : null,
+                conditions,
+                turn: this.battle.turn,
+            },
+            turn: Math.max(1, this.battle.turn),
+            phase: this.phase,
+            winner: this.winner,
+            log: withLog ? this.events : [],
+            seed: this.seed,
+            pending_switches: Object.keys(pending).length ? pending : undefined,
+        }
+    }
+
+    private buildSide(player: PlayerID): Side {
+        const side: PSSide = this.battle[player]
+        if (!this.ready || !side) {
+            return { id: player, name: this.config[player].name, team: [], active: [], conditions: {}, used_dynamax: false, dynamax_turns: 0 }
+        }
+        const team = this.teamOrder(player).map(p => this.view(p))
+        const active = side.active.map(p => (p ? team.find(t => t.id === this.idOf(p))! : team[0]!))
+        const conditions: Side['conditions'] = {}
+        for (const [id, st] of Object.entries(side.sideConditions)) {
+            const key = SIDE_FROM_PS[id]
+            const s = st as { duration?: number; layers?: number }
+            if (key) conditions[key] = { turns_remaining: s.duration ?? Infinity, layers: s.layers ?? 1 }
+        }
+        const wish = side.slotConditions?.[0]?.['wish'] as { duration?: number; hp?: number } | undefined
+        if (wish) conditions.wish = { turns_remaining: wish.duration ?? 1, amount: wish.hp }
+        return {
+            id: player,
+            name: side.name,
+            team,
+            active,
+            conditions,
+            used_dynamax: false,
+            dynamax_turns: 0,
+            used_tera: side.pokemon.some(p => !!p.terastallized),
+            fainted_count: side.pokemon.filter(p => p.fainted).length,
+        }
+    }
+
+    /** 원래 팀 순서 (Showdown 은 교체 시 순서를 바꾼다) */
+    private teamOrder(player: PlayerID): PSPokemon[] {
+        const idx = (p: PSPokemon) => Number(this.idOf(p).split('_')[1] ?? 0)
+        return this.battle[player].pokemon.slice().sort((a, b) => idx(a) - idx(b))
+    }
+
+    private viewCache = new WeakMap<PSPokemon, { at: number; v: BattlePokemon }>()
+
+    /** 로그가 늘지 않았으면 (=상태 변화 없음) 같은 뷰 재사용 */
+    private view(p: PSPokemon): BattlePokemon {
+        const at = this.battle.log.length
+        const c = this.viewCache.get(p)
+        if (c && c.at === at && this.cacheable) return c.v
+        const v = this.buildView(p)
+        this.viewCache.set(p, { at, v })
+        return v
+    }
+    private cacheable = true
+
+    private buildView(p: PSPokemon): BattlePokemon {
+        const id = this.idOf(p)
+        const set = this.sets.get(id)!
+        const stages: StatStages = { attack: 0, defense: 0, special_attack: 0, special_defense: 0, speed: 0, accuracy: 0, evasion: 0 }
+        for (const [k, v] of Object.entries(p.boosts)) {
+            const key = STAT_FROM_PS[k] as keyof StatStages
+            if (key) stages[key] = v as number
+        }
+        const volatile_statuses: BattlePokemon['volatile_statuses'] = {}
+        for (const [k, st] of Object.entries(p.volatiles)) {
+            const key = (VOLATILE_FROM_PS[k] ?? (k.startsWith('protosynthesis') || k.startsWith('quarkdrive') ? 'paradox_boost' : k)) as keyof BattlePokemon['volatile_statuses']
+            volatile_statuses[key] = { turns_remaining: (st as { duration?: number }).duration ?? Infinity }
+        }
+        const initialSpecies = speciesToShowdown(set.species)
+        const species = p.species.id === initialSpecies ? set.species : speciesSlug(p.species.id)
+        const moves: MoveSlot[] = p.moveSlots.map(ms => ({
+            move: getMove(ms.id) ?? getMove('struggle')!,
+            pp: ms.pp,
+            max_pp: ms.maxpp,
+            disabled: !!ms.disabled,
+            encore_locked: false,
+        }))
+        const sub = p.volatiles['substitute'] as { hp?: number } | undefined
+        const choiceLock = p.volatiles['choicelock'] as { move?: string } | undefined
+        const st = p.statusState as { time?: number; stage?: number }
+        return {
+            id,
+            side: p.side.id as PlayerID,
+            set,
+            species,
+            nickname: set.nickname ?? set.species,
+            level: p.level,
+            gender: p.gender === 'M' || p.gender === 'F' ? p.gender : null,
+            ability: abilitySlug(p.ability),
+            base_ability: abilitySlug(p.baseAbility),
+            item: p.item ? itemSlug(p.item) : null,
+            types: p.getTypes(false, true).map(t => t.toLowerCase()) as [string, string?],
+            original_types: p.baseSpecies.types.map(t => t.toLowerCase()) as [string, string?],
+            weight: p.species.weighthg,
+            tera_type: p.teraType ? toID(p.teraType) : null,
+            terastallized: !!p.terastallized,
+            hp: Math.max(0, p.hp),
+            max_hp: p.maxhp,
+            stats: {
+                hp: p.maxhp, attack: p.storedStats.atk, defense: p.storedStats.def,
+                special_attack: p.storedStats.spa, special_defense: p.storedStats.spd, speed: p.storedStats.spe,
+            },
+            stages,
+            moves: (moves.length ? moves : [{ move: getMove('struggle')!, pp: 1, max_pp: 1, disabled: false, encore_locked: false }]) as BattlePokemon['moves'],
+            status: STATUS_FROM_PS[p.status] ?? null,
+            status_turns: st.time ?? st.stage ?? 0,
+            volatile_statuses,
+            substitute_hp: sub?.hp ?? 0,
+            last_move_used: p.lastMove ? moveSlug(p.lastMove.id) : null,
+            last_move_target: null,
+            must_recharge: !!p.volatiles['mustrecharge'],
+            trapped: !!p.trapped,
+            transformed: p.transformed,
+            fainted: p.fainted || p.hp <= 0,
+            active_turns: p.activeTurns,
+            choice_lock: choiceLock?.move ? moveSlug(choiceLock.move) : null,
+            locked_move: null,
+            moved_this_turn: !!p.moveThisTurn,
+            damaged_this_turn: typeof p.hurtThisTurn === 'number' ? p.hurtThisTurn : 0,
+            item_consumed: p.lastItem ? itemSlug(p.lastItem) : null,
+        }
+    }
+
+    getPokemon(id: string): BattlePokemon | undefined {
+        const p = this.byId.get(id)
+        return p ? this.view(p) : undefined
+    }
+
+    /** Showdown Pokemon 객체 (고급 사용) */
+    getShowdownPokemon(id: string): PSPokemon | undefined {
+        return this.byId.get(id)
+    }
+
+    getActive(player: PlayerID, slot = 0): BattlePokemon {
+        this.start()
+        const side = this.battle[player]
+        return this.view(side.active[slot] ?? side.pokemon[0]!)
+    }
+
+    getActivePokemon(player: PlayerID): BattlePokemon[] {
+        this.start()
+        return this.battle[player].active.filter(Boolean).map(p => this.view(p))
+    }
+
+    getSide(player: PlayerID): Side {
+        return this.buildSide(player)
+    }
+
+    sideOf(pokemon: BattlePokemon | string): PlayerID {
+        const id = typeof pokemon === 'string' ? pokemon : pokemon.id
+        return id.startsWith('p1') ? 'p1' : 'p2'
+    }
+
+    foeOf(player: PlayerID): PlayerID {
+        return player === 'p1' ? 'p2' : 'p1'
+    }
+
+    /** 구름제거/에어록을 반영한 날씨 */
+    effectiveWeather(): Weather {
+        return WEATHER_FROM_PS[this.battle.field.effectiveWeather() as string] ?? null
+    }
+
+    /** 실제 스피드 (랭크·특성·도구·마비 반영, Showdown 계산) */
+    getSpeed(pokemon: BattlePokemon | string): number {
+        const p = this.byId.get(typeof pokemon === 'string' ? pokemon : pokemon.id)
+        return p ? p.getActionSpeed() : 0
+    }
+
+    allActive(): BattlePokemon[] {
+        return SIDES.flatMap(p => this.getActivePokemon(p))
+    }
+
+    // ─── 요청 / 행동 ───────────────────────────────────────────
+    /** Showdown 원본 요청 (doubles 등에서 직접 사용) */
+    getRawRequest(player: PlayerID): unknown {
+        this.start()
+        return this.ready ? this.battle[player].activeRequest : null
+    }
+
+    /** 플레이어가 지금 내려야 할 결정 (singles). 필요 없으면 null */
+    getRequest(player: PlayerID): BattleRequest | null {
+        this.start()
+        if (!this.ready || this.battle.ended) return null
+        const side = this.battle[player]
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const req = side.activeRequest as any
+        if (!req || req.wait || side.isChoiceDone()) return null
+        const active = this.view(side.active[0] ?? side.pokemon[0]!)
+        // 같은 턴에 이미 예약된 교체 대상은 다시 고를 수 없다 (탈출팩 등 턴 중 강제 교체)
+        const queuedIn = new Set<PSPokemon>()
+        for (const a of this.battle.queue.list as { choice?: string; target?: PSPokemon; pokemon?: PSPokemon }[]) {
+            if ((a.choice === 'switch' || a.choice === 'instaswitch') && a.target && a.pokemon?.side === side) queuedIn.add(a.target)
+        }
+        const bench = side.pokemon
+            .filter(p => !p.isActive && !p.fainted && p.hp > 0 && !queuedIn.has(p))
+            .map(p => this.view(p))
+            .sort((a, b) => Number(a.id.split('_')[1]) - Number(b.id.split('_')[1]))
+
+        if (req.forceSwitch) {
+            if (!req.forceSwitch[0]) return null
+            // 부활의기원: 기절한 포켓몬 중에서 선택
+            if (req.side?.pokemon?.some((p: { reviving?: boolean }) => p.reviving)) {
+                const fainted = side.pokemon.filter(p => p.fainted).map(p => this.view(p))
+                    .sort((a, b) => Number(a.id.split('_')[1]) - Number(b.id.split('_')[1]))
+                return { type: 'switch', player, reason: 'revival_blessing', active, switches: fainted, raw: req }
+            }
+            return { type: 'switch', player, reason: active.fainted ? 'faint' : 'self_switch', active, switches: bench, raw: req }
+        }
+        if (!req.active?.[0]) return null
+        const a = req.active[0]
+        const livePoke = side.active[0]
+        const moves: MoveOption[] = a.moves.map((m: { id: string; pp?: number; maxpp?: number; disabled?: boolean | string }, i: number) => {
+            // 숨은 사용 불가(봉인 등)는 요청에 maybeDisabled 로만 표시되므로 실제 슬롯을 확인
+            const liveSlot = a.maybeDisabled ? livePoke?.moveSlots.find(ms => ms.id === m.id) : undefined
+            const disabled = !!m.disabled || !!liveSlot?.disabled
+            return {
+                index: i as MoveOption['index'],
+                move: getMove(m.id) ?? getMove('struggle')!,
+                pp: m.pp ?? 1,
+                max_pp: m.maxpp ?? 1,
+                disabled,
+                disabled_reason: disabled ? (typeof m.disabled === 'string' ? m.disabled : '사용 불가') : undefined,
+            }
+        })
+        const forced = a.moves.length === 1 && a.moves[0].pp === undefined
+        // 숨은 구속(그림자밟기 등)도 반영: 실제 포켓몬 상태 사용
+        const live = side.active[0]
+        const trapped = !!a.trapped || !!a.maybeTrapped && !!live?.trapped
+        return {
+            type: 'move',
+            player,
+            active,
+            moves,
+            switches: trapped ? [] : bench,
+            can_switch: !trapped && bench.length > 0,
+            can_terastallize: !!a.canTerastallize,
+            forced,
+            raw: req,
+        }
+    }
+
+    getAvailableActions(player: PlayerID): Action[] {
+        const req = this.getRequest(player)
+        if (!req) return []
+        const actions: Action[] = []
+        if (req.type === 'move') {
+            for (const m of req.moves) {
+                if (m.disabled) continue
+                actions.push({ type: 'move', player, pokemon_id: req.active.id, move_index: m.index })
+                if (req.can_terastallize) actions.push({ type: 'move', player, pokemon_id: req.active.id, move_index: m.index, terastallize: true })
+            }
+        }
+        for (const p of req.switches) actions.push({ type: 'switch', player, pokemon_id: req.active.id, switch_to_id: p.id })
+        return actions
+    }
+
+    /** 행동 → Showdown 선택 문자열 */
+    toChoice(action: Action): string {
+        if (action.type === 'raw') return action.choice
+        if (action.type === 'switch') {
+            const target = this.byId.get(action.switch_to_id)
+            const idx = target ? this.battle[action.player].pokemon.indexOf(target) : -1
+            if (idx < 0) throw new BattleError(`${action.switch_to_id} 로 교체할 수 없습니다`)
+            return `switch ${idx + 1}`
+        }
+        const n = action.move_index === -1 ? 1 : action.move_index + 1
+        return `move ${n}${action.terastallize ? ' terastallize' : ''}`
+    }
+
+    submitAction(action: Action): void {
+        this.start()
+        if (this.battle.ended) throw new BattleError('배틀이 이미 종료되었습니다')
+        let final: Action = action
+        if (action.type === 'switch') {
+            const req = this.requireRequest(action)
+            const to = action.switch_to_id
+            if (!req.switches.some(p => p.id === to)) throw new BattleError(`${to} 로 교체할 수 없습니다`)
+        } else if (action.type === 'move') {
+            const req = this.requireRequest(action)
+            if (req.type === 'switch') throw new BattleError('교체할 포켓몬을 선택해야 합니다')
+            const idx = action.move_index
+            const opt = req.moves.find(m => m.index === idx) ?? (req.forced || idx === -1 ? req.moves[0] : undefined)
+            if (!opt) throw new BattleError(`기술 슬롯 ${idx} 은(는) 사용할 수 없습니다`)
+            if (opt.disabled) throw new BattleError(`${opt.move.name} 은(는) 사용할 수 없습니다 (${opt.disabled_reason})`)
+            if (action.terastallize && !req.can_terastallize) throw new BattleError('테라스탈할 수 없습니다')
+            if (opt.index !== idx) final = { ...action, move_index: opt.index }
+        }
+        this.submitChoice(final.player, this.toChoice(final))
+    }
+
+    private requireRequest(action: Extract<Action, { type: 'move' | 'switch' }>): BattleRequest {
+        const req = this.getRequest(action.player)
+        if (!req) throw new BattleError(`${action.player} 는 지금 행동을 제출할 필요가 없습니다`)
+        if (action.pokemon_id && action.pokemon_id !== req.active.id) {
+            throw new BattleError(`필드의 포켓몬(${req.active.id})이 아닌 ${action.pokemon_id} 로 행동할 수 없습니다`)
+        }
+        return req
+    }
+
+    /** Showdown 선택 문자열 직접 제출 ('move 1', 'switch 3', 'move 2 terastallize, move 1 2' …) */
+    submitChoice(player: PlayerID, choice: string): void {
+        this.start()
+        const ok = this.battle.choose(player, choice)
+        if (!ok) {
+            const err = this.battle[player].choice.error || 'invalid choice'
+            throw new BattleError(`${player}: ${err} (${choice})`)
+        }
+    }
+
+    submitActions(p1: Action, p2: Action): void {
+        this.submitAction(p1)
+        this.submitAction(p2)
+    }
+
+    // ─── 데미지 미리보기 (@smogon/calc) ─────────────────────────
+    private calcInput(p: PSPokemon, tera = false): CalcPokemonInput {
+        const boostedVol = Object.keys(p.volatiles).find(k => k.startsWith('protosynthesis') || k.startsWith('quarkdrive'))
+        return {
+            species: p.species.name,
+            level: p.level,
+            nature: p.set.nature,
+            ability: p.ability,
+            item: p.item || null,
+            evs: p.set.evs as never,
+            ivs: p.set.ivs as never,
+            boosts: Object.fromEntries(Object.entries(p.boosts).map(([k, v]) => [STAT_FROM_PS[k] ?? k, v])) as never,
+            status: STATUS_FROM_PS[p.status] as CalcPokemonInput['status'],
+            curHP: p.hp,
+            teraType: p.teraType,
+            terastallized: !!p.terastallized || tera,
+            alliesFainted: p.side.pokemon.filter(x => x.fainted).length,
+            boostedStat: boostedVol ? (boostedVol.slice(-3) as CalcPokemonInput['boostedStat']) : undefined,
+        }
+    }
+
+    /**
+     * 현재 필드 상태로 데미지 미리보기 (singles).
+     * moveIndex 는 현재 포켓몬의 기술 슬롯.
+     */
+    previewDamage(player: PlayerID, moveIndex: number, opts: { terastallize?: boolean } = {}): DamageResult | null {
+        this.start()
+        const user = this.battle[player].active[0]
+        const foe = this.battle[this.foeOf(player)].active[0]
+        const slot = user?.moveSlots[moveIndex]
+        if (!user || !foe || foe.fainted || !slot) return null
+        const move = Dex.moves.get(slot.id)
+        if (move.category === 'Status') return null
+        const foeSide = this.battle[this.foeOf(player)].sideConditions
+        try {
+            return calculateDamage(this.calcInput(user, !!opts.terastallize), this.calcInput(foe), move.id, {
+                weather: this.effectiveWeather(),
+                terrain: TERRAIN_FROM_PS[this.battle.field.terrain as string] ?? null,
+                gravity: !!this.battle.field.pseudoWeather['gravity'],
+                magicRoom: !!this.battle.field.pseudoWeather['magicroom'],
+                wonderRoom: !!this.battle.field.pseudoWeather['wonderroom'],
+                reflect: !!foeSide['reflect'],
+                lightScreen: !!foeSide['lightscreen'],
+                auroraVeil: !!foeSide['auroraveil'],
+            })
+        } catch {
+            return null
+        }
+    }
+
+    forfeit(player: PlayerID): void {
+        this.start()
+        if (this.battle.ended) return
+        this.battle.win(this.foeOf(player))
     }
 }
