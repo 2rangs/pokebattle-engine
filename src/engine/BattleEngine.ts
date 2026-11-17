@@ -806,8 +806,13 @@ export class BattleEngine {
         const req = side.activeRequest as any
         if (!req || req.wait || side.isChoiceDone()) return null
         const active = this.view(side.active[0] ?? side.pokemon[0]!)
+        // 같은 턴에 이미 예약된 교체 대상은 다시 고를 수 없다 (탈출팩 등 턴 중 강제 교체)
+        const queuedIn = new Set<PSPokemon>()
+        for (const a of this.battle.queue.list as { choice?: string; target?: PSPokemon; pokemon?: PSPokemon }[]) {
+            if ((a.choice === 'switch' || a.choice === 'instaswitch') && a.target && a.pokemon?.side === side) queuedIn.add(a.target)
+        }
         const bench = side.pokemon
-            .filter(p => !p.isActive && !p.fainted && p.hp > 0)
+            .filter(p => !p.isActive && !p.fainted && p.hp > 0 && !queuedIn.has(p))
             .map(p => this.view(p))
             .sort((a, b) => Number(a.id.split('_')[1]) - Number(b.id.split('_')[1]))
 
