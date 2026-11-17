@@ -8,7 +8,7 @@ import { Battle, Dex, TeamValidator, toID } from '@pkmn/sim'
 import type { Pokemon as PSPokemon, Side as PSSide } from '@pkmn/sim'
 import type {
     Action, BattleConfig, BattleEvent, BattleEventType, BattleFormat, BattleRequest, BattleRuleOptions, BattleState,
-    CantMoveReason, MoveOption, PlayerID, Side, SwitchReason, TeamPreviewRequest,
+    CantMoveReason, MoveOption, PlayerID, RotateDirection, RotateOption, Side, SwitchReason, TeamPreviewRequest,
 } from '../types/battle'
 import type { BattlePokemon, PokemonSet, StatStages } from '../types/pokemon'
 import type { FieldCondition, PrimaryStatus, SideCondition, Terrain, Weather } from '../types/effect'
@@ -18,6 +18,7 @@ import { getMove, speciesSlug, abilitySlug, itemSlug, moveSlug, STAT_FROM_PS } f
 import { speciesToShowdown, toSlug } from '../showdown/ids'
 import { PRNG } from '../utils/rng'
 import { calculateDamage, type CalcPokemonInput, type DamageResult } from '../calc/damage'
+import { FOE_FRONT_LOC, FRONT, frontLocked, installRotationPatches } from './rotation'
 
 type AnyEventListener = (event: BattleEvent) => void
 
@@ -84,14 +85,19 @@ const IGNORED = new Set([
 const SIDES: PlayerID[] = ['p1', 'p2']
 
 /** 형식별 한쪽 필드 슬롯 수 */
-export const ACTIVE_PER_SIDE: Record<BattleFormat, number> = { singles: 1, doubles: 2, triples: 3 }
+export const ACTIVE_PER_SIDE: Record<BattleFormat, number> = { singles: 1, doubles: 2, triples: 3, rotation: 3 }
+
+/** rotation: 방향 → 돌아 들어오는 뒷줄 슬롯 */
+const ROTATE_SLOT: Record<RotateDirection, number> = { left: 0, right: 2 }
 
 // 형식별 Showdown 기본 포맷과, 그 포맷의 기본 규칙 중 걷어낼 것.
 // triples 는 Gen 9 에 커스텀 게임이 없어 래더 포맷(gen9triples)에서 래더 규칙·밴리스트를 걷어낸다.
+// rotation 은 Showdown 에 구현이 없어 triples 배틀에 로테이션 규칙을 패치해서 돌린다 (./rotation.ts).
 const FORMAT_BASE: Record<BattleFormat, { battle: string; strip: string[]; preview: boolean; validator: string }> = {
     singles: { battle: 'gen9customgame', strip: [], preview: true, validator: 'gen9customgame' },
     doubles: { battle: 'gen9doublescustomgame', strip: [], preview: true, validator: 'gen9doublescustomgame' },
     triples: { battle: 'gen9triples', strip: ['!Standard Doubles', '!Evasion Abilities Clause', 'Cancel Mod'], preview: false, validator: 'gen9doublescustomgame' },
+    rotation: { battle: 'gen9triples', strip: ['!Standard Doubles', '!Evasion Abilities Clause', 'Cancel Mod'], preview: false, validator: 'gen9doublescustomgame' },
 }
 
 /** BattleRuleOptions → Showdown 규칙 목록. 팀 단위 규칙은 validate 쪽으로 분리 */
@@ -165,6 +171,8 @@ export class BattleEngine {
     readonly battle: Battle
     readonly seed: number
     readonly maxTurns: number
+    /** 로테이션 배틀 여부 (앞 = 슬롯 1) */
+    readonly rotation: boolean
     private config: BattleConfig
     private listeners: Map<string, AnyEventListener[]> = new Map()
     private started = false
@@ -183,6 +191,8 @@ export class BattleEngine {
     private pendingHit = new Map<string, { crit?: boolean; eff?: number }>()
     private lastMove: { user: string; move: MoveData } | null = null
     private unknownLines = new Map<string, number>()
+    /** rotation: 여러 슬롯을 한꺼번에 채워야 하는 교체 요청에서 지금까지 고른 슬롯 → 포켓몬 */
+    private switchPicks: Partial<Record<PlayerID, { req: unknown; picks: Map<number, string> }>> = {}
 
     readonly options: EngineOptions
     /** 팀 단위 규칙 검사용 포맷 (검사할 규칙이 없으면 null) */
@@ -193,6 +203,8 @@ export class BattleEngine {
         this.options = options
         this.seed = config.seed ?? Math.floor(Math.random() * 0x7fffffff)
         this.maxTurns = config.maxTurns ?? 1000
+        this.rotation = config.format === 'rotation'
+        if (this.rotation) installRotationPatches()
         if (!config.p1?.team?.length || !config.p2?.team?.length) {
             throw new BattleError('양쪽 팀에 최소 1마리의 포켓몬이 필요합니다')
         }
@@ -207,6 +219,7 @@ export class BattleEngine {
         } catch (err) {
             throw new BattleError(`포맷/규칙 오류: ${(err as Error).message}`)
         }
+        if (this.rotation) (this.battle as unknown as { rotation: boolean }).rotation = true
         // 로그가 쓰이는 즉시 이벤트로 변환 (상태가 그 시점과 정확히 일치)
         // eslint-disable-next-line @typescript-eslint/no-this-alias
         const self = this
@@ -510,12 +523,23 @@ export class BattleEngine {
                 return
             }
             case 'swap': {
-                // 사이드체인지 (doubles): 같은 진영 내 위치 교환
+                // 위치 교환: doubles/triples 의 사이드체인지, rotation 의 회전.
+                // 로그는 자리를 바꾸기 직전에 쓰이므로 슬롯은 줄에서 읽는다 (a/b/c = 원래 자리, 숫자 = 새 자리)
                 const p = this.resolve(pos[0])
                 const player = (pos[0] ?? '').slice(0, 2) as PlayerID
-                const list = this.battle[player].active
-                this.lastActive[player] = list.map(x => this.idOf(x))
-                this.emit({ type: 'activate', pokemon_id: this.idOf(p), effect: 'ally-switch' })
+                const from = Math.max(0, (pos[0]!.charCodeAt(2) || 97) - 97)
+                const to = Number(pos[1] ?? 0)
+                const ids = this.lastActive[player]
+                const inId = this.idOf(p)
+                const outId = ids[to] ?? ''
+                ids[from] = outId
+                ids[to] = inId
+                if (from === to) return
+                if (this.rotation) {
+                    this.emit({ type: 'rotate', player, direction: from === ROTATE_SLOT.left ? 'left' : 'right', in_id: inId, out_id: outId })
+                } else {
+                    this.emit({ type: 'activate', pokemon_id: inId, effect: 'ally-switch' })
+                }
                 return
             }
             case '-swapsideconditions':
@@ -705,7 +729,7 @@ export class BattleEngine {
             const s = st as { duration?: number; layers?: number }
             if (key) conditions[key] = { turns_remaining: s.duration ?? Infinity, layers: s.layers ?? 1 }
         }
-        const wish = side.slotConditions?.[0]?.['wish'] as { duration?: number; hp?: number } | undefined
+        const wish = side.slotConditions?.[this.frontSlot]?.['wish'] as { duration?: number; hp?: number } | undefined
         if (wish) conditions.wish = { turns_remaining: wish.duration ?? 1, amount: wish.hp }
         return {
             id: player,
@@ -817,7 +841,13 @@ export class BattleEngine {
         return this.byId.get(id)
     }
 
-    getActive(player: PlayerID, slot = 0): BattlePokemon {
+    /** 행동하는 앞 슬롯 (rotation 은 가운데 1, 나머지는 0) */
+    get frontSlot(): number {
+        return this.rotation ? FRONT : 0
+    }
+
+    /** slot 생략 시 앞 포켓몬 (rotation 은 가운데) */
+    getActive(player: PlayerID, slot = this.frontSlot): BattlePokemon {
         this.start()
         const side = this.battle[player]
         return this.view(side.active[slot] ?? side.pokemon[0]!)
@@ -875,7 +905,7 @@ export class BattleEngine {
         return { player, team, pick: Math.min(req.maxChosenTeamSize ?? team.length, team.length), raw: req }
     }
 
-    /** 플레이어가 지금 내려야 할 결정 (singles). 필요 없으면 null. 팀 프리뷰는 getTeamPreview */
+    /** 플레이어가 지금 내려야 할 결정 (singles / rotation). 필요 없으면 null. 팀 프리뷰는 getTeamPreview */
     getRequest(player: PlayerID): BattleRequest | null {
         this.start()
         if (!this.ready || this.battle.ended) return null
@@ -884,31 +914,93 @@ export class BattleEngine {
         const req = side.activeRequest as any
         if (!req || req.wait || side.isChoiceDone()) return null
         if (req.teamPreview) return null // 팀 프리뷰는 getTeamPreview
-        const active = this.view(side.active[0] ?? side.pokemon[0]!)
+        const front = this.frontSlot
+
+        if (req.forceSwitch) {
+            // rotation 은 여러 슬롯(앞 + 뒷줄)이 동시에 빌 수 있어 한 슬롯씩 차례로 묻는다
+            const picks = this.pendingPicks(player, req)
+            const slot = (this.rotation ? [FRONT, 0, 2] : [0]).find(i => req.forceSwitch[i] && !picks.has(i))
+            if (slot === undefined) return null
+            const active = this.view(side.active[slot] ?? side.pokemon[0]!)
+            const picked = new Set(picks.values())
+            const options = this.switchOptions(player, req).filter(p => !picked.has(p.id))
+            const reviving = req.side?.pokemon?.some((p: { reviving?: boolean }) => p.reviving)
+            const reason: SwitchReason = reviving ? 'revival_blessing' : active.fainted ? 'faint' : 'self_switch'
+            return { type: 'switch', player, reason, active, switches: options, raw: req }
+        }
+
+        const live = side.active[front]
+        const a = req.active?.[front]
+        if (!a || !live) return null
+        const active = this.view(live)
+        const bench = this.benchOf(player)
+        // 숨은 구속(그림자밟기 등)도 반영: 실제 포켓몬 상태 사용
+        const trapped = !!a.trapped || !!a.maybeTrapped && !!live.trapped
+        const forced = a.moves.length === 1 && a.moves[0].pp === undefined
+
+        if (this.rotation) {
+            const rotate: RotateOption[] = []
+            if (!frontLocked(side)) {
+                for (const direction of ['left', 'right'] as const) {
+                    const slot = ROTATE_SLOT[direction]
+                    const back = side.active[slot]
+                    const ra = req.active[slot]
+                    if (!back || back.fainted || !ra) continue
+                    rotate.push({ direction, pokemon: this.view(back), moves: this.moveOptions(ra, back), can_terastallize: !!ra.canTerastallize })
+                }
+            }
+            if (live.fainted) {
+                // 앞 자리가 비었고 채울 벤치가 없다 → 반드시 회전
+                return { type: 'move', player, active, moves: [], switches: [], can_switch: false, can_terastallize: false, rotate, must_rotate: true, raw: req }
+            }
+            return {
+                type: 'move', player, active, moves: this.moveOptions(a, live),
+                switches: trapped ? [] : bench, can_switch: !trapped && bench.length > 0,
+                can_terastallize: !!a.canTerastallize, forced, rotate, raw: req,
+            }
+        }
+
+        return {
+            type: 'move',
+            player,
+            active,
+            moves: this.moveOptions(a, live),
+            switches: trapped ? [] : bench,
+            can_switch: !trapped && bench.length > 0,
+            can_terastallize: !!a.canTerastallize,
+            forced,
+            raw: req,
+        }
+    }
+
+    /** 교체로 내보낼 수 있는 벤치 (원래 파티 순서) */
+    private benchOf(player: PlayerID): BattlePokemon[] {
+        const side = this.battle[player]
         // 같은 턴에 이미 예약된 교체 대상은 다시 고를 수 없다 (탈출팩 등 턴 중 강제 교체)
         const queuedIn = new Set<PSPokemon>()
         for (const a of this.battle.queue.list as { choice?: string; target?: PSPokemon; pokemon?: PSPokemon }[]) {
             if ((a.choice === 'switch' || a.choice === 'instaswitch') && a.target && a.pokemon?.side === side) queuedIn.add(a.target)
         }
-        const bench = side.pokemon
+        return side.pokemon
             .filter(p => !p.isActive && !p.fainted && p.hp > 0 && !queuedIn.has(p))
             .map(p => this.view(p))
             .sort((a, b) => Number(a.id.split('_')[1]) - Number(b.id.split('_')[1]))
+    }
 
-        if (req.forceSwitch) {
-            if (!req.forceSwitch[0]) return null
-            // 부활의기원: 기절한 포켓몬 중에서 선택
-            if (req.side?.pokemon?.some((p: { reviving?: boolean }) => p.reviving)) {
-                const fainted = side.pokemon.filter(p => p.fainted).map(p => this.view(p))
-                    .sort((a, b) => Number(a.id.split('_')[1]) - Number(b.id.split('_')[1]))
-                return { type: 'switch', player, reason: 'revival_blessing', active, switches: fainted, raw: req }
-            }
-            return { type: 'switch', player, reason: active.fainted ? 'faint' : 'self_switch', active, switches: bench, raw: req }
+    /** 교체 요청에서 고를 수 있는 포켓몬 (부활의기원이면 기절한 포켓몬) */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    private switchOptions(player: PlayerID, req: any): BattlePokemon[] {
+        if (req.side?.pokemon?.some((p: { reviving?: boolean }) => p.reviving)) {
+            return this.battle[player].pokemon.filter(p => p.fainted).map(p => this.view(p))
+                .sort((a, b) => Number(a.id.split('_')[1]) - Number(b.id.split('_')[1]))
         }
-        if (!req.active?.[0]) return null
-        const a = req.active[0]
-        const livePoke = side.active[0]
-        const moves: MoveOption[] = a.moves.map((m: { id: string; pp?: number; maxpp?: number; disabled?: boolean | string }, i: number) => {
+        return this.benchOf(player)
+    }
+
+    /** Showdown 요청의 한 슬롯 → 기술 선택지 */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    private moveOptions(a: any, livePoke: PSPokemon | undefined): MoveOption[] {
+        return a.moves.map((m: { id: string; pp?: number; maxpp?: number; disabled?: boolean | string }, i: number) => {
             // 숨은 사용 불가(봉인 등)는 요청에 maybeDisabled 로만 표시되므로 실제 슬롯을 확인
             const liveSlot = a.maybeDisabled ? livePoke?.moveSlots.find(ms => ms.id === m.id) : undefined
             const disabled = !!m.disabled || !!liveSlot?.disabled
@@ -921,21 +1013,15 @@ export class BattleEngine {
                 disabled_reason: disabled ? (typeof m.disabled === 'string' ? m.disabled : '사용 불가') : undefined,
             }
         })
-        const forced = a.moves.length === 1 && a.moves[0].pp === undefined
-        // 숨은 구속(그림자밟기 등)도 반영: 실제 포켓몬 상태 사용
-        const live = side.active[0]
-        const trapped = !!a.trapped || !!a.maybeTrapped && !!live?.trapped
-        return {
-            type: 'move',
-            player,
-            active,
-            moves,
-            switches: trapped ? [] : bench,
-            can_switch: !trapped && bench.length > 0,
-            can_terastallize: !!a.canTerastallize,
-            forced,
-            raw: req,
-        }
+    }
+
+    /** rotation 교체 요청에서 이미 고른 슬롯들 (요청이 바뀌면 초기화) */
+    private pendingPicks(player: PlayerID, req: unknown): Map<number, string> {
+        const cur = this.switchPicks[player]
+        if (cur && cur.req === req) return cur.picks
+        const fresh = { req, picks: new Map<number, string>() }
+        this.switchPicks[player] = fresh
+        return fresh.picks
     }
 
     getAvailableActions(player: PlayerID): Action[] {
@@ -946,11 +1032,17 @@ export class BattleEngine {
         if (!req) return []
         const actions: Action[] = []
         if (req.type === 'move') {
-            for (const m of req.moves) {
-                if (m.disabled) continue
-                actions.push({ type: 'move', player, pokemon_id: req.active.id, move_index: m.index })
-                if (req.can_terastallize) actions.push({ type: 'move', player, pokemon_id: req.active.id, move_index: m.index, terastallize: true })
+            const add = (pokemon_id: string, moves: MoveOption[], tera: boolean, rotate?: RotateDirection) => {
+                for (const m of moves) {
+                    if (m.disabled) continue
+                    actions.push({ type: 'move', player, pokemon_id, move_index: m.index, ...(rotate && { rotate }) })
+                    if (tera) actions.push({ type: 'move', player, pokemon_id, move_index: m.index, terastallize: true, ...(rotate && { rotate }) })
+                }
             }
+            add(req.active.id, req.moves, req.can_terastallize)
+            // 쓸 수 있는 기술이 하나도 없으면(숨은 사용 불가 포함) 발버둥
+            if (req.moves.length && req.moves.every(m => m.disabled)) actions.push({ type: 'move', player, pokemon_id: req.active.id, move_index: -1 })
+            for (const r of req.rotate ?? []) add(r.pokemon.id, r.moves, r.can_terastallize, r.direction)
         }
         for (const p of req.switches) actions.push({ type: 'switch', player, pokemon_id: req.active.id, switch_to_id: p.id })
         return actions
@@ -973,10 +1065,24 @@ export class BattleEngine {
             const target = this.byId.get(action.switch_to_id)
             const idx = target ? this.battle[action.player].pokemon.indexOf(target) : -1
             if (idx < 0) throw new BattleError(`${action.switch_to_id} 로 교체할 수 없습니다`)
-            return `switch ${idx + 1}`
+            return this.rotation ? this.slotChoice(FRONT, `switch ${idx + 1}`) : `switch ${idx + 1}`
         }
         const n = action.move_index === -1 ? 1 : action.move_index + 1
-        return `move ${n}${action.terastallize ? ' terastallize' : ''}`
+        const tera = action.terastallize ? ' terastallize' : ''
+        if (!this.rotation) return `move ${n}${tera}`
+        // rotation: 행동하는 슬롯만 기술, 나머지는 pass. 상대 쪽 대상은 항상 상대 앞(loc 2)
+        const slot = action.rotate ? ROTATE_SLOT[action.rotate] : FRONT
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const reqMove = (this.battle[action.player].activeRequest as any)?.active?.[slot]?.moves?.[n - 1] as { target?: string } | undefined
+        const t = reqMove?.target ?? ''
+        const loc = ['normal', 'any', 'adjacentFoe'].includes(t) ? ` ${FOE_FRONT_LOC}`
+            : ['adjacentAlly', 'adjacentAllyOrSelf'].includes(t) ? ` -${slot + 1}` : ''
+        return this.slotChoice(slot, `move ${n}${loc}${tera}`)
+    }
+
+    /** rotation: 한 슬롯만 행동하고 나머지는 pass 인 선택 문자열 */
+    private slotChoice(slot: number, choice: string): string {
+        return [0, 1, 2].map(i => (i === slot ? choice : 'pass')).join(', ')
     }
 
     submitAction(action: Action): void {
@@ -992,17 +1098,50 @@ export class BattleEngine {
             const req = this.requireRequest(action)
             const to = action.switch_to_id
             if (!req.switches.some(p => p.id === to)) throw new BattleError(`${to} 로 교체할 수 없습니다`)
+            if (this.rotation && req.type === 'switch') return this.pickRotationSwitch(action)
         } else if (action.type === 'move') {
             const req = this.requireRequest(action)
             if (req.type === 'switch') throw new BattleError('교체할 포켓몬을 선택해야 합니다')
+            let moves = req.moves
+            let forced = req.forced
+            let canTera = req.can_terastallize
+            if (action.rotate) {
+                const opt = req.rotate?.find(r => r.direction === action.rotate)
+                if (!opt) throw new BattleError(`지금은 ${action.rotate === 'left' ? '왼쪽' : '오른쪽'}으로 돌릴 수 없습니다`)
+                moves = opt.moves
+                forced = false
+                canTera = opt.can_terastallize
+            } else if (req.must_rotate) {
+                throw new BattleError("앞 자리가 비어 있습니다. rotate: 'left' | 'right' 로 뒷줄 포켓몬을 돌려야 합니다")
+            }
             const idx = action.move_index
-            const opt = req.moves.find(m => m.index === idx) ?? (req.forced || idx === -1 ? req.moves[0] : undefined)
+            const opt = moves.find(m => m.index === idx) ?? (forced || idx === -1 ? moves[0] : undefined)
             if (!opt) throw new BattleError(`기술 슬롯 ${idx} 은(는) 사용할 수 없습니다`)
-            if (opt.disabled) throw new BattleError(`${opt.move.name} 은(는) 사용할 수 없습니다 (${opt.disabled_reason})`)
-            if (action.terastallize && !req.can_terastallize) throw new BattleError('테라스탈할 수 없습니다')
+            const struggle = idx === -1 && moves.every(m => m.disabled) // 모든 기술 사용 불가 → Showdown 이 발버둥으로 처리
+            if (opt.disabled && !struggle) throw new BattleError(`${opt.move.name} 은(는) 사용할 수 없습니다 (${opt.disabled_reason})`)
+            if (action.terastallize && !canTera) throw new BattleError('테라스탈할 수 없습니다')
             if (opt.index !== idx) final = { ...action, move_index: opt.index }
         }
         this.submitChoice(final.player, this.toChoice(final))
+    }
+
+    /** rotation 교체 요청: 슬롯을 하나씩 모았다가 모두 채우면(또는 더 보낼 포켓몬이 없으면) 한 번에 제출 */
+    private pickRotationSwitch(action: Extract<Action, { type: 'switch' }>): void {
+        const side = this.battle[action.player]
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const req = side.activeRequest as any
+        const picks = this.pendingPicks(action.player, req)
+        const slot = [FRONT, 0, 2].find(i => req.forceSwitch[i] && !picks.has(i))!
+        picks.set(slot, action.switch_to_id)
+        const picked = new Set(picks.values())
+        const open = [FRONT, 0, 2].filter(i => req.forceSwitch[i] && !picks.has(i))
+        if (open.length && this.switchOptions(action.player, req).some(p => !picked.has(p.id))) return
+        const choice = [0, 1, 2].map(i => {
+            const id = picks.get(i)
+            return id ? `switch ${side.pokemon.indexOf(this.byId.get(id)!) + 1}` : 'pass'
+        }).join(', ')
+        delete this.switchPicks[action.player]
+        this.submitChoice(action.player, choice)
     }
 
     private requireRequest(action: Extract<Action, { type: 'move' | 'switch' }>): BattleRequest {
@@ -1011,7 +1150,10 @@ export class BattleEngine {
             if (this.getTeamPreview(action.player)) throw new BattleError("팀 프리뷰 중입니다. { type: 'team', order } 로 출전 순서를 먼저 고르세요")
             throw new BattleError(`${action.player} 는 지금 행동을 제출할 필요가 없습니다`)
         }
-        if (action.pokemon_id && action.pokemon_id !== req.active.id) {
+        const rotateIn = action.type === 'move' && action.rotate && req.type === 'move'
+            ? req.rotate?.find(r => r.direction === action.rotate)?.pokemon.id
+            : undefined
+        if (action.pokemon_id && action.pokemon_id !== req.active.id && action.pokemon_id !== rotateIn) {
             throw new BattleError(`필드의 포켓몬(${req.active.id})이 아닌 ${action.pokemon_id} 로 행동할 수 없습니다`)
         }
         return req
@@ -1054,13 +1196,13 @@ export class BattleEngine {
     }
 
     /**
-     * 현재 필드 상태로 데미지 미리보기 (singles).
+     * 현재 필드 상태로 데미지 미리보기 (singles / rotation 의 앞 포켓몬끼리).
      * moveIndex 는 현재 포켓몬의 기술 슬롯.
      */
     previewDamage(player: PlayerID, moveIndex: number, opts: { terastallize?: boolean } = {}): DamageResult | null {
         this.start()
-        const user = this.battle[player].active[0]
-        const foe = this.battle[this.foeOf(player)].active[0]
+        const user = this.battle[player].active[this.frontSlot]
+        const foe = this.battle[this.foeOf(player)].active[this.frontSlot]
         const slot = user?.moveSlots[moveIndex]
         if (!user || !foe || foe.fainted || !slot) return null
         const move = Dex.moves.get(slot.id)

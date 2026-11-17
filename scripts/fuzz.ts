@@ -2,12 +2,12 @@
 // npx tsx scripts/fuzz.ts --battles 1000000 --workers 4 [--start 0] [--out .scratch/fuzz-report.json]
 //
 // 배틀마다 (시드로 재현 가능):
-//  - 포맷: singles 75% / doubles 15% / triples 10%, 20% 는 팀 프리뷰(+출전 수 선택)
+//  - 포맷: singles 65% / doubles 15% / triples 10% / rotation 10%, 20% 는 팀 프리뷰(+출전 수 선택)
 //  - 팀: Showdown 랜덤배틀 세트 50% / 혼돈 팀(무작위 종·특성·도구·기술·노력치·레벨·테라) 50%
-//  - 선택: 무작위 (singles 는 엔진의 getAvailableActions, doubles 는 Showdown 요청 기반), 일부 HeuristicAI
+//  - 선택: 무작위 (singles·rotation 은 엔진의 getAvailableActions — 회전 포함, doubles/triples 는 Showdown 요청 기반), 일부 HeuristicAI
 // 검사(불변식):
 //  1. 예외 없음
-//  2. singles: 엔진이 제시한 행동은 Showdown 이 모두 수락
+//  2. singles·rotation: 엔진이 제시한 행동은 Showdown 이 모두 수락
 //  3. 처리하지 못한 프로토콜 메시지 0
 //  4. 이벤트의 포켓몬 ID 가 모두 실제 포켓몬
 //  5. 이벤트만으로 재구성한 HP == 시뮬레이터 실제 HP (모든 포켓몬)
@@ -21,13 +21,13 @@ import { cpus } from 'node:os'
 
 interface Failure { battle: number; seed: number; kind: string; message: string }
 interface Stats {
-    battles: number; singles: number; doubles: number; triples: number; turns: number; ties: number
+    battles: number; singles: number; doubles: number; triples: number; rotation: number; turns: number; ties: number
     events: number; choices: number; doublesFallbacks: number; determinismChecks: number
     failures: Failure[]; failureCount: number; kinds: Record<string, number>
 }
 
 const emptyStats = (): Stats => ({
-    battles: 0, singles: 0, doubles: 0, triples: 0, turns: 0, ties: 0, events: 0, choices: 0, doublesFallbacks: 0,
+    battles: 0, singles: 0, doubles: 0, triples: 0, rotation: 0, turns: 0, ties: 0, events: 0, choices: 0, doublesFallbacks: 0,
     determinismChecks: 0, failures: [], failureCount: 0, kinds: {},
 })
 
@@ -80,8 +80,8 @@ async function runWorker(): Promise<void> {
         const seed = battleNo
         const rng = new PRNG(seed * 7919 + 13)
         const roll = rng.int(100)
-        const format = roll < 75 ? 'singles' : roll < 90 ? 'doubles' : 'triples'
-        const doubles = format !== 'singles' // Showdown 선택 문자열로 진행하는 다중 슬롯 형식
+        const format = roll < 65 ? 'singles' : roll < 80 ? 'doubles' : roll < 90 ? 'triples' : 'rotation'
+        const doubles = format === 'doubles' || format === 'triples' // Showdown 선택 문자열로 진행하는 다중 슬롯 형식
         const minSize = ACTIVE_PER_SIDE[format]
         const team = () => (rng.chance(50)
             ? generateRandomTeam({ seed: rng.int(0x7fffffff), format: doubles ? 'gen9randomdoublesbattle' : 'gen9randombattle', size: rng.int(minSize, 6) })
@@ -124,6 +124,11 @@ async function runWorker(): Promise<void> {
                 } else {
                     const req = engine.getRequest(player)
                     if (!req) continue
+                    if (engine.rotation && !ais && rng.chance(5)) {
+                        engine.submitChoice(player, 'default') // 로테이션 기본 선택 경로 (실패 시 예외)
+                        if (check) stats.choices++
+                        continue
+                    }
                     const action = ais ? ais[player].chooseAction(engine, player) : rng.pick(engine.getAvailableActions(player))
                     if (!action) throw new Error(`no available action (${player}, ${req.type})`)
                     engine.submitAction(action) // 실패 시 예외 → 불변식 2 위반
@@ -183,7 +188,8 @@ async function runWorker(): Promise<void> {
     for (let i = start; i < end; i++) {
         try {
             const { engine, hash } = playBattle(i, true)
-            if (engine.battle.gameType === 'doubles') stats.doubles++
+            if (engine.rotation) stats.rotation++
+            else if (engine.battle.gameType === 'doubles') stats.doubles++
             else if (engine.battle.gameType === 'triples') stats.triples++
             else stats.singles++
             verify(engine, i)
@@ -235,7 +241,7 @@ async function runMain(): Promise<void> {
         if (s >= e) return resolve()
         const worker = new Worker(file, { workerData: { start: s, end: e }, execArgv: [] })
         worker.on('message', (st: Stats) => {
-            for (const k of ['battles', 'singles', 'doubles', 'triples', 'turns', 'ties', 'events', 'choices', 'doublesFallbacks', 'determinismChecks', 'failureCount'] as const) agg[k] += st[k]
+            for (const k of ['battles', 'singles', 'doubles', 'triples', 'rotation', 'turns', 'ties', 'events', 'choices', 'doublesFallbacks', 'determinismChecks', 'failureCount'] as const) agg[k] += st[k]
             agg.failures.push(...st.failures)
             for (const [k, v] of Object.entries(st.kinds)) agg.kinds[k] = (agg.kinds[k] ?? 0) + v
         })
