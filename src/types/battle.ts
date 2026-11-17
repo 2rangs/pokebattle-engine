@@ -6,9 +6,13 @@ import type { MoveData } from './move'
 export type PlayerID = 'p1' | 'p2'
 
 // ─── 배틀 형식 ────────────────────────────────────────────────
-// Pokémon Showdown 시뮬레이터 기반. singles 는 편의 API(getRequest/submitAction) 지원,
+// Pokémon Showdown 시뮬레이터 기반. singles / rotation 은 편의 API(getRequest/submitAction) 지원,
 // doubles / triples 는 submitChoice(raw Showdown 선택 문자열) 로 사용한다.
-export type BattleFormat = 'singles' | 'doubles' | 'triples'
+// rotation: 양쪽 3마리가 나오고 가운데(앞, 슬롯 1)만 행동·피격. 행동 전에 왼쪽/오른쪽을 앞으로 돌릴 수 있다.
+export type BattleFormat = 'singles' | 'doubles' | 'triples' | 'rotation'
+
+/** 로테이션 방향: left = 슬롯 0(a) 이 앞으로, right = 슬롯 2(c) 가 앞으로 */
+export type RotateDirection = 'left' | 'right'
 
 // ─── 사이드 (플레이어 한 쪽) ──────────────────────────────────
 export interface Side {
@@ -72,6 +76,11 @@ export type Action =
       move_index: 0 | 1 | 2 | 3 | -1 // -1 = 발버둥 (PP 가 모두 없을 때)
       target_id?: string          // doubles 예약
       terastallize?: boolean      // 이번 턴 테라스탈
+      /**
+       * rotation 전용: 이 방향의 뒷줄 포켓몬을 앞으로 돌린 뒤(모든 행동보다 먼저) 그 포켓몬이 기술을 쓴다.
+       * move_index 는 돌아 들어오는 포켓몬의 기술 슬롯, pokemon_id 는 그 포켓몬(또는 지금 앞 포켓몬) ID.
+       */
+      rotate?: RotateDirection
     }
   | {
       /** Showdown 선택 문자열을 그대로 전달 (예: 'move 1 terastallize, switch 3') */
@@ -105,16 +114,29 @@ export interface TeamPreviewRequest {
   raw?: unknown
 }
 
+/** rotation: 뒷줄 포켓몬을 앞으로 돌렸을 때 쓸 수 있는 기술 */
+export interface RotateOption {
+  direction: RotateDirection
+  pokemon: BattlePokemon
+  moves: MoveOption[]
+  can_terastallize: boolean
+}
+
 export type BattleRequest =
   | {
       type: 'move'
       player: PlayerID
+      /** 앞(행동하는) 포켓몬. rotation 에서 앞이 쓰러진 채 비어 있으면 그 포켓몬 (must_rotate) */
       active: BattlePokemon
       moves: MoveOption[]
       switches: BattlePokemon[]    // 교체 가능한 벤치
       can_switch: boolean
       can_terastallize: boolean
       forced?: boolean             // 모으기/난동/반동 등으로 기술이 고정됨
+      /** rotation: 돌릴 수 있는 방향별 선택지 (앞 포켓몬이 기술에 묶여 있으면 없음) */
+      rotate?: RotateOption[]
+      /** rotation: 앞 자리가 비어(기절, 교체할 벤치 없음) 반드시 돌려야 함. moves 는 비어 있다 */
+      must_rotate?: boolean
       /** Showdown 원본 요청 */
       raw?: unknown
     }
@@ -152,6 +174,8 @@ export type BattleEvent =
   | { type: 'field_start';    condition: FieldCondition }
   | { type: 'field_end';      condition: FieldCondition }
   | { type: 'switch';         player: PlayerID; out_id: string; in_id: string; forced?: boolean }
+  /** rotation: in_id 가 앞으로 나오고 out_id 가 그 자리(뒷줄)로 간다. 교체가 아니므로 랭크·상태 유지 */
+  | { type: 'rotate';         player: PlayerID; direction: RotateDirection; in_id: string; out_id: string }
   | { type: 'ability_trigger';pokemon_id: string; ability: string; effect: string }
   | { type: 'item_consume';   pokemon_id: string; item: string }
   | { type: 'item_activate';  pokemon_id: string; item: string; effect: string }
@@ -175,7 +199,7 @@ export interface BattleConfig {
   p2: { name: string; team: PokemonSet[] }
   seed?: number           // 랜덤 시드 (재현 가능 배틀용)
   maxTurns?: number       // 이 턴을 넘기면 무승부 (기본 1000)
-  /** Showdown 포맷 ID 직접 지정 (기본: gen9customgame / gen9doublescustomgame) */
+  /** Showdown 포맷 ID 직접 지정 (기본: gen9customgame / gen9doublescustomgame / gen9triples) */
   formatid?: string
   /** 추가 Showdown 규칙 (예: ['Sleep Clause Mod', 'Species Clause']). options 보다 나중에 적용 */
   rules?: string[]

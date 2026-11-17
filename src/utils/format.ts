@@ -167,6 +167,7 @@ function formatEventRaw(event: BattleEvent, ctx: FormatContext, names: NameResol
             if (!event.out_id) return `${event.player === 'p1' ? '가랏!' : '상대가 내보냈다:'} ${inP}`
             return event.forced ? `${inP}이(가) 끌려 나왔다!` : `${event.player === 'p1' ? '돌아와!' : '상대는 포켓몬을 교체했다.'} → ${inP}`
         }
+        case 'rotate':          return `${sideLabel(event.player)}: ${event.direction === 'left' ? '왼쪽' : '오른쪽'}으로 로테이션! ${pName(event.in_id)}이(가) 앞으로 나왔다${event.out_id ? ` (${pName(event.out_id)}은(는) 뒤로)` : ''}`
         case 'ability_trigger': return `[${aName(event.ability)}] ${pName(event.pokemon_id)}`
         case 'item_consume':    return `${pName(event.pokemon_id)}의 ${iName(event.item)} 사용/소실`
         case 'item_activate':   return `${pName(event.pokemon_id)}: ${iName(event.item)}`

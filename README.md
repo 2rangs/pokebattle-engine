@@ -25,7 +25,7 @@ npm install github:2rangs/pokebattle-engine
 import { BattleEngine, HeuristicAI, formatEvent, parseShowdownTeam, generateRandomTeam } from '@kyasi/pokebattle-engine'
 
 const engine = new BattleEngine({
-  format: 'singles',                     // 'doubles' | 'triples' also supported (submitChoice)
+  format: 'singles',                     // also 'rotation' (same API), 'doubles' | 'triples' (submitChoice)
   seed: 42,                              // same seed → same battle
   p1: { name: 'Me',  team: parseShowdownTeam(showdownText) },
   p2: { name: 'CPU', team: generateRandomTeam({ seed: 7 }) },   // Showdown random-battle sets
@@ -68,7 +68,8 @@ engine.previewDamage('p1', 0)            // damage preview of my move against th
   - Revival Blessing offers only fainted Pokémon (`reason: 'revival_blessing'`).
   - Recharge, charging and rampage turns force the move (`forced: true`).
 - **Doubles / triples:** use `getRawRequest(player)` + `submitChoice(player, 'move 1 2, switch 3')`. Triples run on Showdown's `gen9triples` with its ladder rules (team preview, Species Clause, banlist) stripped, so they start rule-free like singles and doubles.
-- **Rotation battles are not supported:** the Showdown simulator keeps only the rotation slot layout; the rotate action and its rules were removed.
+- **Rotation:** `format: 'rotation'` uses the same `getRequest` / `submitAction` API as singles. Three Pokémon per side are out, but only the front one (the middle slot, `engine.frontSlot === 1`) acts and can be targeted. Add `rotate: 'left' | 'right'` to a `move` action and that back Pokémon rotates to the front at the very start of the turn (before switches and priority moves) and uses the move (`move_index` / `pokemon_id` refer to the incoming Pokémon; options are in `req.rotate`). A rotation is not a switch, so stat stages and volatiles stay and switch-in abilities don't re-fire. You can't rotate while the front Pokémon is locked into a move. A fainted front is refilled from the bench; with no bench left the request has `must_rotate: true`. Spread moves and Intimidate reach only the foe's front Pokémon and ally-targeting moves fail, but end-of-turn damage and field-wide effects still reach the back row. Rotations emit a `rotate` event. Raw choices work too (`'pass, move 1 2, pass'`, `'move 2 2, pass, pass'` = rotate left; the foe's front is always target 2).
+  - Showdown never implemented rotation (its server sim only ever had `'rotation'` as a three-slot `gameType` name, and today it computes one active slot for it), so the engine runs rotation as a `gen9triples` battle and patches the sim's targeting and choice handling at runtime, only for battles it marks as rotation (`src/engine/rotation.ts`).
 - **State:** `getState()` / `snapshot()` return state for display, and `engine.battle` is the Showdown `Battle` object itself.
 
 ### Rule options (`config.options`)
@@ -141,14 +142,14 @@ npm run fuzz -- --battles 100000 --workers 4
 
 Each battle is reproducible from its seed and varies three things:
 
-- **Format:** singles 75% / doubles 15% / triples 10%. 20% of battles use team preview with a random team size.
+- **Format:** singles 65% / doubles 15% / triples 10% / rotation 10% (rotation goes through `getAvailableActions` including rotations, plus some `'default'` choices). 20% of battles use team preview with a random team size.
 - **Teams:** Showdown random-battle sets 50%, or "chaos teams" (random species, abilities, items, moves, EVs/IVs, levels 1–100, tera types).
 - **Choices:** random or heuristic AI.
 
 Invariants checked:
 
 1. No exceptions.
-2. Every action the engine offers (singles) is accepted by Showdown.
+2. Every action the engine offers (singles and rotation) is accepted by Showdown.
 3. Zero unhandled protocol messages.
 4. Every event refers to a real Pokémon.
 5. **HP rebuilt from events alone equals the simulator's actual HP** (every Pokémon).

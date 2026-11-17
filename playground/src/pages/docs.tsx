@@ -242,6 +242,7 @@ export const DOCS: DocPage[] = [
             [<C>move_use / move_miss / move_fail</C>, 'pokemon_id, move, target_id / reason'],
             [<C>damage / heal</C>, 'pokemon_id, amount, source, hp_after, effectiveness?, crit?'],
             [<C>switch / faint</C>, 'player, out_id, in_id, forced? / pokemon_id'],
+            [<C>rotate</C>, t("player, direction ('left' | 'right'), in_id, out_id — 로테이션 배틀", "player, direction ('left' | 'right'), in_id, out_id — rotation battles")],
             [<C>status_apply / status_remove</C>, 'pokemon_id, status, source?'],
             [<C>volatile_apply / volatile_remove</C>, 'pokemon_id, volatile'],
             [<C>stat_change</C>, 'pokemon_id, stat, stages, actual?'],
@@ -282,10 +283,10 @@ export const DOCS: DocPage[] = [
   {
     slug: 'doubles',
     group: 'battle',
-    title: ['더블 · 트리플', 'Doubles & triples'],
+    title: ['더블 · 트리플 · 로테이션', 'Doubles, triples & rotation'],
     lead: [
-      "format: 'doubles' | 'triples'. 편의 API 대신 Showdown 선택 문자열을 그대로 씁니다.",
-      "format: 'doubles' | 'triples'. Use Showdown choice strings instead of the convenience API.",
+      "format: 'doubles' | 'triples' 는 Showdown 선택 문자열을, 'rotation' 은 싱글과 같은 편의 API 를 씁니다.",
+      "format: 'doubles' | 'triples' use Showdown choice strings; 'rotation' uses the same convenience API as singles.",
     ],
     body: t => (
       <>
@@ -300,12 +301,24 @@ export const DOCS: DocPage[] = [
           <>Gen 9 has no triples custom game, so the engine takes the ladder format <C>gen9triples</C> and strips its ladder rules (team preview, Species Clause, banlist). Triples therefore start with no rules, like singles and doubles, and you turn rules on with <C>options</C>. Only adjacent foes can be targeted (the two outer slots can’t reach each other).</>,
         )}</P>
         <ApiRun id="triples" />
+        <H2>{t('로테이션 배틀', 'Rotation battles')}</H2>
+        <P>{t(
+          <><C>format: 'rotation'</C>은 싱글과 같은 편의 API(<C>getRequest</C> / <C>submitAction</C>)로 진행합니다. 양쪽 3마리가 나오지만 행동하고 공격받는 건 가운데 앞 포켓몬(슬롯 1)뿐입니다. 기술을 고를 때 <C>rotate: 'left' | 'right'</C>를 붙이면 그 쪽 뒷줄 포켓몬이 턴 맨 처음(교체·선공기보다 먼저) 앞으로 돌아 나와 그 기술을 씁니다. 교체가 아니라서 랭크·혼란 같은 상태가 유지되고 등장 특성도 다시 발동하지 않습니다.</>,
+          <><C>format: 'rotation'</C> uses the same convenience API as singles (<C>getRequest</C> / <C>submitAction</C>). Three Pokémon per side are on the field, but only the front one (the middle slot, 1) acts and can be hit. Add <C>rotate: 'left' | 'right'</C> to a move and that back Pokémon rotates to the front at the very start of the turn (before switches and priority moves), then uses the move. It is not a switch: stat stages and volatiles such as confusion stay, and switch-in abilities don’t fire again.</>,
+        )}</P>
+        <ApiRun id="rotation" />
+        <Ul items={[
+          t(<><C>req.rotate</C>: 돌릴 수 있는 방향과 들어올 포켓몬·기술. 앞 포켓몬이 역린·반동·모으기에 묶여 있으면 비어 있습니다.</>, <><C>req.rotate</C>: each direction you can rotate, with the incoming Pokémon and its moves. Empty while the front Pokémon is locked into Outrage, recharge or a charging move.</>),
+          t(<>앞이 쓰러지면 벤치에서 앞을 채웁니다. 벤치가 없으면 <C>must_rotate: true</C>가 되고 반드시 회전해야 합니다.</>, <>A fainted front is replaced from the bench. With no bench left, <C>must_rotate: true</C> and you have to rotate.</>),
+          t(<>범위 기술·위협 등은 상대 앞 1마리에게만, 도우미 같은 아군 대상 기술은 실패합니다. 날씨·독 같은 턴 종료 데미지와 흑안개처럼 필드 전체에 걸리는 효과는 뒷줄에도 적용됩니다.</>, <>Spread moves, Intimidate and the like reach only the foe’s front Pokémon, and ally-targeting moves such as Helping Hand fail. End-of-turn damage (weather, poison) and field-wide effects such as Haze still reach the back row.</>),
+          t(<>원시 선택 문자열도 됩니다: 행동하는 슬롯만 기술, 나머지는 pass. 예: <C>'pass, move 1 2, pass'</C>(앞), <C>'move 2 2, pass, pass'</C>(왼쪽 회전). 상대 앞은 항상 대상 2입니다.</>, <>Raw choices work too: only the acting slot moves, the rest pass. For example <C>'pass, move 1 2, pass'</C> (front) or <C>'move 2 2, pass, pass'</C> (rotate left). The foe’s front is always target 2.</>),
+        ]} />
         <Banner
-          status="warning"
-          title={t('로테이션 배틀은 아직 지원하지 않습니다', 'Rotation battles are not supported yet')}
+          status="info"
+          title={t('Showdown에는 로테이션 구현이 없습니다', 'Showdown has no rotation implementation')}
           description={t(
-            'Showdown 시뮬레이터에서 로테이션은 슬롯만 남아 있고 회전 행동과 규칙은 제거되어 있습니다. 지원하려면 회전 메커니즘을 직접 구현해야 합니다.',
-            'In the Showdown simulator, rotation keeps only its slot layout; the rotate action and its rules were removed. Supporting it means implementing the rotation mechanics ourselves.',
+            "Showdown 서버 시뮬레이터는 'rotation'을 슬롯 3개짜리 이름으로만 갖고 있었고 회전 규칙을 구현한 적이 없습니다. 엔진은 트리플 배틀 위에 로테이션 규칙을 덧씌워 돌리며, 뒷줄이 잔여 데미지를 받는 부분 등은 원작과 다를 수 있습니다.",
+            "The Showdown server sim only ever had 'rotation' as a three-slot name and never implemented the rotation rules. The engine runs rotation as a triple battle with the rotation rules layered on top; details such as the back row taking residual damage may differ from the games.",
           )}
           collapsible={false}
         />

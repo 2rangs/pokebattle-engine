@@ -57,7 +57,7 @@ export class HeuristicAI implements BattleAI {
 
         const foePlayer = engine.foeOf(player)
         const user = engine.getShowdownPokemon(req.active.id)!
-        const foe = engine.battle[foePlayer].active[0]
+        const foe = engine.battle[foePlayer].active[engine.frontSlot]
         const scored: Scored[] = []
 
         for (const opt of req.moves) {
@@ -115,7 +115,7 @@ export class HeuristicAI implements BattleAI {
 
     /** 상대 현재 포켓몬 → 우리 현재 포켓몬 최대 데미지 비율 */
     private threat(engine: BattleEngine, attacker: PlayerID, _defender: PlayerID): number {
-        const a = engine.battle[attacker].active[0]
+        const a = engine.battle[attacker].active[engine.frontSlot]
         if (!a) return 0
         let best = 0
         a.moveSlots.forEach((_, i) => {
@@ -128,7 +128,7 @@ export class HeuristicAI implements BattleAI {
     /** 벤치 포켓몬과 상대 현재 포켓몬의 상성 (대략 -1~1) */
     private matchup(engine: BattleEngine, benchId: string, player: PlayerID): number {
         const mine = engine.getShowdownPokemon(benchId)
-        const foe = engine.battle[engine.foeOf(player)].active[0]
+        const foe = engine.battle[engine.foeOf(player)].active[engine.frontSlot]
         if (!mine || !foe || foe.fainted) return 0
         let dealt = 0
         let taken = 0
@@ -147,8 +147,8 @@ export class HeuristicAI implements BattleAI {
     }
 
     private scoreMove(engine: BattleEngine, player: PlayerID, index: number, tera: boolean): number {
-        const user = engine.battle[player].active[0]!
-        const foe = engine.battle[engine.foeOf(player)].active[0]
+        const user = engine.battle[player].active[engine.frontSlot]!
+        const foe = engine.battle[engine.foeOf(player)].active[engine.frontSlot]
         const slot = user.moveSlots[index]
         if (!slot) return 0
         const move = Dex.moves.get(slot.id)

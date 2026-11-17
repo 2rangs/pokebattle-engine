@@ -426,6 +426,40 @@ engine.submitChoice('p2', 'default')`,
     },
   },
 
+  rotation: {
+    code: `const engine = new BattleEngine({ format: 'rotation', seed: 11,
+  p1: { name: 'A', team: generateRandomTeam({ seed: 7, size: 4, level: 50 }) },
+  p2: { name: 'B', team: generateRandomTeam({ seed: 8, size: 4, level: 50 }) } })
+
+const req = engine.getRequest('p1')!       // front = middle slot
+if (req.type === 'move') {
+  console.log(req.active.species, req.rotate?.map(r => r.direction + ' ' + r.pokemon.species))
+  const left = req.rotate![0]!               // rotate left, then the incoming Pokémon attacks
+  engine.submitAction({ type: 'move', player: 'p1', pokemon_id: left.pokemon.id, move_index: 0, rotate: 'left' })
+}
+engine.submitAction(engine.getAvailableActions('p2')[0]!)`,
+    run(log) {
+      const engine = new BattleEngine({
+        format: 'rotation', seed: 11,
+        p1: { name: 'A', team: generateRandomTeam({ seed: 7, size: 4, level: 50 }) },
+        p2: { name: 'B', team: generateRandomTeam({ seed: 8, size: 4, level: 50 }) },
+      })
+      engine.on('*', ev => {
+        const line = formatEvent(ev, { getPokemon: id => engine.getPokemon(id) })
+        if (line) log(line, ev.type === 'turn_start' ? 'info' : 'out')
+      })
+      const req = engine.getRequest('p1')!
+      if (req.type !== 'move') return
+      log(`front: ${req.active.species}`, 'json')
+      log(`rotate: ${json(req.rotate?.map(r => `${r.direction} ${r.pokemon.species}`))}`, 'json')
+      const left = req.rotate![0]!
+      const move = left.moves.find(m => !m.disabled)!
+      engine.submitAction({ type: 'move', player: 'p1', pokemon_id: left.pokemon.id, move_index: move.index, rotate: 'left' })
+      engine.submitAction(engine.getAvailableActions('p2')[0]!)
+      log(`p1 slots now: ${json(engine.getActivePokemon('p1').map(p => p.species))}`, 'json')
+    },
+  },
+
   teamPreview: {
     code: `const engine = new BattleEngine({ format: 'singles', seed: 2,
   options: { pickedTeamSize: 3, level: 50 },        // 6 → 3, team preview turns on
