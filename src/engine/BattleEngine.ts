@@ -1040,6 +1040,8 @@ export class BattleEngine {
                 }
             }
             add(req.active.id, req.moves, req.can_terastallize)
+            // 쓸 수 있는 기술이 하나도 없으면(숨은 사용 불가 포함) 발버둥
+            if (req.moves.length && req.moves.every(m => m.disabled)) actions.push({ type: 'move', player, pokemon_id: req.active.id, move_index: -1 })
             for (const r of req.rotate ?? []) add(r.pokemon.id, r.moves, r.can_terastallize, r.direction)
         }
         for (const p of req.switches) actions.push({ type: 'switch', player, pokemon_id: req.active.id, switch_to_id: p.id })
@@ -1115,7 +1117,8 @@ export class BattleEngine {
             const idx = action.move_index
             const opt = moves.find(m => m.index === idx) ?? (forced || idx === -1 ? moves[0] : undefined)
             if (!opt) throw new BattleError(`기술 슬롯 ${idx} 은(는) 사용할 수 없습니다`)
-            if (opt.disabled) throw new BattleError(`${opt.move.name} 은(는) 사용할 수 없습니다 (${opt.disabled_reason})`)
+            const struggle = idx === -1 && moves.every(m => m.disabled) // 모든 기술 사용 불가 → Showdown 이 발버둥으로 처리
+            if (opt.disabled && !struggle) throw new BattleError(`${opt.move.name} 은(는) 사용할 수 없습니다 (${opt.disabled_reason})`)
             if (action.terastallize && !canTera) throw new BattleError('테라스탈할 수 없습니다')
             if (opt.index !== idx) final = { ...action, move_index: opt.index }
         }

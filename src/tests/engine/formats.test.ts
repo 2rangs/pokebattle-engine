@@ -126,6 +126,19 @@ describe('규칙 옵션', () => {
     })
 })
 
+describe('모든 기술 사용 불가', () => {
+    it('봉인으로 유일한 기술이 막히고 벤치가 없으면 발버둥(move_index -1)을 제시하고 받는다', () => {
+        const e = engine('singles', undefined, [set('mew', ['imprison', 'tackle'])], [set('rattata', ['tackle'])], 1)
+        e.submitAction({ type: 'move', player: 'p1', pokemon_id: 'p1_0', move_index: 0 })
+        e.submitAction({ type: 'move', player: 'p2', pokemon_id: 'p2_0', move_index: 0 })
+        const acts = e.getAvailableActions('p2')
+        expect(acts).toEqual([{ type: 'move', player: 'p2', pokemon_id: 'p2_0', move_index: -1 }])
+        e.submitAction({ type: 'move', player: 'p1', pokemon_id: 'p1_0', move_index: 1 })
+        e.submitAction(acts[0]!)
+        expect(e.getState().log.some(ev => ev.type === 'move_use' && ev.pokemon_id === 'p2_0' && ev.move.name === 'struggle')).toBe(true)
+    })
+})
+
 describe('rotation', () => {
     const lead = (moves: string[], species = 'garchomp', extra: Partial<PokemonSet> = {}) => set(species, moves, extra)
     const rot = (p1: PokemonSet[], p2: PokemonSet[], seed = 1, options?: BattleRuleOptions) =>
