@@ -4,11 +4,11 @@
 //  - Showdown 프로토콜 로그 → 타입이 있는 BattleEvent 변환 (로그가 쓰이는 즉시)
 //  - 화면용 상태(BattleState/BattlePokemon) 조회
 // 를 담당한다.
-import { Battle, Dex, toID } from '@pkmn/sim'
+import { Battle, Dex, TeamValidator, toID } from '@pkmn/sim'
 import type { Pokemon as PSPokemon, Side as PSSide } from '@pkmn/sim'
 import type {
-    Action, BattleConfig, BattleEvent, BattleEventType, BattleRequest, BattleState, CantMoveReason,
-    MoveOption, PlayerID, Side, SwitchReason,
+    Action, BattleConfig, BattleEvent, BattleEventType, BattleFormat, BattleRequest, BattleRuleOptions, BattleState,
+    CantMoveReason, MoveOption, PlayerID, Side, SwitchReason, TeamPreviewRequest,
 } from '../types/battle'
 import type { BattlePokemon, PokemonSet, StatStages } from '../types/pokemon'
 import type { FieldCondition, PrimaryStatus, SideCondition, Terrain, Weather } from '../types/effect'
@@ -83,6 +83,60 @@ const IGNORED = new Set([
 
 const SIDES: PlayerID[] = ['p1', 'p2']
 
+/** 형식별 한쪽 필드 슬롯 수 */
+export const ACTIVE_PER_SIDE: Record<BattleFormat, number> = { singles: 1, doubles: 2, triples: 3 }
+
+// 형식별 Showdown 기본 포맷과, 그 포맷의 기본 규칙 중 걷어낼 것.
+// triples 는 Gen 9 에 커스텀 게임이 없어 래더 포맷(gen9triples)에서 래더 규칙·밴리스트를 걷어낸다.
+const FORMAT_BASE: Record<BattleFormat, { battle: string; strip: string[]; preview: boolean; validator: string }> = {
+    singles: { battle: 'gen9customgame', strip: [], preview: true, validator: 'gen9customgame' },
+    doubles: { battle: 'gen9doublescustomgame', strip: [], preview: true, validator: 'gen9doublescustomgame' },
+    triples: { battle: 'gen9triples', strip: ['!Standard Doubles', '!Evasion Abilities Clause', 'Cancel Mod'], preview: false, validator: 'gen9doublescustomgame' },
+}
+
+/** BattleRuleOptions → Showdown 규칙 목록. 팀 단위 규칙은 validate 쪽으로 분리 */
+export function optionsToRules(options: BattleRuleOptions = {}): { battle: string[]; validate: string[] } {
+    const battle: string[] = []
+    const validate: string[] = []
+    const flag = (on: boolean | undefined, rule: string, list: string[]) => {
+        if (on === true) list.push(rule)
+    }
+    if (options.pickedTeamSize !== undefined) {
+        if (!Number.isInteger(options.pickedTeamSize) || options.pickedTeamSize < 1) throw new BattleError('pickedTeamSize 는 1 이상의 정수여야 합니다')
+        battle.push(`Picked Team Size = ${options.pickedTeamSize}`)
+    }
+    for (const [key, rule] of [['level', 'Adjust Level'], ['minLevel', 'Min Level'], ['maxLevel', 'Max Level']] as const) {
+        const v = options[key]
+        if (v === undefined) continue
+        if (!Number.isInteger(v) || v < 1 || v > 9999) throw new BattleError(`${key} 는 1~9999 정수여야 합니다`)
+        if (key !== 'level') validate.push(`${rule} = ${v}`)
+    }
+    if (options.terastal === false) battle.push('Terastal Clause')
+    flag(options.sleepClause, 'Sleep Clause Mod', battle)
+    flag(options.endlessBattleClause, 'Endless Battle Clause', battle)
+    flag(options.speciesClause, 'Species Clause', validate)
+    flag(options.itemClause, 'Item Clause = 1', validate)
+    flag(options.ohkoClause, 'OHKO Clause', validate)
+    flag(options.evasionClause, 'Evasion Clause', validate)
+    return { battle, validate }
+}
+
+/** config → 배틀용 / 팀 검사용 Showdown 포맷 ID */
+function buildFormatId(config: BattleConfig): { formatid: string; validatorid: string | null } {
+    const base = FORMAT_BASE[config.format]
+    if (!base) throw new BattleError(`알 수 없는 형식: ${config.format}`)
+    const opts = config.options ?? {}
+    const { battle, validate } = optionsToRules(opts)
+    const preview = !!(opts.teamPreview || opts.pickedTeamSize)
+    const previewRule = preview === base.preview ? [] : [preview ? 'Team Preview' : '!Team Preview']
+    const rules = [...base.strip, ...previewRule, ...battle, ...validate, ...(config.rules ?? [])]
+    const root = config.formatid ?? base.battle
+    const formatid = rules.length ? `${root}@@@${rules.join(',')}` : root
+    if (!Dex.formats.get(formatid).exists) throw new BattleError(`알 수 없는 포맷: ${root}`)
+    const validatorid = validate.length ? `${base.validator}@@@!Team Preview,${validate.join(',')}` : null
+    return { formatid, validatorid }
+}
+
 /** 숫자 시드 → Showdown PRNG 시드 */
 function toPSSeed(seed: number): [number, number, number, number] {
     const r = new PRNG(seed)
@@ -131,6 +185,8 @@ export class BattleEngine {
     private unknownLines = new Map<string, number>()
 
     readonly options: EngineOptions
+    /** 팀 단위 규칙 검사용 포맷 (검사할 규칙이 없으면 null) */
+    private validatorFormat: string | null = null
 
     constructor(config: BattleConfig, options: EngineOptions = {}) {
         this.config = config
@@ -140,14 +196,17 @@ export class BattleEngine {
         if (!config.p1?.team?.length || !config.p2?.team?.length) {
             throw new BattleError('양쪽 팀에 최소 1마리의 포켓몬이 필요합니다')
         }
-        if (config.format === 'doubles' && (config.p1.team.length < 2 || config.p2.team.length < 2)) {
-            throw new BattleError('doubles 배틀은 양쪽 팀에 최소 2마리가 필요합니다')
+        const minActive = ACTIVE_PER_SIDE[config.format] ?? 1
+        if (minActive > 1 && (config.p1.team.length < minActive || config.p2.team.length < minActive)) {
+            throw new BattleError(`${config.format} 배틀은 양쪽 팀에 최소 ${minActive}마리가 필요합니다`)
         }
-        const base = config.formatid ?? (config.format === 'doubles' ? 'gen9doublescustomgame' : 'gen9customgame')
-        const rules = ['!Team Preview', ...(config.rules ?? [])]
-        const formatid = `${base}@@@${rules.join(',')}`
-        if (!Dex.formats.get(formatid).exists) throw new BattleError(`알 수 없는 포맷: ${base}`)
-        this.battle = new Battle({ formatid: formatid as never, seed: toPSSeed(this.seed) as never })
+        const { formatid, validatorid } = buildFormatId(config)
+        this.validatorFormat = validatorid
+        try {
+            this.battle = new Battle({ formatid: formatid as never, seed: toPSSeed(this.seed) as never })
+        } catch (err) {
+            throw new BattleError(`포맷/규칙 오류: ${(err as Error).message}`)
+        }
         // 로그가 쓰이는 즉시 이벤트로 변환 (상태가 그 시점과 정확히 일치)
         // eslint-disable-next-line @typescript-eslint/no-this-alias
         const self = this
@@ -170,8 +229,9 @@ export class BattleEngine {
     start(): void {
         if (this.started) return
         this.started = true
+        const level = this.config.options?.level
         const teams = SIDES.map(player => {
-            const team = this.config[player].team.slice(0, 6)
+            const team = this.config[player].team.slice(0, 6).map(set => (level ? { ...set, level } : set))
             const ps = team.map(set => {
                 try {
                     return toShowdownSet(set)
@@ -179,6 +239,11 @@ export class BattleEngine {
                     throw new BattleError(`${player}: ${(err as Error).message}`)
                 }
             })
+            if (this.validatorFormat) {
+                // 검사기가 세트를 고칠 수 있으므로 복사본으로 검사
+                const problems = TeamValidator.get(this.validatorFormat).validateTeam(structuredClone(ps) as never)
+                if (problems?.length) throw new BattleError(`${player}: ${problems.join(' ')}`)
+            }
             return { player, team, ps }
         })
         this.emit({ type: 'battle_start', p1: this.config.p1.name, p2: this.config.p2.name, seed: this.seed })
@@ -562,6 +627,7 @@ export class BattleEngine {
     get phase(): BattleState['phase'] {
         if (!this.ready) return 'waiting_action'
         if (this.battle.ended) return 'ended'
+        if (SIDES.some(p => this.battle[p].requestState === 'teampreview')) return 'team_preview'
         if (SIDES.some(p => this.battle[p].requestState === 'switch')) return 'switching'
         return 'waiting_action'
     }
@@ -797,7 +863,19 @@ export class BattleEngine {
         return this.ready ? this.battle[player].activeRequest : null
     }
 
-    /** 플레이어가 지금 내려야 할 결정 (singles). 필요 없으면 null */
+    /** 팀 프리뷰 중이면 고를 파티와 출전 수. 아니면 null */
+    getTeamPreview(player: PlayerID): TeamPreviewRequest | null {
+        this.start()
+        if (!this.ready || this.battle.ended) return null
+        const side = this.battle[player]
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const req = side.activeRequest as any
+        if (!req?.teamPreview || side.isChoiceDone()) return null
+        const team = side.pokemon.map(p => this.view(p))
+        return { player, team, pick: Math.min(req.maxChosenTeamSize ?? team.length, team.length), raw: req }
+    }
+
+    /** 플레이어가 지금 내려야 할 결정 (singles). 필요 없으면 null. 팀 프리뷰는 getTeamPreview */
     getRequest(player: PlayerID): BattleRequest | null {
         this.start()
         if (!this.ready || this.battle.ended) return null
@@ -805,6 +883,7 @@ export class BattleEngine {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const req = side.activeRequest as any
         if (!req || req.wait || side.isChoiceDone()) return null
+        if (req.teamPreview) return null // 팀 프리뷰는 getTeamPreview
         const active = this.view(side.active[0] ?? side.pokemon[0]!)
         // 같은 턴에 이미 예약된 교체 대상은 다시 고를 수 없다 (탈출팩 등 턴 중 강제 교체)
         const queuedIn = new Set<PSPokemon>()
@@ -860,6 +939,9 @@ export class BattleEngine {
     }
 
     getAvailableActions(player: PlayerID): Action[] {
+        // 팀 프리뷰: 파티 순서 그대로 (순서는 경우의 수가 많아 기본값 하나만)
+        const preview = this.getTeamPreview(player)
+        if (preview) return [{ type: 'team', player, order: preview.team.slice(0, preview.pick).map(p => p.id) }]
         const req = this.getRequest(player)
         if (!req) return []
         const actions: Action[] = []
@@ -877,6 +959,16 @@ export class BattleEngine {
     /** 행동 → Showdown 선택 문자열 */
     toChoice(action: Action): string {
         if (action.type === 'raw') return action.choice
+        if (action.type === 'team') {
+            const side = this.battle[action.player]
+            const idx = action.order.map(id => {
+                const p = this.byId.get(id)
+                const i = p ? side.pokemon.indexOf(p) : -1
+                if (i < 0) throw new BattleError(`${id} 는 ${action.player} 의 포켓몬이 아닙니다`)
+                return i + 1
+            })
+            return `team ${idx.join(', ')}`
+        }
         if (action.type === 'switch') {
             const target = this.byId.get(action.switch_to_id)
             const idx = target ? this.battle[action.player].pokemon.indexOf(target) : -1
@@ -891,7 +983,12 @@ export class BattleEngine {
         this.start()
         if (this.battle.ended) throw new BattleError('배틀이 이미 종료되었습니다')
         let final: Action = action
-        if (action.type === 'switch') {
+        if (action.type === 'team') {
+            const req = this.getTeamPreview(action.player)
+            if (!req) throw new BattleError(`${action.player} 는 지금 팀을 고를 차례가 아닙니다`)
+            if (new Set(action.order).size !== action.order.length) throw new BattleError('같은 포켓몬을 두 번 고를 수 없습니다')
+            if (action.order.length !== req.pick) throw new BattleError(`${req.pick}마리를 골라야 합니다 (${action.order.length}마리 선택됨)`)
+        } else if (action.type === 'switch') {
             const req = this.requireRequest(action)
             const to = action.switch_to_id
             if (!req.switches.some(p => p.id === to)) throw new BattleError(`${to} 로 교체할 수 없습니다`)
@@ -910,7 +1007,10 @@ export class BattleEngine {
 
     private requireRequest(action: Extract<Action, { type: 'move' | 'switch' }>): BattleRequest {
         const req = this.getRequest(action.player)
-        if (!req) throw new BattleError(`${action.player} 는 지금 행동을 제출할 필요가 없습니다`)
+        if (!req) {
+            if (this.getTeamPreview(action.player)) throw new BattleError("팀 프리뷰 중입니다. { type: 'team', order } 로 출전 순서를 먼저 고르세요")
+            throw new BattleError(`${action.player} 는 지금 행동을 제출할 필요가 없습니다`)
+        }
         if (action.pokemon_id && action.pokemon_id !== req.active.id) {
             throw new BattleError(`필드의 포켓몬(${req.active.id})이 아닌 ${action.pokemon_id} 로 행동할 수 없습니다`)
         }

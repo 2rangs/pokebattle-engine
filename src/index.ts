@@ -3,7 +3,7 @@
 // 포켓몬 슬러그·한국어 이름은 PokeAPI 데이터 사용
 
 // 엔진
-export { BattleEngine, BattleError, STATUS_FROM_PS, WEATHER_FROM_PS, TERRAIN_FROM_PS, SIDE_FROM_PS } from './engine/BattleEngine'
+export { BattleEngine, BattleError, STATUS_FROM_PS, WEATHER_FROM_PS, TERRAIN_FROM_PS, SIDE_FROM_PS, ACTIVE_PER_SIDE, optionsToRules } from './engine/BattleEngine'
 export type { EngineOptions } from './engine/BattleEngine'
 
 // 데이터

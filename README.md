@@ -25,7 +25,7 @@ npm install github:2rangs/pokebattle-engine
 import { BattleEngine, HeuristicAI, formatEvent, parseShowdownTeam, generateRandomTeam } from '@kyasi/pokebattle-engine'
 
 const engine = new BattleEngine({
-  format: 'singles',                     // 'doubles' also supported (submitChoice)
+  format: 'singles',                     // 'doubles' | 'triples' also supported (submitChoice)
   seed: 42,                              // same seed → same battle
   p1: { name: 'Me',  team: parseShowdownTeam(showdownText) },
   p2: { name: 'CPU', team: generateRandomTeam({ seed: 7 }) },   // Showdown random-battle sets
@@ -58,6 +58,7 @@ engine.previewDamage('p1', 0)            // damage preview of my move against th
 
 | `state.phase` | Meaning | What to do |
 |---|---|---|
+| `team_preview` | Team preview is on (`options.teamPreview` / `pickedTeamSize`) | Each side submits `{ type: 'team', order }` (see `getTeamPreview`) |
 | `waiting_action` | Waiting for this turn's actions | Both sides `submitAction` (move/switch) |
 | `switching` | Replacement after a faint / U-turn etc. / Revival Blessing | Only the sides in `state.pending_switches` submit a `switch` |
 | `ended` | The battle is over | `state.winner` |
@@ -66,8 +67,40 @@ engine.previewDamage('p1', 0)            // damage preview of my move against th
   - Hidden trapping (Shadow Tag etc.) and hidden disables (Imprison) are reflected from live state.
   - Revival Blessing offers only fainted Pokémon (`reason: 'revival_blessing'`).
   - Recharge, charging and rampage turns force the move (`forced: true`).
-- **Doubles:** use `getRawRequest(player)` + `submitChoice(player, 'move 1 2, switch 3')`.
+- **Doubles / triples:** use `getRawRequest(player)` + `submitChoice(player, 'move 1 2, switch 3')`. Triples run on Showdown's `gen9triples` with its ladder rules (team preview, Species Clause, banlist) stripped, so they start rule-free like singles and doubles.
+- **Rotation battles are not supported:** the Showdown simulator keeps only the rotation slot layout; the rotate action and its rules were removed.
 - **State:** `getState()` / `snapshot()` return state for display, and `engine.battle` is the Showdown `Battle` object itself.
+
+### Rule options (`config.options`)
+
+```ts
+new BattleEngine({
+  format: 'doubles',
+  options: {
+    pickedTeamSize: 4,       // bring 4 of 6; turns on team preview
+    level: 50,               // every Pokémon at level 50
+    terastal: false,         // Terastal Clause
+    speciesClause: true, itemClause: true, sleepClause: true,
+  },
+  p1, p2,
+})
+```
+
+| Option | Showdown rule | Enforced |
+|---|---|---|
+| `teamPreview` | Team Preview | in battle |
+| `pickedTeamSize` | Picked Team Size = N | in battle (team preview) |
+| `level` | Adjust Level | applied to sets at start |
+| `minLevel` / `maxLevel` | Min Level / Max Level | checked at start |
+| `terastal: false` | Terastal Clause | in battle |
+| `sleepClause` | Sleep Clause Mod | in battle |
+| `endlessBattleClause` | Endless Battle Clause | in battle |
+| `speciesClause` / `itemClause` | Species Clause / Item Clause = 1 | checked at start |
+| `ohkoClause` / `evasionClause` | OHKO Clause / Evasion Clause | checked at start |
+
+- "Checked at start" rules run through Showdown's `TeamValidator`; a violation throws `BattleError` from `start()`.
+- Any other Showdown rule can still go in `config.rules` by name.
+- With team preview on, `getRequest` returns `null` and `getTeamPreview(player)` returns `{ team, pick }`. `HeuristicAI`, `RandomAI` and `simulateBattle` get through team preview by themselves; `useBattle` does it for AI-controlled sides.
 
 ### Events
 
@@ -108,7 +141,7 @@ npm run fuzz -- --battles 100000 --workers 4
 
 Each battle is reproducible from its seed and varies three things:
 
-- **Format:** singles 85% / doubles 15%.
+- **Format:** singles 75% / doubles 15% / triples 10%. 20% of battles use team preview with a random team size.
 - **Teams:** Showdown random-battle sets 50%, or "chaos teams" (random species, abilities, items, moves, EVs/IVs, levels 1–100, tera types).
 - **Choices:** random or heuristic AI.
 

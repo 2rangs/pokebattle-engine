@@ -49,6 +49,8 @@ export class HeuristicAI implements BattleAI {
     }
 
     chooseAction(engine: BattleEngine, player: PlayerID): Action | null {
+        // 팀 프리뷰: 파티 순서대로 출전
+        if (engine.getTeamPreview(player)) return engine.getAvailableActions(player)[0] ?? null
         const req = engine.getRequest(player)
         if (!req) return null
         if (req.type === 'switch') return this.chooseSwitch(engine, req, player)
