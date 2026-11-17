@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { BattleEngine } from '../../src/engine/BattleEngine'
+import { HeuristicAI } from '../../src/ai'
 import { preloadData } from '../../src/data/dex'
 import { loadTeam } from '../../src/utils/parseShowdown'
 import type { BattleState, BattleEvent } from '../../src/types/battle'
@@ -142,6 +143,7 @@ export default function App() {
   const [phase, setPhase]             = useState<'waiting' | 'switching' | 'ended' | 'animating'>('waiting')
   const [view, setView]               = useState<'main' | 'fight' | 'party'>('main')
   const logEndRef = useRef<HTMLDivElement>(null)
+  const cpuAI = useRef(new HeuristicAI())
 
   const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
@@ -172,17 +174,16 @@ export default function App() {
       setPhase('ended')
     } else if (final.phase === 'switching') {
       const p2 = final.sides.p2
-      const p1 = final.sides.p1
 
-      if (p2.active.every(p => p.fainted) && p2.team.some(p => !p.fainted)) {
+      const req2 = eng.getRequest('p2')
+      if (req2?.type === 'switch' && req2.switches.length > 0) {
         await sleep(500)
-        const alive = p2.team.filter(p => !p.fainted)
-        const next  = alive[Math.floor(Math.random() * alive.length)]!
+        const next = req2.switches[Math.floor(Math.random() * req2.switches.length)]!
         eng.submitAction({ type: 'switch', player: 'p2', pokemon_id: p2.active[0]!.id, switch_to_id: next.id })
         await processQueue()
         return
       }
-      if (p1.active.every(p => p.fainted) && p1.team.some(p => !p.fainted)) {
+      if (eng.getRequest('p1')?.type === 'switch') {
         setLogText('다음 포켓몬을\n선택하세요!')
         setPhase('switching')
         setView('party')
@@ -208,9 +209,13 @@ export default function App() {
         p2: { name: 'CPU',    team: loadTeam(p2Json as any) },
       })
       eng.on('*', (event) => {
-        eventQueue.current.push({ event, snap: { ...eng.getState() } })
+        const snap = eng.getState()
+        // 팀 등록 전(battle_start) 이벤트는 그릴 포켓몬이 없다
+        if (!snap.sides.p1.active[0] || !snap.sides.p2.active[0]) return
+        eventQueue.current.push({ event, snap })
       })
       engineRef.current = eng
+      eng.start()
       setBattleState({ ...eng.getState() })
     }
     init()
@@ -222,10 +227,9 @@ export default function App() {
 
   const cpuAct = useCallback(() => {
     const eng = engineRef.current!
-    const active = eng.getState().sides.p2.active[0]!
-    const avail  = active.moves.map((s, i) => ({ s, i })).filter(({ s }) => s && !s.disabled && s.pp > 0)
-    const picked = avail.length > 0 ? avail[Math.floor(Math.random() * avail.length)]! : { i: 0 }
-    eng.submitAction({ type: 'move', player: 'p2', pokemon_id: active.id, move_index: picked.i as 0|1|2|3 })
+    // 엔진 AI 는 Showdown 요청 기준으로 가능한 행동만 고른다 (반동턴·구애 고정 등)
+    const action = cpuAI.current.chooseAction(eng, 'p2')
+    if (action) eng.submitAction(action)
   }, [])
 
   const handleMove = useCallback((idx: number) => {
