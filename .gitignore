@@ -37,4 +37,8 @@ storybook-static/
 coverage/
 
 # Misc
-*.local.scratch/
+*.local
+
+# 로컬 실험/퍼징 결과
+.scratch/
+.cache/
