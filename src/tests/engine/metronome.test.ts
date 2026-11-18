@@ -29,7 +29,7 @@ describe('손가락흔들기 모드', () => {
         for (const id of ids(e)) {
             const p = e.getPokemon(id)!
             expect(p.set.moves).toEqual(['metronome'])
-            expect(p.moves.map(m => m.move.name)).toEqual(['metronome'])
+            expect(p.moves.map(m => m?.move.name)).toEqual(['metronome'])
         }
         // 선택할 수 있는 기술도 손가락흔들기 (PP 가 다하면 발버둥)
         const ai = new RandomAI(2)
@@ -212,9 +212,8 @@ describe('손가락흔들기 모드', () => {
     })
 
     it('테라스탈은 기본 금지, terastal: true 로 허용', () => {
-        const off = createMetronomeBattle({ seed: 1 })
-        expect(off.getRequest('p1')!.can_terastallize).toBe(false)
-        const on = createMetronomeBattle({ seed: 1, terastal: true })
-        expect(on.getRequest('p1')!.can_terastallize).toBe(true)
+        const tera = (e: BattleEngine) => { const r = e.getRequest('p1')!; return r.type === 'move' && r.can_terastallize }
+        expect(tera(createMetronomeBattle({ seed: 1 }))).toBe(false)
+        expect(tera(createMetronomeBattle({ seed: 1, terastal: true }))).toBe(true)
     })
 })
