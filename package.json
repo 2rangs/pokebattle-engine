@@ -5,6 +5,9 @@
   "author": "kyasi",
   "license": "MIT",
   "type": "module",
+  "bin": {
+    "pokebattle": "./dist/cli.js"
+  },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -27,7 +30,8 @@
     "build": "tsup",
     "build:watch": "tsup --watch",
     "prepare": "tsup",
-    "simulate": "tsx scripts/simulate.ts",
+    "cli": "tsx src/cli/index.ts",
+    "simulate": "tsx src/cli/index.ts play",
     "bench": "tsx scripts/bench.ts",
     "bench:compare": "tsx scripts/bench-compare.ts",
     "check:dist": "tsup && tsx scripts/check-dist.ts",

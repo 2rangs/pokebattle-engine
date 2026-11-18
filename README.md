@@ -217,10 +217,24 @@ Invariants checked:
 
 The full 10 million battles run in parallel shards on GitHub Actions ("Fuzz (sharded)" workflow → Run workflow; default 10 shards × 1,000,000). The CI workflow runs 10,000 battles on every push.
 
+## CLI
+
+```bash
+npx pokebattle play  --lang en              # you vs the AI (random-battle teams)
+npx pokebattle play  --team my.txt --foe cpu.json --level 50
+npx pokebattle watch --lang ja --seed 42    # AI vs AI battle log
+npx pokebattle watch --json                 # JSON Lines: every engine event + its "text"
+npx pokebattle sim   --battles 500 --vs heuristic --json
+```
+
+- `play` shows both active Pokémon with HP bars and your moves with type, power, PP and the damage range (`previewDamage`). Type a number to use a move, `t1` to Terastallize and use move 1, `s` to switch, `q` to quit.
+- Team files: Showdown export text, or JSON (`PokemonSet[]` or `{ "pokemons": [...] }`).
+- `--lang ko|en|ja` (or `POKEBATTLE_LANG`), `--seed N` (same seed and choices = same battle), `NO_COLOR` turns off colors.
+- In this repo: `npm run cli -- watch --lang en`, `npm run simulate` (= `play`).
+
 ## Scripts
 
 ```bash
-npm run simulate -- --auto --random      # watch AI vs AI in the terminal (without --auto you play against the AI)
 npm run bench -- 500                     # HeuristicAI vs RandomAI
 npm run bench:compare                    # Showdown vs this engine, same battles (and checks the logs are identical)
 npm run fetch-pokeapi                    # refresh PokeAPI data (src/data/pokeapi.json)

@@ -16,6 +16,19 @@ export default defineConfig([
         esbuildPlugins: [slimSim()],
     },
     {
+        // CLI (npx pokebattle). 엔진을 함께 번들한 단일 파일 — Node 전용
+        entry: { cli: 'src/cli/index.ts' },
+        format: ['esm'],
+        platform: 'node',
+        tsconfig: './tsconfig.build.json',
+        banner: { js: '#!/usr/bin/env node' },
+        sourcemap: false,
+        minify: true,
+        splitting: false,
+        noExternal: ['@pkmn/sim', '@pkmn/randoms'],
+        esbuildPlugins: [slimSim()],
+    },
+    {
         // React 훅. 엔진은 패키지 이름으로 참조 (중복 번들 방지)
         entry: { 'react/index': 'src/react/index.ts' },
         format: ['esm', 'cjs'],
