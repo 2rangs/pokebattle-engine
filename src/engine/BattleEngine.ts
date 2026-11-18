@@ -9,7 +9,7 @@ import type { Pokemon as PSPokemon, Side as PSSide } from '@pkmn/sim'
 import type {
     Generation,
     Action, BattleConfig, BattleEvent, BattleEventType, BattleFormat, BattleRequest, BattleRuleOptions, BattleState,
-    CantMoveReason, MoveOption, PlayerID, RotateDirection, RotateOption, Side, SwitchReason, TeamPreviewRequest,
+    CantMoveReason, MoveOption, PlayerID, RotateDirection, RotateOption, Side, SwitchReason, SwitchSource, TeamPreviewRequest,
 } from '../types/battle'
 import type { BattlePokemon, PokemonSet, StatStages } from '../types/pokemon'
 import type { FieldCondition, PrimaryStatus, SideCondition, Terrain, Weather } from '../types/effect'
@@ -203,6 +203,11 @@ function effectSlug(effect: string): string {
     return toSlug(e)
 }
 
+/** 맞거나 랭크가 떨어지면 지닌 포켓몬을 교체시키는 아이템 */
+const SWITCH_ITEMS = new Set(['eject-button', 'eject-pack'])
+/** HP 가 절반 아래로 떨어지면 교체되는 특성 */
+const SWITCH_ABILITIES = new Set(['emergencyexit', 'wimpout'])
+
 const stripPrefix = (s: string | undefined) => (s ?? '').replace(/^(move|ability|item):\s*/, '')
 
 export class BattleEngine {
@@ -230,6 +235,9 @@ export class BattleEngine {
     private lastActive: Record<PlayerID, string[]> = { p1: [], p2: [] }
     private pendingHit = new Map<string, { crit?: boolean; eff?: number }>()
     private lastMove: { user: string; move: MoveData } | null = null
+    /** 턴 중 교체를 일으킨 아이템 (탈출버튼·탈출팩: 교체 줄에 [from] 이 없다) / 레드카드로 끌려 나올 쪽 */
+    private switchItem: Partial<Record<PlayerID, string>> = {}
+    private dragItem: Partial<Record<PlayerID, string>> = {}
     private unknownLines = new Map<string, number>()
     /** rotation: 여러 슬롯을 한꺼번에 채워야 하는 교체 요청에서 지금까지 고른 슬롯 → 포켓몬 */
     private switchPicks: Partial<Record<PlayerID, { req: unknown; picks: Map<number, string> }>> = {}
@@ -456,7 +464,10 @@ export class BattleEngine {
                 if (outPoke && outPoke !== p) this.reconcile(outPoke, 'switch-out')
                 if (p) this.reconcile(p, 'switch-in')
                 this.lastActive[player][slot] = inId
-                this.emit({ type: 'switch', player, out_id: out === inId ? '' : out, in_id: inId, forced: cmd === 'drag' || undefined })
+                const source = this.switchSourceOf(player, cmd, from, outPoke)
+                delete this.switchItem[player]
+                delete this.dragItem[player]
+                this.emit({ type: 'switch', player, out_id: out === inId ? '' : out, in_id: inId, forced: cmd === 'drag' || undefined, ...(source ? { source } : {}) })
                 return
             }
             case 'move': {
@@ -529,7 +540,8 @@ export class BattleEngine {
             }
             case '-curestatus': {
                 const sp = this.resolve(pos[0])
-                if (sp) this.lastStatus.set(this.idOf(sp), sp.status)
+                // 로그 줄이 상태를 지우기 전에 올 수 있다 (자연회복 등) → 줄 기준으로 '없음' 을 기록해 보정이 한 번 더 내지 않게
+                if (sp) this.lastStatus.set(this.idOf(sp), '')
                 this.emit({ type: 'status_remove', pokemon_id: this.idOf(sp), status: STATUS_FROM_PS[pos[1] ?? ''] ?? pos[1] ?? '' })
                 return
             }
@@ -577,7 +589,10 @@ export class BattleEngine {
                     const layers = (this.battle[player]?.sideConditions[id] as { layers?: number } | undefined)?.layers
                     this.emit({ type: 'side_start', player, condition: cond, layers })
                 } else {
-                    this.emit({ type: 'side_end', player, condition: cond })
+                    // 독타입이 독압정을 밟아 없앤 경우 [of] 로 그 포켓몬이 온다
+                    const of = kw.find(k => k.startsWith('[of]'))
+                    const by = of ? this.idOf(this.resolve(of.slice(4).trim())) : ''
+                    this.emit({ type: 'side_end', player, condition: cond, ...(by ? { pokemon_id: by } : {}) })
                 }
                 return
             }
@@ -660,9 +675,16 @@ export class BattleEngine {
             case '-item':
                 this.emit({ type: 'item_activate', pokemon_id: this.idOf(this.resolve(pos[0])), item: itemSlug(pos[1] ?? ''), effect: from ? effectSlug(from) : 'reveal' })
                 return
-            case '-enditem':
-                this.emit({ type: 'item_consume', pokemon_id: this.idOf(this.resolve(pos[0])), item: itemSlug(pos[1] ?? '') })
+            case '-enditem': {
+                const p = this.resolve(pos[0])
+                const item = itemSlug(pos[1] ?? '')
+                const of = kw.find(a => a.startsWith('[of]'))
+                const target = of ? this.resolve(of.slice(4).trim()) : undefined
+                if (p && SWITCH_ITEMS.has(item)) this.switchItem[p.side.id as PlayerID] = item
+                if (target && item === 'red-card') this.dragItem[target.side.id as PlayerID] = item
+                this.emit({ type: 'item_consume', pokemon_id: this.idOf(p), item, ...(target ? { target_id: this.idOf(target) } : {}) })
                 return
+            }
             case '-mega':
             case '-burst':
             case '-primal': {
@@ -713,9 +735,13 @@ export class BattleEngine {
             case '-hitcount':
                 this.emit({ type: 'hit_count', pokemon_id: this.idOf(this.resolve(pos[0])), hits: Number(pos[1] ?? 1) })
                 return
-            case '-prepare':
-                this.emit({ type: 'activate', pokemon_id: this.idOf(this.resolve(pos[0])), effect: 'charging', detail: toSlug(pos[1] ?? '') })
+            case '-prepare': {
+                // 2턴 기술의 준비 턴. 썰렁개그는 준비 문장이 따로 있다 (기를 모으는 게 아니다)
+                const move = moveSlug(stripPrefix(pos[1]))
+                if (move === 'chilly-reception') this.emit({ type: 'activate', pokemon_id: this.idOf(this.resolve(pos[0])), effect: move })
+                else this.emit({ type: 'activate', pokemon_id: this.idOf(this.resolve(pos[0])), effect: 'charging', detail: toSlug(pos[1] ?? '') })
                 return
+            }
             case '-ohko':
                 this.emit({ type: 'activate', effect: 'ohko' })
                 return
@@ -993,6 +1019,30 @@ export class BattleEngine {
         return { player, team, pick: Math.min(req.maxChosenTeamSize ?? team.length, team.length), raw: req }
     }
 
+    /** 교체 줄의 원인: [from] 기술(유턴 등) → 끌어낸 기술·레드카드 → 탈출버튼·탈출팩 → 위기회피·도망태세 */
+    private switchSourceOf(player: PlayerID, cmd: string, from: string | undefined, outPoke: PSPokemon | undefined): SwitchSource | undefined {
+        if (from) return { kind: 'move', id: moveSlug(effectSlug(from)) }
+        if (cmd === 'drag') {
+            const item = this.dragItem[player]
+            if (item) return { kind: 'item', id: item }
+            const m = this.lastMove && this.byId.get(this.lastMove.user)
+            if (m && m.side.id !== player && Dex.moves.get(toID(this.lastMove!.move.name)).forceSwitch) return { kind: 'move', id: this.lastMove!.move.name }
+            return undefined
+        }
+        if (cmd !== 'switch' || !outPoke || outPoke.fainted) return undefined
+        return this.pendingSwitchSource(player, outPoke)
+    }
+
+    /** 턴 중 교체 요청의 원인 (기절·일반 교체가 아닐 때) */
+    private pendingSwitchSource(player: PlayerID, poke: PSPokemon): SwitchSource | undefined {
+        const item = this.switchItem[player]
+        if (item) return { kind: 'item', id: item }
+        if (typeof poke.switchFlag === 'string' && poke.switchFlag) return { kind: 'move', id: moveSlug(poke.switchFlag) }
+        const ability = toID(poke.ability)
+        if (SWITCH_ABILITIES.has(ability)) return { kind: 'ability', id: abilitySlug(ability) }
+        return undefined
+    }
+
     /** 플레이어가 지금 내려야 할 결정 (singles / rotation). 필요 없으면 null. 팀 프리뷰는 getTeamPreview */
     getRequest(player: PlayerID): BattleRequest | null {
         this.start()
@@ -1014,7 +1064,9 @@ export class BattleEngine {
             const options = this.switchOptions(player, req).filter(p => !picked.has(p.id))
             const reviving = req.side?.pokemon?.some((p: { reviving?: boolean }) => p.reviving)
             const reason: SwitchReason = reviving ? 'revival_blessing' : active.fainted ? 'faint' : 'self_switch'
-            return { type: 'switch', player, reason, active, switches: options, raw: req }
+            const live = side.active[slot]
+            const source = reason === 'self_switch' && live ? this.pendingSwitchSource(player, live) : undefined
+            return { type: 'switch', player, reason, ...(source ? { source } : {}), active, switches: options, raw: req }
         }
 
         const live = side.active[front]

@@ -263,6 +263,10 @@ await preloadData({ gens: [8] })    // ${t('8세대 배틀 전에 (9세대는 �
           <>Showdown의 request를 엔진 형식으로 정리해서 돌려줍니다. 입력할 게 없으면 <C>null</C>. 그림자밟기 같은 숨은 교체 금지, 봉인 같은 숨은 사용 불가, 반동·모으기 턴의 기술 고정(<C>forced: true</C>)까지 실제 상태로 반영합니다.</>,
           <>Returns Showdown’s request in engine form, or <C>null</C> when there is nothing to choose. Hidden trapping (Shadow Tag), hidden disables (Imprison) and locked moves on recharge or charge turns (<C>forced: true</C>) come from live state.</>,
         )}</P>
+        <P>{t(
+          <>턴 중간 교체(<C>reason: 'self_switch'</C>)는 <C>source</C>에 원인이 붙습니다. 기술 <C>{"{ kind: 'move', id: 'u-turn' }"}</C>(배턴터치는 랭크, 꼬리자르기는 대타가 넘어감), 아이템 <C>'eject-button'</C>·<C>'eject-pack'</C>, 특성 <C>'emergency-exit'</C>·<C>'wimp-out'</C>. 교체할 수 있는지(<C>can_switch</C>)는 그림자밟기·개미지옥·자력·검은눈빛·조이기류·물고버티기·페어리록 같은 구속과 그 예외(고스트타입, 비행·부유·풍선, 탈출용껍질)를 Showdown 판정 그대로 따릅니다.</>,
+          <>A mid-turn switch (<C>reason: 'self_switch'</C>) names its cause in <C>source</C>: a move <C>{"{ kind: 'move', id: 'u-turn' }"}</C> (Baton Pass passes stat stages, Shed Tail a substitute), an item <C>'eject-button'</C> / <C>'eject-pack'</C>, or an ability <C>'emergency-exit'</C> / <C>'wimp-out'</C>. Whether you can switch (<C>can_switch</C>) follows Showdown’s trapping rules exactly: Shadow Tag, Arena Trap, Magnet Pull, Mean Look, binding moves, Jaw Lock, Fairy Lock, and their exceptions (Ghost types, Flying / Levitate / Air Balloon, Shed Shell).</>,
+        )}</P>
         <ApiRun id="request" />
 
         <H2>{t('행동 제출 — submitAction', 'Submitting — submitAction')}</H2>
@@ -325,13 +329,13 @@ await preloadData({ gens: [8] })    // ${t('8세대 배틀 전에 (9세대는 �
             [<C>turn_start / turn_end</C>, 'turn / turn, state (turnSnapshots)'],
             [<C>move_use / move_miss / move_fail</C>, 'pokemon_id, move, target_id / reason'],
             [<C>damage / heal</C>, t('pokemon_id, amount, source, hp_after, effectiveness? (0.25·0.5·1·2·4), crit?', 'pokemon_id, amount, source, hp_after, effectiveness? (0.25, 0.5, 1, 2, 4), crit?')],
-            [<C>switch / faint</C>, 'player, out_id, in_id, forced? / pokemon_id'],
+            [<C>switch / faint</C>, t("player, out_id, in_id, forced?, source? ({ kind: 'move' | 'item' | 'ability', id }) / pokemon_id", "player, out_id, in_id, forced?, source? ({ kind: 'move' | 'item' | 'ability', id }) / pokemon_id")],
             [<C>rotate</C>, t("player, direction ('left' | 'right'), in_id, out_id — 로테이션 배틀", "player, direction ('left' | 'right'), in_id, out_id — rotation battles")],
             [<C>status_apply / status_remove</C>, 'pokemon_id, status, source?'],
             [<C>volatile_apply / volatile_remove</C>, 'pokemon_id, volatile'],
             [<C>stat_change</C>, 'pokemon_id, stat, stages, actual?'],
             [<C>weather_change / terrain_change</C>, 'weather | terrain, source'],
-            [<C>side_start / side_end</C>, 'player, condition, layers?'],
+            [<C>side_start / side_end</C>, t('player, condition, layers? / pokemon_id? (독압정을 흡수한 독타입)', 'player, condition, layers? / pokemon_id? (the Poison type that absorbed Toxic Spikes)')],
             [<C>field_start / field_end</C>, 'condition (trick_room, gravity …)'],
             [<C>ability_trigger</C>, 'pokemon_id, ability, effect'],
             [<C>item_consume / item_activate</C>, 'pokemon_id, item, effect?'],

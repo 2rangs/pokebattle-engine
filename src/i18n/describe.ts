@@ -9,7 +9,12 @@ export const SHOWN_VOLATILES = new Set([
     'confusion', 'flinch', 'seeded', 'bound', 'infatuation', 'curse', 'aqua_ring', 'ingrain', 'magnet_rise', 'taunt',
     'encore', 'yawn', 'protect', 'kings_shield', 'spiky_shield', 'baneful_bunker', 'silk_trap', 'burning_bulwark',
     'obstruct', 'endure', 'focus_energy', 'substitute', 'salt_cure', 'flash_fire', 'heal_block', 'embargo', 'destiny_bond',
-    'future-sight', 'doom-desire', 'dynamax',
+    'future-sight', 'doom-desire', 'dynamax', 'octolock',
+])
+
+/** 조이기류 (상대를 몇 턴 묶어 두는 기술): 하나의 문장으로 */
+const PARTIAL_TRAP = new Set([
+    'bind', 'wrap', 'fire-spin', 'clamp', 'whirlpool', 'sand-tomb', 'magma-storm', 'infestation', 'snap-trap', 'thunder-cage',
 ])
 
 const PS_STATUS: Record<string, string> = { par: 'paralysis', slp: 'sleep', brn: 'burn', frz: 'freeze', psn: 'poison', tox: 'toxic' }
@@ -97,23 +102,38 @@ export function describeEvent(event: BattleEvent, ctx: FormatContext): Message[]
             return out
         }
         case 'side_end':
+            if (event.pokemon_id) return [m(['side.end.absorbed', 'side.end'], { side: { side: event.player }, pokemon: { pokemon: event.pokemon_id }, condition: { effect: event.condition } }, event.condition)]
             return [m('side.end', { side: { side: event.player }, condition: { effect: event.condition } }, event.condition)]
         case 'field_start':     return [m('field.start', { condition: { effect: event.condition } }, event.condition)]
         case 'field_end':       return [m('field.end', { condition: { effect: event.condition } }, event.condition)]
         case 'switch': {
             const params = { pokemon: { pokemon: event.in_id }, name: { name: event.in_id }, side: { side: event.player } }
             if (event.forced) return [m('switch.drag', params)]
-            const base = event.out_id ? 'switch.replace' : 'switch.in'
+            const out: Message[] = []
+            const src = event.source
+            // 유턴·배턴터치 등: "○○은(는) 돌아갔다!" 다음에 새 포켓몬. 탈출버튼·탈출팩은 아이템 문장이 이미 앞에 있다
+            if (src && event.out_id) {
+                if (src.kind === 'move') out.push(m(named ? ['switch.return.named', 'switch.return'] : 'switch.return', { pokemon: { pokemon: event.out_id }, side: { side: event.player } }))
+                if (src.kind === 'ability') out.push(m('ability', { pokemon: { pokemon: event.out_id }, ability: { ability: src.id } }))
+            }
+            // 기절한 포켓몬 자리를 채우는 교체는 "돌아와" 가 아니라 그냥 내보내기
+            const withdrew = !!event.out_id && !src && !ctx.getPokemon(event.out_id)?.fainted
+            const base = withdrew ? 'switch.replace' : 'switch.in'
             const keys = named ? [`${base}.named`, `${base}.${rel(event.player)}`] : `${base}.${rel(event.player)}`
-            return [m(keys, event.out_id ? { ...params, out: { pokemon: event.out_id } } : params)]
+            out.push(m(keys, base === 'switch.replace' ? { ...params, out: { pokemon: event.out_id }, outName: { name: event.out_id } } : params))
+            return out
         }
         case 'rotate': {
             const params = { side: { side: event.player }, direction: { term: 'direction' as const, key: event.direction }, pokemon: { pokemon: event.in_id } }
             return event.out_id ? [m('rotate.out', { ...params, out: { pokemon: event.out_id } })] : [m('rotate', params)]
         }
         case 'ability_trigger': return [m('ability', { pokemon: { pokemon: event.pokemon_id }, ability: { ability: event.ability } })]
-        case 'item_consume':    return [m('item.consume', { pokemon: { pokemon: event.pokemon_id }, item: { item: event.item } })]
-        case 'item_activate':   return [m('item.activate', { pokemon: { pokemon: event.pokemon_id }, item: { item: event.item } })]
+        case 'item_consume':
+            return [m(['item.consume.' + event.item, 'item.consume'], {
+                pokemon: { pokemon: event.pokemon_id }, item: { item: event.item },
+                ...(event.target_id ? { target: { pokemon: event.target_id } } : {}),
+            })]
+        case 'item_activate':   return [m(['item.activate.' + event.item, 'item.activate'], { pokemon: { pokemon: event.pokemon_id }, item: { item: event.item } })]
         case 'terastallize':    return [m('tera', { pokemon: { pokemon: event.pokemon_id }, type: { type: event.tera_type } })]
         case 'mega_evolve':     return [m('mega', { pokemon: { pokemon: event.pokemon_id }, ...(event.item ? { item: { item: event.item } } : {}) }, event.kind)]
         case 'hit_count':       return [m('hits', { count: event.hits })]
@@ -122,7 +142,8 @@ export function describeEvent(event: BattleEvent, ctx: FormatContext): Message[]
             if (event.pokemon_id) params.pokemon = { pokemon: event.pokemon_id }
             if (event.detail) params.detail = { effect: event.detail }
             // 효과별 문장이 없으면 일반 문장 (포켓몬이 없으면 보여주지 않음 — 일반 문장이 {pokemon} 을 요구)
-            return [m(['activate.' + event.effect, event.detail ? 'activate.detail' : 'activate'], params)]
+            const key = PARTIAL_TRAP.has(event.effect) ? 'activate.bound' : 'activate.' + event.effect
+            return [m([key, event.detail ? 'activate.detail' : 'activate'], params)]
         }
         case 'forme_change':
             // 메가진화·원시회귀·울트라버스트는 mega_evolve 문장이 따로 있다 (이벤트는 그대로 남는다)

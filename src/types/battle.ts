@@ -64,6 +64,17 @@ export type BattlePhase =
 
 export type SwitchReason = 'faint' | 'self_switch' | 'revival_blessing'
 
+/**
+ * 교체의 원인 (기술·아이템·특성). id 는 PokeAPI 슬러그.
+ * 예: { kind: 'move', id: 'u-turn' } · { kind: 'move', id: 'baton-pass' } (랭크·일부 상태가 넘어간다)
+ *     { kind: 'move', id: 'shed-tail' } (대타가 넘어간다) · { kind: 'item', id: 'eject-button' }
+ *     { kind: 'item', id: 'red-card' } (상대를 끌어낸다) · { kind: 'ability', id: 'emergency-exit' }
+ */
+export interface SwitchSource {
+  kind: 'move' | 'item' | 'ability'
+  id: string
+}
+
 // ─── 플레이어 행동 ────────────────────────────────────────────
 export type Action =
   | {
@@ -158,6 +169,8 @@ export type BattleRequest =
       type: 'switch'
       player: PlayerID
       reason: SwitchReason
+      /** reason 이 self_switch 일 때 무엇 때문에 교체하는지 (유턴·배턴터치·꼬리자르기·탈출버튼·탈출팩·위기회피 등) */
+      source?: SwitchSource
       active: BattlePokemon
       switches: BattlePokemon[]
       raw?: unknown
@@ -184,14 +197,17 @@ export type BattleEvent =
   | { type: 'weather_change'; weather: Weather; source: string }
   | { type: 'terrain_change'; terrain: Terrain; source: string }
   | { type: 'side_start';     player: PlayerID; condition: SideCondition; layers?: number }
-  | { type: 'side_end';       player: PlayerID; condition: SideCondition }
+  /** pokemon_id: 장판을 없앤 포켓몬 (독압정을 밟은 독타입) */
+  | { type: 'side_end';       player: PlayerID; condition: SideCondition; pokemon_id?: string }
   | { type: 'field_start';    condition: FieldCondition }
   | { type: 'field_end';      condition: FieldCondition }
-  | { type: 'switch';         player: PlayerID; out_id: string; in_id: string; forced?: boolean }
+  /** forced: 강제로 끌려 나옴 (날려버리기·드래곤테일·레드카드). source: 교체 원인 (기술·아이템·특성, 일반 교체·기절 후 교체는 없음) */
+  | { type: 'switch';         player: PlayerID; out_id: string; in_id: string; forced?: boolean; source?: SwitchSource }
   /** rotation: in_id 가 앞으로 나오고 out_id 가 그 자리(뒷줄)로 간다. 교체가 아니므로 랭크·상태 유지 */
   | { type: 'rotate';         player: PlayerID; direction: RotateDirection; in_id: string; out_id: string }
   | { type: 'ability_trigger';pokemon_id: string; ability: string; effect: string }
-  | { type: 'item_consume';   pokemon_id: string; item: string }
+  /** target_id: 아이템이 향한 상대 (레드카드) */
+  | { type: 'item_consume';   pokemon_id: string; item: string; target_id?: string }
   | { type: 'item_activate';  pokemon_id: string; item: string; effect: string }
   | { type: 'terastallize';   pokemon_id: string; tera_type: string }
   /** 메가진화·원시회귀·울트라버스트 (species = 바뀐 모습) */
