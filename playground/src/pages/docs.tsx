@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { Banner } from '@astryxdesign/core/Banner'
 import { ApiRun } from '../components/ApiRun'
 import { ApiTable, C, H2, H3, P, Snippet, Ul } from '../components/Prose'
+import { KpiRow, SpeedBars, DiffTable } from '../components/Compare'
 import type { Lang } from '../i18n'
 
 type T = <V>(ko: V, en: V) => V
@@ -116,6 +117,8 @@ await preloadData({ gens: [8] })    // ${t('8세대 배틀 전에 (9세대는 �
     ],
     body: t => (
       <>
+        <KpiRow />
+        <SpeedBars />
         <H2>{t('측정 결과', 'Results')}</H2>
         <P>{t(
           '같은 배틀(같은 시드·팀·선택)을 Showdown 시뮬레이터(@pkmn/sim)에 그대로 재생한 시간과 이 엔진으로 재생한 시간을 비교했습니다. 엔진 쪽 시간에는 엔진이 얹는 일(타입 있는 이벤트, 한국어 이름, 상태 정리)이 모두 들어 있습니다.',
@@ -165,16 +168,8 @@ await preloadData({ gens: [8] })    // ${t('8세대 배틀 전에 (9세대는 �
           'bench:compare: every measured battle’s log is compared with the original.',
           'check:dist: battles played by the published bundle are replayed on the original @pkmn/sim and compared (CI).',
         ])} />
-        <H2>{t('그 밖의 차이', 'Other differences')}</H2>
-        <ApiTable
-          head={t(['', 'Showdown 직접', '이 엔진'], ['', 'Showdown directly', 'This engine'])}
-          rows={[
-            [t('행동 입력', 'Actions'), t("선택 문자열 'move 1 2, switch 3'", "Choice strings 'move 1 2, switch 3'"), t('객체 + 제출 전 검증, 낼 수 있는 행동 목록', 'Objects, validated before submit, plus the list of legal actions')],
-            [t('결과', 'Output'), t('프로토콜 문자열 로그', 'Protocol string log'), t('타입 있는 이벤트 + 3개 언어 문장', 'Typed events + sentences in 3 languages')],
-            [t('앱 번들', 'App bundle'), t('8.7 MB + eval 경고', '8.7 MB + eval warning'), t('3.4 MB, 무거운 데이터는 필요할 때', '3.4 MB, heavy data on demand')],
-            [t('배틀 복제', 'Battle copy'), 'toJSON → fromJSON (~1 ms)', t('같음 (개선 예정)', 'Same (planned)')],
-          ]}
-        />
+        <H2>{t('차이 한눈에', 'Differences at a glance')}</H2>
+        <DiffTable />
       </>
     ),
   },

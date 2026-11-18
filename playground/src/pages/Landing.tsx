@@ -3,12 +3,11 @@ import { Button } from '@astryxdesign/core/Button'
 import { Heading } from '@astryxdesign/core/Heading'
 import { Text } from '@astryxdesign/core/Text'
 import { CodeBlock } from '@astryxdesign/core/CodeBlock'
-import { Badge } from '@astryxdesign/core/Badge'
 import { LogWindow } from '../components/ApiRun'
 import { Emblem } from '../components/Emblem'
 import { useLang } from '../i18n'
 import type { ExampleId } from '../examples'
-import { ApiTable } from '../components/Prose'
+import { KpiRow, SpeedBars, DiffTable } from '../components/Compare'
 
 const REPO = 'https://github.com/2rangs/pokebattle-engine'
 const INSTALL = 'npm install github:2rangs/pokebattle-engine'
@@ -34,18 +33,6 @@ export function Landing() {
     { n: '0', l: t('Showdown과 다른 로그 (바이트 단위)', 'log differences from Showdown (byte level)') },
     { n: 'Gen 1–9', l: t('세대별 배틀 · 랜덤배틀', 'battles and random battles') },
     { n: 'ko · en · ja', l: t('배틀 로그 언어', 'battle log languages') },
-  ]
-
-  const compare: { label: string; ours: boolean; raw: boolean }[] = [
-    { label: t('Showdown과 같은 판정', 'Showdown-accurate mechanics'), ours: true, raw: true },
-    { label: t('턴당 1.6~1.9배 빠름 (같은 결과)', '1.6–1.9× faster per turn (same results)'), ours: true, raw: false },
-    { label: t('앱 번들 3.4 MB, eval 경고 없음', '3.4 MB app bundle, no eval warning'), ours: true, raw: false },
-    { label: t('객체 입력 + 제출 전 검증', 'Object actions, validated before submit'), ours: true, raw: false },
-    { label: t('PokeAPI 슬러그·한국어 이름', 'PokeAPI slugs and Korean names'), ours: true, raw: false },
-    { label: t('타입 있는 이벤트 스트림', 'Typed event stream'), ours: true, raw: false },
-    { label: t('한국어·영어·일본어 배틀 로그', 'Korean, English and Japanese battle logs'), ours: true, raw: false },
-    { label: t('랜덤배틀 API · 터미널 CLI', 'Random battle API and a terminal CLI'), ours: true, raw: false },
-    { label: t('배틀 상태 기반 데미지 미리보기', 'Damage preview from live state'), ours: true, raw: false },
   ]
 
   const builtOn = ['Pokémon Showdown', '@pkmn/sim', '@smogon/calc', 'PokeAPI', 'TypeScript', 'React']
@@ -142,15 +129,8 @@ export function Landing() {
           )}
           action={<Button label={t('측정 방법', 'Methodology')} size="sm" variant="secondary" href="#/docs/performance" />}
         />
-        <ApiTable
-          head={t(['형식', 'Showdown 직접', '이 엔진', '속도'], ['Format', 'Showdown directly', 'This engine', 'Speedup'])}
-          rows={[
-            [t('싱글', 'Singles'), '1.001 ms/turn', '0.622 ms/turn', <b>1.61×</b>],
-            [t('더블', 'Doubles'), '3.520 ms/turn', '1.893 ms/turn', <b>1.86×</b>],
-            [t('트리플', 'Triples'), '5.710 ms/turn', '3.133 ms/turn', <b>1.82×</b>],
-            [t('앱 번들 (배틀 페이지)', 'App bundle (battle page)'), '8.7 MB', '3.4 MB', <b>−61%</b>],
-          ]}
-        />
+        <KpiRow />
+        <SpeedBars />
         <Text as="p" display="block" type="supporting">
           {t('Node 22, 형식마다 60판, 최고 기록. npm run bench:compare 로 직접 재현할 수 있고, 성능 문서에서 이 브라우저로도 재 볼 수 있습니다.', 'Node 22, 60 battles per format, best run. Reproduce with npm run bench:compare, or measure in this browser on the performance page.')}
         </Text>
@@ -159,19 +139,10 @@ export function Landing() {
       {/* ─── Comparison ───────────────────────────────────── */}
       <section className="band wrap">
         <SectionHead
-          title={<>{t('시뮬레이터를', 'The engine against')}<br />{t('직접 쓸 때와 비교', 'the raw simulator')}</>}
+          title={<>{t('시뮬레이터를 직접 쓸 때와', 'The engine against')}<br />{t('수치로 비교', 'the raw simulator, in numbers')}</>}
           action={<Button label={t('가이드 읽기', 'Read the guide')} size="sm" variant="secondary" href="#/docs/engine" />}
         />
-        <div className="compare">
-          <div className="compare-card is-ours">
-            <div className="compare-h">pokebattle-engine <Badge label={t('이 엔진', 'Ours')} variant="blue" /></div>
-            <ul>{compare.map(r => <li key={r.label}><Mark on={r.ours} />{r.label}</li>)}</ul>
-          </div>
-          <div className="compare-card">
-            <div className="compare-h">{t('@pkmn/sim 직접 사용', '@pkmn/sim directly')}</div>
-            <ul>{compare.map(r => <li key={r.label} className={r.raw ? '' : 'is-off'}><Mark on={r.raw} />{r.label}</li>)}</ul>
-          </div>
-        </div>
+        <DiffTable />
         <Text as="p" display="block" type="supporting">
           {t('엔진 아래의 Showdown Battle 객체는 engine.battle 로 그대로 열려 있습니다.', 'The Showdown Battle underneath stays reachable as engine.battle.')}
         </Text>
@@ -265,10 +236,4 @@ export function Landing() {
       </section>
     </div>
   )
-}
-
-function Mark({ on }: { on: boolean }) {
-  return on
-    ? <svg className="mk on" width="16" height="16" viewBox="0 0 16 16" aria-label="yes"><path d="M3.5 8.5l3 3 6-7" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
-    : <svg className="mk" width="16" height="16" viewBox="0 0 16 16" aria-label="no"><path d="M4 8h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
 }
