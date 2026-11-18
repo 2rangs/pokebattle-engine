@@ -223,6 +223,7 @@ The full 10 million battles run in parallel shards on GitHub Actions ("Fuzz (sha
 npx pokebattle play  --lang en              # you vs the AI (random-battle teams)
 npx pokebattle play  --team my.txt --foe cpu.json --level 50
 npx pokebattle watch --lang ja --seed 42    # AI vs AI battle log
+npx pokebattle watch --level 50             # every Pokémon at level 50 (random teams default to balanced levels 70–100)
 npx pokebattle watch --json                 # JSON Lines: every engine event + its "text"
 npx pokebattle sim   --battles 500 --vs heuristic --json
 ```

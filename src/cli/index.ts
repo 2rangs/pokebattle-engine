@@ -22,6 +22,8 @@ const opt = (name: string, def?: string) => {
 const lang = opt('lang', process.env.POKEBATTLE_LANG ?? 'ko')!
 const seed = Number(opt('seed', String(Math.floor(Math.random() * 1e9))))
 const json = flag('json')
+/** --level 50 / 100 … 모든 포켓몬 레벨 고정 (없으면 팀 그대로, 랜덤배틀 팀은 밸런스 레벨 70~100) */
+const level = () => (opt('level') ? Number(opt('level')) : undefined)
 const color = process.stdout.isTTY && !json && !process.env.NO_COLOR
 
 // ─── 화면 문구 (로그 문장은 엔진 로케일, 여기는 CLI 자체 문구만) ──
@@ -53,11 +55,12 @@ const pad = (s: string, n: number) => s + ' '.repeat(Math.max(0, n - width(s)))
 const HELP = `pokebattle — Pokémon Showdown-accurate battles from the terminal
 
   pokebattle play   [--team FILE] [--foe FILE] [--level N]   play against the AI
-  pokebattle watch  [--format singles|rotation]              AI vs AI, battle log
+  pokebattle watch  [--format singles|rotation] [--level N]  AI vs AI, battle log
   pokebattle sim    [--battles N] [--vs random|heuristic]    many AI battles, stats
 
   --lang ko|en|ja   log language (default ko, or POKEBATTLE_LANG)
   --seed N          same seed + same choices = same battle
+  --level N         set every Pokémon to level N (e.g. 50 or 100); random teams default to balanced levels
   --json            JSON Lines: every engine event (+ "text") / sim result
 
   Team files: Showdown export text, or JSON (PokemonSet[] or { "pokemons": [...] }).
@@ -116,11 +119,11 @@ function result(engine: BattleEngine): string {
 // ─── play: 사람 vs AI ─────────────────────────────────────────
 async function play(): Promise<void> {
     const rng = new PRNG(seed)
-    const level = opt('level') ? Number(opt('level')) : undefined
+    const lv = level()
     const engine = new BattleEngine({
         format: 'singles', seed,
-        p1: { name: t('you'), team: readTeam(opt('team'), rng, level) },
-        p2: { name: 'AI', team: readTeam(opt('foe'), rng, level) },
+        p1: { name: t('you'), team: readTeam(opt('team'), rng, lv) },
+        p2: { name: 'AI', team: readTeam(opt('foe'), rng, lv) },
     })
     const fmt = createFormatter({ locale: lang, getPokemon: id => engine.getPokemon(id) })
     attachLog(engine, fmt)
@@ -184,8 +187,8 @@ function watch(): void {
     const format = (opt('format', 'singles') as BattleFormat)
     const engine = new BattleEngine({
         format, seed,
-        p1: { name: 'AI-1', team: readTeam(opt('team'), rng) },
-        p2: { name: 'AI-2', team: readTeam(opt('foe'), rng) },
+        p1: { name: 'AI-1', team: readTeam(opt('team'), rng, level()) },
+        p2: { name: 'AI-2', team: readTeam(opt('foe'), rng, level()) },
     })
     attachLog(engine, createFormatter({ locale: lang, getPokemon: id => engine.getPokemon(id) }))
     if (!json) console.log(paint('90', `${t('seed')}: ${seed}`))

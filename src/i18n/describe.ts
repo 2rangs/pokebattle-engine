@@ -50,7 +50,8 @@ export function describeEvent(event: BattleEvent, ctx: FormatContext): Message[]
                 return [...(event.crit ? [m('damage.crit')] : []), m('damage.substitute', { pokemon })]
             }
             const max = ctx.getPokemon(event.pokemon_id)?.max_hp ?? 0
-            const params = { pokemon, amount: event.amount, percent: max ? Math.round(event.amount / max * 100) : 0 }
+            const after = event.hp_after ?? ctx.getPokemon(event.pokemon_id)?.hp ?? 0
+            const params = { pokemon, amount: event.amount, percent: max ? Math.round(event.amount / max * 100) : 0, hp: after, max_hp: max }
             const out: Message[] = []
             if (event.crit) out.push(m('damage.crit'))
             const eff = event.effectiveness
