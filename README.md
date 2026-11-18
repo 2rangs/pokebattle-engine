@@ -216,6 +216,7 @@ calculateDamage(
   { weather: 'sandstorm', reflect: false, isCrit: false },
 )
 // → { range: [180, …, 212], min: 180, max: 212, minPercent: 110.4, maxPercent: 130.1, koText: '확정 1타', desc: '252 Atk Garchomp Earthquake vs. …' }
+formatKO(r, 'en')   // 'guaranteed OHKO' (koText is Korean; formatKO takes 'ko' | 'en' | 'ja')
 ```
 
 ### Data

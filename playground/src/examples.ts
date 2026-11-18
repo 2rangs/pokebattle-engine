@@ -5,6 +5,7 @@ import {
   HeuristicAI,
   RandomAI,
   calculateDamage,
+  formatKO,
   formatEvent,
   generateRandomTeam,
   getMove,
@@ -24,16 +25,27 @@ import type { BattleEvent, PokemonSet } from './engine'
 export type Logger = (line: string, kind?: LogKind) => void
 export type LogKind = 'out' | 'info' | 'json' | 'error' | 'dim'
 
+export type DocLang = 'ko' | 'en'
+
 export interface Example {
   /** 보여줄 소스. 주석은 L(ko, en) 표시로 두 언어를 담고, localizeCode 로 고른다 */
   code: string
-  run: (log: Logger) => void
+  /** lang: 문서 언어 (배틀 로그를 그 언어로 낸다) */
+  run: (log: Logger, lang: DocLang) => void
+}
+
+/** 배틀 로그 한 줄 (문서 언어, 배틀마다 포매터 하나) */
+const formatters = new WeakMap<BattleEngine, ReturnType<typeof createFormatter>>()
+function say(engine: BattleEngine, lang: DocLang, ev: BattleEvent): string | null {
+  let f = formatters.get(engine)
+  if (!f) { f = createFormatter({ locale: lang, getPokemon: id => engine.getPokemon(id) }); formatters.set(engine, f) }
+  return f.format(ev)
 }
 
 // 예제 코드 주석의 두 언어 (화면에서 고른다)
 const L = (ko: string, en: string) => `⟪${ko}‖${en}⟫`
 /** 예제 코드에서 현재 언어의 주석만 남긴다 */
-export const localizeCode = (code: string, lang: 'ko' | 'en') =>
+export const localizeCode = (code: string, lang: DocLang) =>
   code.replace(/⟪([^‖]*)‖([^⟫]*)⟫/g, (_, ko: string, en: string) => (lang === 'ko' ? ko : en))
 
 const SHOWDOWN_TEAM = `Garchomp @ Choice Scarf
@@ -65,7 +77,7 @@ function teamA(): PokemonSet[] {
 
 export const examples = {
   quickstart: {
-    code: `import { BattleEngine, HeuristicAI, formatEvent, generateRandomTeam } from '@kyasi/pokebattle-engine'
+    code: `import { BattleEngine, HeuristicAI, createFormatter, generateRandomTeam } from '@kyasi/pokebattle-engine'
 
 const engine = new BattleEngine({
   format: 'singles',
@@ -74,8 +86,9 @@ const engine = new BattleEngine({
   p2: { name: 'CPU', team: generateRandomTeam({ seed: 2, size: 3, level: 50 }) },
 })
 
+const log = createFormatter({ locale: ${L("'ko'", "'en'")}, getPokemon: id => engine.getPokemon(id) })
 engine.on('*', ev => {
-  const line = formatEvent(ev, { getPokemon: id => engine.getPokemon(id) })
+  const line = log.format(ev)
   if (line) console.log(line)
 })
 
@@ -86,7 +99,7 @@ while (engine.phase !== 'ended') {
   }
 }
 console.log('winner:', engine.winner)`,
-    run(log) {
+    run(log, lang) {
       const engine = new BattleEngine({
         format: 'singles',
         seed: 42,
@@ -94,7 +107,7 @@ console.log('winner:', engine.winner)`,
         p2: { name: 'CPU', team: generateRandomTeam({ seed: 2, size: 3, level: 50 }) },
       })
       engine.on('*', ev => {
-        const line = formatEvent(ev, { getPokemon: id => engine.getPokemon(id) })
+        const line = say(engine, lang, ev)
         if (line) log(line, ev.type === 'turn_start' ? 'info' : 'out')
       })
       const ai = { p1: new HeuristicAI({ seed: 1 }), p2: new HeuristicAI({ seed: 2 }) }
@@ -172,11 +185,11 @@ engine.submitAction({ type: 'switch', player: 'p2', pokemon_id: 'p2_0', switch_t
 const s = engine.getState()
 console.log('turn', s.turn, 'phase', s.phase)
 for (const p of engine.allActive()) console.log(p.id, p.species, \`\${p.hp}/\${p.max_hp}\`, p.terastallized ? 'tera:' + p.tera_type : '')`,
-    run(log) {
+    run(log, lang) {
       const team = teamA()
       const engine = new BattleEngine({ format: 'singles', seed: 1, p1: { name: 'A', team }, p2: { name: 'B', team } })
       engine.on('*', ev => {
-        const line = formatEvent(ev, { getPokemon: id => engine.getPokemon(id) })
+        const line = say(engine, lang, ev)
         if (line) log(line, 'dim')
       })
       const req = engine.getRequest('p1')!
@@ -296,16 +309,16 @@ describeEvent(damageEvent, { getPokemon: id => engine.getPokemon(id) })`,
 
 await preloadData()                                   // ${L('랜덤배틀 세트 (필요할 때 불러온다)', 'random battle sets (loaded on demand)')}
 const engine = createRandomBattle({ seed: 7, level: 50 })   // ${L('\'balanced\' (기본) | 50 | 100 …', '\'balanced\' (default) | 50 | 100 …')}
-const log = createFormatter({ locale: 'ko', getPokemon: id => engine.getPokemon(id) })
+const log = createFormatter({ locale: ${L("'ko'", "'en'")}, getPokemon: id => engine.getPokemon(id) })
 engine.on('*', ev => { const line = log.format(ev); if (line) console.log(line) })
 
 const ai = { p1: new HeuristicAI({ seed: 1 }), p2: new HeuristicAI({ seed: 2 }) }
 while (!engine.battle.ended) {
   for (const p of ['p1', 'p2'] as const) if (engine.getRequest(p)) engine.submitAction(ai[p].chooseAction(engine, p)!)
 }`,
-    run(log) {
+    run(log, lang) {
       const engine = createRandomBattle({ seed: 7, level: 50, engine: { turnSnapshots: false } })
-      const f = createFormatter({ locale: 'ko', getPokemon: id => engine.getPokemon(id) })
+      const f = createFormatter({ locale: lang, getPokemon: id => engine.getPokemon(id) })
       engine.on('*', ev => { const line = f.format(ev); if (line) log(line, ev.type === 'turn_start' ? 'info' : 'out') })
       const ai = { p1: new HeuristicAI({ seed: 1 }), p2: new HeuristicAI({ seed: 2 }) }
       engine.start()
@@ -326,7 +339,7 @@ const engine = createMetronomeBattle({
   p2: { team: 'random' },                               // ${L('랜덤 (시드로 재현)', 'random (reproducible from the seed)')}
   teamSize: 2,
 })
-const log = createFormatter({ locale: 'ko', getPokemon: id => engine.getPokemon(id) })
+const log = createFormatter({ locale: ${L("'ko'", "'en'")}, getPokemon: id => engine.getPokemon(id) })
 engine.on('*', ev => { const line = log.format(ev); if (line) console.log(line) })
 engine.start()
 console.log(engine.getPokemon('p1_1')!.stats)            // { hp: 999, attack: 400, …, speed: 1 }
@@ -335,14 +348,14 @@ const ai = { p1: new HeuristicAI({ seed: 1 }), p2: new HeuristicAI({ seed: 2 }) 
 while (!engine.battle.ended) {
   for (const p of ['p1', 'p2'] as const) if (engine.getRequest(p)) engine.submitAction(ai[p].chooseAction(engine, p)!)
 }`,
-    run(log) {
+    run(log, lang) {
       const engine = createMetronomeBattle({
         seed: 3, level: 50, stats: { hp: 999 }, teamSize: 2,
         p1: { team: ['pikachu', { species: 'snorlax', stats: { attack: 400, speed: 1 } }] },
         p2: { team: 'random' },
         engine: { turnSnapshots: false },
       })
-      const f = createFormatter({ locale: 'ko', getPokemon: id => engine.getPokemon(id) })
+      const f = createFormatter({ locale: lang, getPokemon: id => engine.getPokemon(id) })
       engine.on('*', ev => { const line = f.format(ev); if (line) log(line, ev.type === 'turn_start' ? 'info' : 'out') })
       engine.start()
       log(json(engine.getPokemon('p1_1')!.stats), 'json')
@@ -373,13 +386,13 @@ await preloadData({ gens: [7] })          // ${L('1~8세대 데이터는 필요�
 const engine = new BattleEngine({ format: 'singles', gen: 7, seed: 1, p1, p2 })
 engine.getRequest('p1')                   // { can_mega_evolve: true, … }
 engine.submitAction({ type: 'move', player: 'p1', pokemon_id: 'p1_0', move_index: 0, mega: true })`,
-    run(log) {
+    run(log, lang) {
       const engine = new BattleEngine({
         format: 'singles', gen: 7, seed: 1,
         p1: { name: 'A', team: [{ species: 'charizard', item: 'charizardite-x', ability: 'blaze', moves: ['flare-blitz', 'dragon-claw'], level: 100 }] as unknown as PokemonSet[] },
         p2: { name: 'B', team: [{ species: 'mewtwo', item: 'mewtwonite-y', ability: 'pressure', moves: ['psystrike'], level: 100 }] as unknown as PokemonSet[] },
       })
-      const f = createFormatter({ locale: 'ko', getPokemon: id => engine.getPokemon(id) })
+      const f = createFormatter({ locale: lang, getPokemon: id => engine.getPokemon(id) })
       engine.on('*', ev => { const line = f.format(ev); if (line) log(line) })
       const req = engine.getRequest('p1')
       if (req?.type === 'move') log(JSON.stringify({ can_mega_evolve: req.can_mega_evolve, can_terastallize: req.can_terastallize }), 'json')
@@ -431,7 +444,7 @@ for (const fast of [false, true]) {
   },
 
   damage: {
-    code: `import { calculateDamage } from '@kyasi/pokebattle-engine'
+    code: `import { calculateDamage, formatKO } from '@kyasi/pokebattle-engine'
 
 const r = calculateDamage(
   { species: 'garchomp', level: 50, nature: 'jolly', evs: { attack: 252, speed: 252 } },
@@ -441,8 +454,8 @@ const r = calculateDamage(
 )
 console.log(r.desc)
 console.log(r.range.join(' '))
-console.log(\`\${r.minPercent}% – \${r.maxPercent}%  \${r.koText}\`)`,
-    run(log) {
+console.log(\`\${r.minPercent}% – \${r.maxPercent}%  \${formatKO(r, ${L("'ko'", "'en'")})}\`)`,
+    run(log, lang) {
       const r = calculateDamage(
         { species: 'garchomp', level: 50, nature: 'jolly', evs: { attack: 252, speed: 252 } },
         { species: 'gholdengo', level: 50, evs: { hp: 4 } },
@@ -451,7 +464,7 @@ console.log(\`\${r.minPercent}% – \${r.maxPercent}%  \${r.koText}\`)`,
       )
       log(r.desc)
       log(r.range.join(' '))
-      log(`${r.minPercent}% – ${r.maxPercent}%  ${r.koText}`, 'info')
+      log(`${r.minPercent}% – ${r.maxPercent}%  ${formatKO(r, lang)}`, 'info')
     },
   },
 
@@ -462,19 +475,19 @@ const def = { species: 'kingambit', level: 50, evs: { hp: 252, defense: 4 } }
 
 for (const field of [{}, { reflect: true }, { isCrit: true }]) {
   const r = calculateDamage(atk, def, 'extreme-speed', field)
-  console.log(JSON.stringify(field).padEnd(18), \`\${r.min}-\${r.max} (\${r.minPercent}-\${r.maxPercent}%)\`, r.koText)
+  console.log(JSON.stringify(field).padEnd(18), \`\${r.min}-\${r.max} (\${r.minPercent}-\${r.maxPercent}%)\`, formatKO(r, ${L("'ko'", "'en'")}))
 }
 const tera = calculateDamage({ ...atk, teraType: 'normal', terastallized: true }, def, 'extreme-speed')
-console.log('tera normal'.padEnd(18), \`\${tera.min}-\${tera.max}\`, tera.koText)`,
-    run(log) {
+console.log('tera normal'.padEnd(18), \`\${tera.min}-\${tera.max}\`, formatKO(tera, ${L("'ko'", "'en'")}))`,
+    run(log, lang) {
       const atk = { species: 'dragonite', level: 50, nature: 'adamant', item: 'choice-band', ability: 'multiscale', evs: { attack: 252 } }
       const def = { species: 'kingambit', level: 50, evs: { hp: 252, defense: 4 } }
       for (const field of [{}, { reflect: true }, { isCrit: true }]) {
         const r = calculateDamage(atk, def, 'extreme-speed', field)
-        log(`${JSON.stringify(field).padEnd(18)} ${r.min}-${r.max} (${r.minPercent}-${r.maxPercent}%) ${r.koText}`)
+        log(`${JSON.stringify(field).padEnd(18)} ${r.min}-${r.max} (${r.minPercent}-${r.maxPercent}%) ${formatKO(r, lang)}`)
       }
       const tera = calculateDamage({ ...atk, teraType: 'normal', terastallized: true }, def, 'extreme-speed')
-      log(`${'tera normal'.padEnd(18)} ${tera.min}-${tera.max} ${tera.koText}`)
+      log(`${'tera normal'.padEnd(18)} ${tera.min}-${tera.max} ${formatKO(tera, lang)}`)
     },
   },
 
@@ -482,16 +495,16 @@ console.log('tera normal'.padEnd(18), \`\${tera.min}-\${tera.max}\`, tera.koText
     code: `const req = engine.getRequest('p1')!
 for (const m of req.moves) {
   const r = engine.previewDamage('p1', m.index)
-  console.log(m.move.name.padEnd(14), r ? \`\${r.minPercent}-\${r.maxPercent}% \${r.koText}\` : '(변화기)')
+  console.log(m.move.name.padEnd(14), r ? \`\${r.minPercent}-\${r.maxPercent}% \${formatKO(r, ${L("'ko'", "'en'")})}\` : ${L("'(변화기)'", "'(status)'")})
 }`,
-    run(log) {
+    run(log, lang) {
       const team = teamA()
       const engine = new BattleEngine({ format: 'singles', seed: 1, p1: { name: 'A', team }, p2: { name: 'B', team: [team[1]!, team[0]!] } })
       const req = engine.getRequest('p1')!
       if (req.type !== 'move') return
       for (const m of req.moves) {
         const r = engine.previewDamage('p1', m.index)
-        log(`${m.move.name.padEnd(14)} ${r ? `${r.minPercent}-${r.maxPercent}% ${r.koText}` : '(변화기)'}`)
+        log(`${m.move.name.padEnd(14)} ${r ? `${r.minPercent}-${r.maxPercent}% ${formatKO(r, lang)}` : lang === 'ko' ? '(변화기)' : '(status)'}`)
       }
     },
   },
@@ -566,14 +579,14 @@ const choose = (player: 'p1' | 'p2', foe: number) =>
 
 engine.submitChoice('p1', choose('p1', 1))   // ${L('예: \'move 2 1, move 1 1\'', 'e.g. \'move 2 1, move 1 1\'')}
 engine.submitChoice('p2', choose('p2', 2))`,
-    run(log) {
+    run(log, lang) {
       const engine = new BattleEngine({
         format: 'doubles', seed: 5,
         p1: { name: 'A', team: generateRandomTeam({ seed: 1, format: 'gen9randomdoublesbattle', size: 4 }) },
         p2: { name: 'B', team: generateRandomTeam({ seed: 2, format: 'gen9randomdoublesbattle', size: 4 }) },
       })
       engine.on('*', ev => {
-        const line = formatEvent(ev, { getPokemon: id => engine.getPokemon(id) })
+        const line = say(engine, lang, ev)
         if (line) log(line, ev.type === 'turn_start' ? 'info' : 'out')
       })
       engine.start()
@@ -602,14 +615,14 @@ engine.submitChoice('p2', choose('p2', 2))`,
 console.log(engine.getActivePokemon('p1').map(p => p.species))  // ${L('편마다 3칸', '3 slots per side')}
 engine.submitChoice('p1', 'default')   // ${L('또는 예: \'move 1 2, move 1 1, move 2 3\'', 'or e.g. \'move 1 2, move 1 1, move 2 3\'')}
 engine.submitChoice('p2', 'default')`,
-    run(log) {
+    run(log, lang) {
       const engine = new BattleEngine({
         format: 'triples', seed: 9,
         p1: { name: 'A', team: generateRandomTeam({ seed: 3, format: 'gen9randomdoublesbattle', size: 4, level: 50 }) },
         p2: { name: 'B', team: generateRandomTeam({ seed: 4, format: 'gen9randomdoublesbattle', size: 4, level: 50 }) },
       })
       engine.on('*', ev => {
-        const line = formatEvent(ev, { getPokemon: id => engine.getPokemon(id) })
+        const line = say(engine, lang, ev)
         if (line) log(line, ev.type === 'turn_start' ? 'info' : 'out')
       })
       engine.start()
@@ -631,14 +644,14 @@ if (req.type === 'move') {
   engine.submitAction({ type: 'move', player: 'p1', pokemon_id: left.pokemon.id, move_index: 0, rotate: 'left' })
 }
 engine.submitAction(engine.getAvailableActions('p2')[0]!)`,
-    run(log) {
+    run(log, lang) {
       const engine = new BattleEngine({
         format: 'rotation', seed: 11,
         p1: { name: 'A', team: generateRandomTeam({ seed: 7, size: 4, level: 50 }) },
         p2: { name: 'B', team: generateRandomTeam({ seed: 8, size: 4, level: 50 }) },
       })
       engine.on('*', ev => {
-        const line = formatEvent(ev, { getPokemon: id => engine.getPokemon(id) })
+        const line = say(engine, lang, ev)
         if (line) log(line, ev.type === 'turn_start' ? 'info' : 'out')
       })
       const req = engine.getRequest('p1')!

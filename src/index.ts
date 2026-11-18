@@ -21,7 +21,7 @@ export {
 export { toShowdownSet, fromShowdownSet, SetError } from './showdown/sets'
 
 // 계산기
-export { calculateDamage, toCalcPokemon, toCalcField } from './calc/damage'
+export { calculateDamage, formatKO, toCalcPokemon, toCalcField } from './calc/damage'
 export type { CalcPokemonInput, CalcFieldInput, DamageResult } from './calc/damage'
 export {
     calcHP, calcBaseStat, calcAllStats, getNatureMultiplier, applyStage, createInitialStages, STAT_KEYS, NATURE_TABLE,

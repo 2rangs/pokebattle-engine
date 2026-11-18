@@ -133,3 +133,15 @@ describe('로그·이벤트 버그 회귀', () => {
         }
     })
 })
+
+describe('formatKO: 데미지 KO 문구 언어별', async () => {
+    const { formatKO } = await import('../../index')
+    it('확정·난수, 1타는 OHKO', () => {
+        expect(formatKO({ koChance: 1, koHits: 1 }, 'en')).toBe('guaranteed OHKO')
+        expect(formatKO({ koChance: 0.438, koHits: 2 }, 'en')).toBe('43.8% chance to 2HKO')
+        expect(formatKO({ koChance: 1, koHits: 2 }, 'ko')).toBe('확정 2타')
+        expect(formatKO({ koChance: 0.438, koHits: 2 })).toBe('난수 2타 (43.8%)')
+        expect(formatKO({ koChance: 1, koHits: 3 }, 'ja')).toBe('確定3発')
+        expect(formatKO({ koChance: 0, koHits: 0 }, 'en')).toBe('')
+    })
+})
