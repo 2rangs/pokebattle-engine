@@ -16,6 +16,8 @@ jobs:
       - run: npm ci
       - run: npm run type-check
       - run: npx vitest run
+      - name: Bundle matches original @pkmn/sim (slim build)
+        run: npx tsx scripts/check-dist.ts --battles 150
       - name: Fuzz smoke test (10,000 battles)
         run: node scripts/fuzz.ts --battles 10000 --workers 4 --out fuzz-report.json
       - uses: actions/upload-artifact@v4

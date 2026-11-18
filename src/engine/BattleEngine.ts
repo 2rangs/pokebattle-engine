@@ -7,6 +7,7 @@
 import { Battle, Dex, TeamValidator, toID } from '@pkmn/sim'
 import type { Pokemon as PSPokemon, Side as PSSide } from '@pkmn/sim'
 import type {
+    Generation,
     Action, BattleConfig, BattleEvent, BattleEventType, BattleFormat, BattleRequest, BattleRuleOptions, BattleState,
     CantMoveReason, MoveOption, PlayerID, RotateDirection, RotateOption, Side, SwitchReason, TeamPreviewRequest,
 } from '../types/battle'
@@ -14,10 +15,12 @@ import type { BattlePokemon, PokemonSet, StatStages } from '../types/pokemon'
 import type { FieldCondition, PrimaryStatus, SideCondition, Terrain, Weather } from '../types/effect'
 import type { MoveData, MoveSlot } from '../types/move'
 import { toShowdownSet } from '../showdown/sets'
+import { genLoaded } from '../data/lazy'
 import { getMove, speciesSlug, abilitySlug, itemSlug, moveSlug, STAT_FROM_PS } from '../data/dex'
 import { speciesToShowdown, toSlug } from '../showdown/ids'
 import { PRNG } from '../utils/rng'
 import { calculateDamage, type CalcPokemonInput, type DamageResult } from '../calc/damage'
+import { enableFastPath } from './fastpath'
 import { FOE_FRONT_LOC, FRONT, frontLocked, installRotationPatches } from './rotation'
 
 type AnyEventListener = (event: BattleEvent) => void
@@ -25,6 +28,11 @@ type AnyEventListener = (event: BattleEvent) => void
 export interface EngineOptions {
     /** turn_end 이벤트에 상태 스냅샷 포함 (기본 true). 대량 시뮬레이션은 false 권장 */
     turnSnapshots?: boolean
+    /**
+     * Showdown 핫패스 패치 사용 (기본 true). 결과(프로토콜 로그)는 원본과 같고 더 빠르다.
+     * false 면 Showdown 원본 경로 그대로 — 동작이 의심될 때 대조용 (src/engine/fastpath.ts)
+     */
+    fast?: boolean
 }
 
 export class BattleError extends Error {
@@ -64,6 +72,7 @@ const VOLATILE_FROM_PS: Record<string, string> = {
     substitute: 'substitute', protosynthesis: 'paradox_boost', quarkdrive: 'paradox_boost', slowstart: 'slow_start',
     unburden: 'unburden', flashfire: 'flash_fire', roost: 'roost', saltcure: 'salt_cure', destinybond: 'destiny_bond',
     stockpile: 'stockpile', charge: 'charge', minimize: 'minimize', defensecurl: 'defense_curl', telekinesis: 'telekinesis',
+    dynamax: 'dynamax',
 }
 const CANT_FROM_PS: Record<string, CantMoveReason> = {
     par: 'paralysis', slp: 'sleep', frz: 'freeze', flinch: 'flinch', recharge: 'recharge', mustrecharge: 'recharge',
@@ -78,8 +87,8 @@ const IGNORED = new Set([
     't:', 'gametype', 'player', 'gen', 'tier', 'rule', 'start', 'upkeep', '', 'teamsize', 'clearpoke', 'poke',
     'teampreview', 'j', 'l', 'title', 'inactive', 'inactiveoff', 'debug', 'error', 'bigerror', 'request', 'sentchoice',
     'done', 'html', 'uhtml', 'raw', 'seed', 'variation', 'timestamp', 'chat', 'c', 'updatepoke', 'chatmsg',
-    'chatmsg-raw', '-mustrecharge', '-anim', '-hint', '-center', '-combine', '-waiting', '-zpower', '-zbroken',
-    '-primal', '-burst', '-mega', '-candynamax', '-clearpoke', 'askreg', 'uhtmlchange', 'bigerror',
+    'chatmsg-raw', '-mustrecharge', '-anim', '-hint', '-center', '-combine', '-waiting', '-candynamax', '-clearpoke',
+    'askreg', 'uhtmlchange', 'bigerror',
 ])
 
 const SIDES: PlayerID[] = ['p1', 'p2']
@@ -90,14 +99,26 @@ export const ACTIVE_PER_SIDE: Record<BattleFormat, number> = { singles: 1, doubl
 /** rotation: 방향 → 돌아 들어오는 뒷줄 슬롯 */
 const ROTATE_SLOT: Record<RotateDirection, number> = { left: 0, right: 2 }
 
-// 형식별 Showdown 기본 포맷과, 그 포맷의 기본 규칙 중 걷어낼 것.
-// triples 는 Gen 9 에 커스텀 게임이 없어 래더 포맷(gen9triples)에서 래더 규칙·밴리스트를 걷어낸다.
-// rotation 은 Showdown 에 구현이 없어 triples 배틀에 로테이션 규칙을 패치해서 돌린다 (./rotation.ts).
-const FORMAT_BASE: Record<BattleFormat, { battle: string; strip: string[]; preview: boolean; validator: string }> = {
-    singles: { battle: 'gen9customgame', strip: [], preview: true, validator: 'gen9customgame' },
-    doubles: { battle: 'gen9doublescustomgame', strip: [], preview: true, validator: 'gen9doublescustomgame' },
-    triples: { battle: 'gen9triples', strip: ['!Standard Doubles', '!Evasion Abilities Clause', 'Cancel Mod'], preview: false, validator: 'gen9doublescustomgame' },
-    rotation: { battle: 'gen9triples', strip: ['!Standard Doubles', '!Evasion Abilities Clause', 'Cancel Mod'], preview: false, validator: 'gen9doublescustomgame' },
+// 형식·세대별 Showdown 기본 포맷과, 그 포맷의 기본 규칙 중 걷어낼 것.
+// triples 는 9세대에 커스텀 게임이 없어 래더 포맷(gen9triples)에서 래더 규칙·밴리스트를 걷어낸다 (5·6세대는 커스텀 게임이 있다).
+// rotation 은 Showdown 에 구현이 없어 9세대 triples 배틀에 로테이션 규칙을 패치해서 돌린다 (./rotation.ts).
+const TRIPLES_STRIP = ['!Standard Doubles', '!Evasion Abilities Clause', 'Cancel Mod']
+function formatBase(format: BattleFormat, gen: number): { battle: string; strip: string[]; validator: string } {
+    if (!Number.isInteger(gen) || gen < 1 || gen > 9) throw new BattleError(`세대는 1~9 입니다: ${gen}`)
+    switch (format) {
+        case 'singles': return { battle: `gen${gen}customgame`, strip: [], validator: `gen${gen}customgame` }
+        case 'doubles':
+            if (gen < 3) throw new BattleError('doubles 는 3세대부터입니다')
+            return { battle: `gen${gen}doublescustomgame`, strip: [], validator: `gen${gen}doublescustomgame` }
+        case 'triples':
+            if (gen === 9) return { battle: 'gen9triples', strip: TRIPLES_STRIP, validator: 'gen9doublescustomgame' }
+            if (gen === 5 || gen === 6) return { battle: `gen${gen}triplescustomgame`, strip: [], validator: `gen${gen}doublescustomgame` }
+            throw new BattleError('triples 는 5·6·9세대만 됩니다')
+        case 'rotation':
+            if (gen !== 9) throw new BattleError('rotation 은 9세대만 됩니다')
+            return { battle: 'gen9triples', strip: TRIPLES_STRIP, validator: 'gen9doublescustomgame' }
+    }
+    throw new BattleError(`알 수 없는 형식: ${format}`)
 }
 
 /** BattleRuleOptions → Showdown 규칙 목록. 팀 단위 규칙은 validate 쪽으로 분리 */
@@ -129,18 +150,35 @@ export function optionsToRules(options: BattleRuleOptions = {}): { battle: strin
 
 /** config → 배틀용 / 팀 검사용 Showdown 포맷 ID */
 function buildFormatId(config: BattleConfig): { formatid: string; validatorid: string | null } {
-    const base = FORMAT_BASE[config.format]
-    if (!base) throw new BattleError(`알 수 없는 형식: ${config.format}`)
+    const base = formatBase(config.format, config.gen ?? 9)
     const opts = config.options ?? {}
     const { battle, validate } = optionsToRules(opts)
-    const preview = !!(opts.teamPreview || opts.pickedTeamSize)
-    const previewRule = preview === base.preview ? [] : [preview ? 'Team Preview' : '!Team Preview']
-    const rules = [...base.strip, ...previewRule, ...battle, ...validate, ...(config.rules ?? [])]
     const root = config.formatid ?? base.battle
+    const rootFormat = Dex.formats.get(root)
+    if (!rootFormat.exists) throw new BattleError(`알 수 없는 포맷: ${root}`)
+    // 팀 프리뷰는 (걷어낼 규칙을 뺀) 포맷 기본값과 다를 때만 규칙을 더한다 (세대·포맷마다 기본값이 다르다)
+    const strip = config.formatid ? [] : base.strip
+    const stripped = strip.length ? Dex.formats.get(`${root}@@@${strip.join(',')}`) : rootFormat
+    const hasPreview = Dex.formats.getRuleTable(stripped).has('teampreview')
+    const preview = !!(opts.teamPreview || opts.pickedTeamSize)
+    const previewRule = preview === hasPreview ? [] : [preview ? 'Team Preview' : '!Team Preview']
+    const rules = [...strip, ...previewRule, ...battle, ...validate, ...(config.rules ?? [])]
     const formatid = rules.length ? `${root}@@@${rules.join(',')}` : root
-    if (!Dex.formats.get(formatid).exists) throw new BattleError(`알 수 없는 포맷: ${root}`)
-    const validatorid = validate.length ? `${base.validator}@@@!Team Preview,${validate.join(',')}` : null
+    if (!Dex.formats.get(formatid).exists) throw new BattleError(`알 수 없는 포맷: ${formatid}`)
+    const noPreview = Dex.formats.getRuleTable(Dex.formats.get(base.validator)).has('teampreview') ? '!Team Preview,' : ''
+    const validatorid = validate.length ? `${base.validator}@@@${noPreview}${validate.join(',')}` : null
     return { formatid, validatorid }
+}
+
+/** Showdown 요청의 세대별 기믹 → 엔진 요청 필드 (없는 것은 빼서 9세대 요청 모양은 그대로) */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function gimmicks(a: any): { can_mega_evolve?: boolean; can_ultra_burst?: boolean; can_zmove?: boolean; can_dynamax?: boolean } {
+    const out: ReturnType<typeof gimmicks> = {}
+    if (a.canMegaEvo || a.canMegaEvoX || a.canMegaEvoY) out.can_mega_evolve = true
+    if (a.canUltraBurst) out.can_ultra_burst = true
+    if (Array.isArray(a.canZMove) && a.canZMove.some(Boolean)) out.can_zmove = true
+    if (a.canDynamax) out.can_dynamax = true
+    return out
 }
 
 /** 숫자 시드 → Showdown PRNG 시드 */
@@ -173,6 +211,8 @@ export class BattleEngine {
     readonly maxTurns: number
     /** 로테이션 배틀 여부 (앞 = 슬롯 1) */
     readonly rotation: boolean
+    /** 세대 (1~9) */
+    readonly gen: Generation
     private config: BattleConfig
     private listeners: Map<string, AnyEventListener[]> = new Map()
     private started = false
@@ -204,6 +244,8 @@ export class BattleEngine {
         this.seed = config.seed ?? Math.floor(Math.random() * 0x7fffffff)
         this.maxTurns = config.maxTurns ?? 1000
         this.rotation = config.format === 'rotation'
+        this.gen = config.gen ?? 9
+        if (this.gen !== 9 && !genLoaded(this.gen)) throw new BattleError(`${this.gen}세대 데이터가 없습니다: 먼저 await preloadData({ gens: [${this.gen}] })`)
         if (this.rotation) installRotationPatches()
         if (!config.p1?.team?.length || !config.p2?.team?.length) {
             throw new BattleError('양쪽 팀에 최소 1마리의 포켓몬이 필요합니다')
@@ -220,10 +262,12 @@ export class BattleEngine {
             throw new BattleError(`포맷/규칙 오류: ${(err as Error).message}`)
         }
         if (this.rotation) (this.battle as unknown as { rotation: boolean }).rotation = true
+        if (options.fast !== false) enableFastPath(this.battle)
         // 로그가 쓰이는 즉시 이벤트로 변환 (상태가 그 시점과 정확히 일치)
         // eslint-disable-next-line @typescript-eslint/no-this-alias
         const self = this
-        const log: string[] = []
+        // 생성자에서 이미 쓰인 줄(|gametype| 등)은 그대로 유지
+        const log: string[] = [...(this.battle as unknown as { log: string[] }).log]
         log.push = function (...lines: string[]) {
             const n = Array.prototype.push.apply(this, lines)
             if (self.ready) for (const line of lines) self.parseLine(line)
@@ -349,12 +393,23 @@ export class BattleEngine {
         if (prevStatus !== p.status) {
             this.lastStatus.set(id, p.status)
             if (prevStatus && !p.status && !p.fainted) this.emit({ type: 'status_remove', pokemon_id: id, status: STATUS_FROM_PS[prevStatus] ?? prevStatus })
-            else if (p.status && !prevStatus) this.emit({ type: 'status_apply', pokemon_id: id, status: STATUS_FROM_PS[p.status] ?? p.status, source: reason })
+            else if (p.status && !prevStatus && STATUS_FROM_PS[p.status]) this.emit({ type: 'status_apply', pokemon_id: id, status: STATUS_FROM_PS[p.status] ?? p.status, source: reason })
         }
     }
 
     private reconcileAll(reason: string): void {
         for (const player of SIDES) for (const p of this.battle[player].pokemon) this.reconcile(p, reason)
+    }
+
+    /** -supereffective / -resisted 의 실제 배율 (Showdown 로그는 2배·4배를 구분하지 않는다). 순수 타입 상성만 본다 */
+    private effectiveness(superEffective: boolean, target: PSPokemon | undefined): number {
+        const move = (this.battle as unknown as { activeMove?: { type: string } | null }).activeMove
+        let mod = superEffective ? 1 : -1
+        if (move && target) {
+            const m = this.battle.dex.getEffectiveness(move.type, target.getTypes())
+            mod = superEffective ? Math.max(1, m) : Math.min(-1, m)
+        }
+        return 2 ** mod
     }
 
     private parseLine(line: string): void {
@@ -411,6 +466,7 @@ export class BattleEngine {
                     pp: 1, priority: 0, target: 'selected-pokemon', effect_chance: null, effect: '', meta: null, stat_changes: [],
                 } as MoveData)
                 this.lastMove = { user: this.idOf(user), move }
+                this.pendingHit.clear() // 대타에 막힌 급소 등, 이전 기술의 플래그가 남지 않게
                 this.emit({ type: 'move_use', pokemon_id: this.idOf(user), move, target_id: this.idOf(this.resolve(pos[2])) })
                 return
             }
@@ -426,7 +482,7 @@ export class BattleEngine {
                 const id = this.idOf(this.resolve(pos[0]))
                 const cur = this.pendingHit.get(id) ?? {}
                 if (cmd === '-crit') cur.crit = true
-                else cur.eff = cmd === '-supereffective' ? 2 : 0.5
+                else cur.eff = this.effectiveness(cmd === '-supereffective', this.resolve(pos[0]))
                 this.pendingHit.set(id, cur)
                 return
             }
@@ -441,11 +497,13 @@ export class BattleEngine {
                 this.lastHp.set(id, now)
                 const source = from ? effectSlug(from) : cmd === '-sethp' ? 'pain-split' : (this.lastMove?.move.name ?? 'move')
                 if (now < prev) {
-                    const hit = !from ? this.pendingHit.get(id) : undefined
+                    // 출처 없는 데미지 = 기술 명중. 단, 기술 사용자 자신이 받은 것(대타출동 비용 등)은 명중이 아니다
+                    const isHit = !from && cmd === '-damage' && id !== this.lastMove?.user
+                    const hit = isHit ? this.pendingHit.get(id) : undefined
                     this.pendingHit.delete(id)
                     this.emit({
                         type: 'damage', pokemon_id: id, amount: prev - now, source, hp_after: now,
-                        effectiveness: !from && cmd === '-damage' ? (hit?.eff ?? 1) : undefined,
+                        effectiveness: isHit ? (hit?.eff ?? 1) : undefined,
                         crit: hit?.crit || undefined,
                     })
                 } else if (now > prev) {
@@ -465,6 +523,7 @@ export class BattleEngine {
             case '-status': {
                 const sp = this.resolve(pos[0])
                 if (sp) this.lastStatus.set(this.idOf(sp), sp.status)
+                if (!STATUS_FROM_PS[pos[1] ?? '']) return // fnt 등 (기절은 faint 이벤트)
                 this.emit({ type: 'status_apply', pokemon_id: this.idOf(sp), status: STATUS_FROM_PS[pos[1] ?? ''] ?? pos[1] ?? '', source: from ? effectSlug(from) : this.lastMove?.move.name })
                 return
             }
@@ -554,6 +613,12 @@ export class BattleEngine {
                     this.emit({ type: 'activate', pokemon_id: this.idOf(p), effect: 'typechange', detail: pos[2] })
                     return
                 }
+                // 미래예지·파멸의소원: 이어지는 출처 없는 데미지는 이 기술의 명중
+                if (cmd === '-end' && (effId === 'futuresight' || effId === 'doomdesire')) {
+                    const move = getMove(effId)
+                    if (move) this.lastMove = { user: '', move }
+                    this.pendingHit.clear()
+                }
                 const key = VOLATILE_FROM_PS[effId]
                     ?? (effId.startsWith('protosynthesis') || effId.startsWith('quarkdrive') ? 'paradox_boost'
                         : effId.startsWith('stockpile') ? 'stockpile' : effId.startsWith('perish') ? 'perish_song' : toSlug(effRaw))
@@ -575,10 +640,15 @@ export class BattleEngine {
                     return
                 }
                 if (effId === 'substitute' && kw.includes('[damage]')) {
-                    this.emit({ type: 'damage', pokemon_id: this.idOf(p), amount: 0, source: 'substitute' })
+                    const id = this.idOf(p)
+                    const hit = this.pendingHit.get(id)
+                    this.pendingHit.delete(id)
+                    this.emit({ type: 'damage', pokemon_id: id, amount: 0, source: 'substitute', crit: hit?.crit || undefined })
                     return
                 }
-                this.emit({ type: 'activate', pokemon_id: this.idOf(p) || undefined, effect: toSlug(effRaw), detail: pos[2] ? toSlug(stripPrefix(pos[2])) : undefined })
+                // 세 번째 인자가 포켓몬이면(가시지않는향기 등의 상대) 세부 효과가 아니다
+                const detail = pos[2] && !this.resolve(pos[2]) ? toSlug(stripPrefix(pos[2])) : undefined
+                this.emit({ type: 'activate', pokemon_id: this.idOf(p) || undefined, effect: toSlug(effRaw), detail })
                 return
             }
             case '-ability':
@@ -592,6 +662,22 @@ export class BattleEngine {
                 return
             case '-enditem':
                 this.emit({ type: 'item_consume', pokemon_id: this.idOf(this.resolve(pos[0])), item: itemSlug(pos[1] ?? '') })
+                return
+            case '-mega':
+            case '-burst':
+            case '-primal': {
+                // 메가진화 / 울트라버스트 / 원시회귀. 모습 변화는 이어지는 detailschange 가 forme_change 로 알린다
+                const p = this.resolve(pos[0])
+                const kind = cmd === '-mega' ? 'mega' : cmd === '-burst' ? 'ultra' : 'primal'
+                const item = cmd === '-primal' ? (pos[1] ? itemSlug(pos[1]) : undefined) : (pos[2] ? itemSlug(pos[2]) : undefined)
+                this.emit({ type: 'mega_evolve', pokemon_id: this.idOf(p), kind, species: speciesSlug(p?.species.id ?? pos[1] ?? ''), item })
+                return
+            }
+            case '-zpower':
+                this.emit({ type: 'activate', pokemon_id: this.idOf(this.resolve(pos[0])), effect: 'z-power' })
+                return
+            case '-zbroken':
+                this.emit({ type: 'activate', pokemon_id: this.idOf(this.resolve(pos[0])), effect: 'z-broken' })
                 return
             case '-terastallize':
                 this.emit({ type: 'terastallize', pokemon_id: this.idOf(this.resolve(pos[0])), tera_type: toID(pos[1] ?? '') })
@@ -968,6 +1054,7 @@ export class BattleEngine {
             switches: trapped ? [] : bench,
             can_switch: !trapped && bench.length > 0,
             can_terastallize: !!a.canTerastallize,
+            ...gimmicks(a),
             forced,
             raw: req,
         }
@@ -1011,6 +1098,7 @@ export class BattleEngine {
                 max_pp: m.maxpp ?? 1,
                 disabled,
                 disabled_reason: disabled ? (typeof m.disabled === 'string' ? m.disabled : '사용 불가') : undefined,
+                ...(a.canZMove?.[i] ? { zmove: moveSlug(a.canZMove[i].move) } : {}),
             }
         })
     }
@@ -1040,6 +1128,15 @@ export class BattleEngine {
                 }
             }
             add(req.active.id, req.moves, req.can_terastallize)
+            // 세대별 기믹: 메가진화·울트라버스트·다이맥스는 기술마다, Z기술은 Z기술이 있는 슬롯만
+            for (const m of req.moves) {
+                if (m.disabled) continue
+                const base = { type: 'move' as const, player, pokemon_id: req.active.id, move_index: m.index }
+                if (req.can_mega_evolve) actions.push({ ...base, mega: true })
+                if (req.can_ultra_burst) actions.push({ ...base, ultra_burst: true })
+                if (req.can_dynamax) actions.push({ ...base, dynamax: true })
+                if (req.can_zmove && m.zmove) actions.push({ ...base, zmove: true })
+            }
             // 쓸 수 있는 기술이 하나도 없으면(숨은 사용 불가 포함) 발버둥
             if (req.moves.length && req.moves.every(m => m.disabled)) actions.push({ type: 'move', player, pokemon_id: req.active.id, move_index: -1 })
             for (const r of req.rotate ?? []) add(r.pokemon.id, r.moves, r.can_terastallize, r.direction)
@@ -1068,7 +1165,8 @@ export class BattleEngine {
             return this.rotation ? this.slotChoice(FRONT, `switch ${idx + 1}`) : `switch ${idx + 1}`
         }
         const n = action.move_index === -1 ? 1 : action.move_index + 1
-        const tera = action.terastallize ? ' terastallize' : ''
+        const tera = (action.terastallize ? ' terastallize' : '') + (action.mega ? ' mega' : '') + (action.ultra_burst ? ' ultra' : '')
+            + (action.zmove ? ' zmove' : '') + (action.dynamax ? ' dynamax' : '')
         if (!this.rotation) return `move ${n}${tera}`
         // rotation: 행동하는 슬롯만 기술, 나머지는 pass. 상대 쪽 대상은 항상 상대 앞(loc 2)
         const slot = action.rotate ? ROTATE_SLOT[action.rotate] : FRONT
@@ -1210,6 +1308,7 @@ export class BattleEngine {
         const foeSide = this.battle[this.foeOf(player)].sideConditions
         try {
             return calculateDamage(this.calcInput(user, !!opts.terastallize), this.calcInput(foe), move.id, {
+                gen: this.gen,
                 weather: this.effectiveWeather(),
                 terrain: TERRAIN_FROM_PS[this.battle.field.terrain as string] ?? null,
                 gravity: !!this.battle.field.pseudoWeather['gravity'],

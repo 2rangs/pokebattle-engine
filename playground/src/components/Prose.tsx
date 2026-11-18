@@ -32,14 +32,12 @@ export function Snippet({ code, lang = 'ts', title }: { code: string; lang?: str
 
 type Row = Record<string, ReactNode> & { k: string }
 
-/** 첫 열은 API 이름(코드체), 나머지는 설명 */
+/** 첫 열은 API 이름(코드체), 나머지는 설명. 열 수는 head 길이만큼 (2열이면 4:6, 그 이상은 균등) */
 export function ApiTable({ head, rows }: { head: string[]; rows: ReactNode[][] }) {
-  const data: Row[] = rows.map((r, i) => ({ k: String(i), a: r[0], b: r[1], c: r[2] }))
-  const columns = [
-    { key: 'a', header: head[0], width: proportional(head[2] ? 3 : 4), renderCell: (r: Row) => r.a },
-    { key: 'b', header: head[1], width: proportional(head[2] ? 3 : 6), renderCell: (r: Row) => r.b },
-    ...(head[2] ? [{ key: 'c', header: head[2], width: proportional(4), renderCell: (r: Row) => r.c }] : []),
-  ]
+  const keys = head.map((_, i) => `c${i}`)
+  const data: Row[] = rows.map((r, i) => ({ k: String(i), ...Object.fromEntries(keys.map((key, j) => [key, r[j]])) }))
+  const widths = head.length === 2 ? [4, 6] : head.length === 3 ? [3, 3, 4] : head.map(() => 1)
+  const columns = keys.map((key, i) => ({ key, header: head[i], width: proportional(widths[i]!), renderCell: (r: Row) => r[key] }))
   return (
     <div className="table-wrap">
       <Table<Row> data={data} columns={columns as never} idKey="k" density="compact" verticalAlign="top" />

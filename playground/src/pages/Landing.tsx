@@ -8,6 +8,7 @@ import { LogWindow } from '../components/ApiRun'
 import { Emblem } from '../components/Emblem'
 import { useLang } from '../i18n'
 import type { ExampleId } from '../examples'
+import { ApiTable } from '../components/Prose'
 
 const REPO = 'https://github.com/2rangs/pokebattle-engine'
 const INSTALL = 'npm install github:2rangs/pokebattle-engine'
@@ -29,18 +30,21 @@ export function Landing() {
   const { t } = useLang()
 
   const numbers = [
-    { n: '1,351', l: t('PokeAPI 슬러그 매핑', 'PokeAPI slugs mapped') },
-    { n: '10M', l: t('배틀 규모 샤드 퍼징', 'battles per sharded fuzz run') },
-    { n: '7', l: t('배틀마다 검사하는 불변식', 'invariants per battle') },
-    { n: '0', l: t('미처리 프로토콜 메시지', 'unhandled protocol lines') },
+    { n: '1.6–1.9×', l: t('Showdown 대비 턴당 속도', 'faster per turn than Showdown') },
+    { n: '0', l: t('Showdown과 다른 로그 (바이트 단위)', 'log differences from Showdown (byte level)') },
+    { n: 'Gen 1–9', l: t('세대별 배틀 · 랜덤배틀', 'battles and random battles') },
+    { n: 'ko · en · ja', l: t('배틀 로그 언어', 'battle log languages') },
   ]
 
   const compare: { label: string; ours: boolean; raw: boolean }[] = [
     { label: t('Showdown과 같은 판정', 'Showdown-accurate mechanics'), ours: true, raw: true },
+    { label: t('턴당 1.6~1.9배 빠름 (같은 결과)', '1.6–1.9× faster per turn (same results)'), ours: true, raw: false },
+    { label: t('앱 번들 3.4 MB, eval 경고 없음', '3.4 MB app bundle, no eval warning'), ours: true, raw: false },
     { label: t('객체 입력 + 제출 전 검증', 'Object actions, validated before submit'), ours: true, raw: false },
     { label: t('PokeAPI 슬러그·한국어 이름', 'PokeAPI slugs and Korean names'), ours: true, raw: false },
     { label: t('타입 있는 이벤트 스트림', 'Typed event stream'), ours: true, raw: false },
-    { label: t('한국어 배틀 로그', 'Korean battle log'), ours: true, raw: false },
+    { label: t('한국어·영어·일본어 배틀 로그', 'Korean, English and Japanese battle logs'), ours: true, raw: false },
+    { label: t('랜덤배틀 API · 터미널 CLI', 'Random battle API and a terminal CLI'), ours: true, raw: false },
     { label: t('배틀 상태 기반 데미지 미리보기', 'Damage preview from live state'), ours: true, raw: false },
   ]
 
@@ -56,12 +60,20 @@ export function Landing() {
       id: 'request', cmd: "engine.getRequest('p1')", href: '#/docs/engine',
     },
     {
-      title: t('로그 한 줄이 이벤트 하나', 'One log line, one event'),
+      title: t('로그 한 줄이 이벤트 하나, 문장은 세 언어로', 'One log line, one event, three languages'),
       body: t(
-        'Showdown이 로그를 쓰는 순간 타입 있는 이벤트가 나갑니다. 이벤트만 재생해도 HP가 시뮬레이터와 일치하고, formatEvent가 한국어 문장으로 바꿉니다.',
-        'A typed event fires the moment Showdown writes a log line. Replaying events alone matches the simulator’s HP, and formatEvent turns them into Korean sentences.',
+        'Showdown이 로그를 쓰는 순간 타입 있는 이벤트가 나갑니다. 이벤트만 재생해도 HP가 시뮬레이터와 일치하고, createFormatter가 한국어·영어·일본어 문장으로 바꿉니다. 이름은 PokeAPI 데이터에서 옵니다.',
+        'A typed event fires the moment Showdown writes a log line. Replaying events alone matches the simulator’s HP, and createFormatter turns them into Korean, English or Japanese. Names come from PokeAPI data.',
       ),
-      id: 'formatKo', cmd: "engine.on('*', ev => formatEvent(ev, ctx))", href: '#/docs/events',
+      id: 'formatMulti', cmd: "createFormatter({ locale: 'en', getPokemon }).format(ev)", href: '#/docs/logs',
+    },
+    {
+      title: t('Smogon 랜덤배틀 그대로', 'Smogon random battles, as is'),
+      body: t(
+        'Showdown 공식 생성기의 팀·밸런스 레벨·규칙으로 1~9세대 랜덤배틀을 한 줄에 만듭니다. 포켓몬별 레벨·역할·기술 후보도 조회할 수 있습니다.',
+        'One line builds a Gen 1–9 random battle with the official Showdown generator’s teams, balanced levels and rules. Each species’ level, roles and candidate moves are queryable too.',
+      ),
+      id: 'randomSets', cmd: "getRandomBattleSet('garchomp')", href: '#/docs/random',
     },
     {
       title: t('Showdown 계산기와 같은 숫자', 'Same numbers as the Showdown calc'),
@@ -77,12 +89,15 @@ export function Landing() {
     { k: 'ESM', d: t('import 로 불러오기', 'Load with import'), code: "import { BattleEngine } from '@kyasi/pokebattle-engine'", href: '#/docs/installation' },
     { k: 'CommonJS', d: t('require 로 불러오기', 'Load with require'), code: "require('@kyasi/pokebattle-engine')", href: '#/docs/installation' },
     { k: 'React', d: t('useBattle 훅', 'The useBattle hook'), code: "import { useBattle } from '@kyasi/pokebattle-engine/react'", href: '#/docs/react' },
+    { k: 'CLI', d: t('npx pokebattle play / watch / sim', 'npx pokebattle play / watch / sim'), code: 'npx pokebattle watch --lang en', href: '#/docs/cli' },
   ]
 
   const guides: { title: string; meta: string; href: string; id?: ExampleId; cmd?: string }[] = [
     { title: t('첫 배틀 돌려보기', 'Run your first battle'), meta: t('시작하기', 'Getting started'), href: '#/docs/introduction', id: 'quickstart', cmd: 'tsx quickstart.ts' },
     { title: t('이벤트로 HP 복원하기', 'Rebuild HP from events'), meta: t('배틀', 'Battles'), href: '#/docs/events' },
-    { title: t('AI 벤치마크 돌리기', 'Benchmark the AIs'), meta: t('도구', 'Tools'), href: '#/docs/ai' },
+    { title: t('Showdown과 속도 비교하기', 'Compare speed with Showdown'), meta: t('시작하기', 'Getting started'), href: '#/docs/performance' },
+    { title: t('7세대 메가진화 배틀', 'A Gen 7 Mega Evolution battle'), meta: t('배틀', 'Battles'), href: '#/docs/generations' },
+    { title: t('터미널에서 직접 플레이', 'Play in the terminal'), meta: t('도구', 'Tools'), href: '#/docs/cli' },
   ]
   const [featured, ...rest] = guides
 
@@ -92,12 +107,12 @@ export function Landing() {
       <section className="hero wrap">
         <div className="hero-copy">
           <Heading level={1} className="hero-title">
-            {t('Showdown 판정 그대로, 타입 있는 배틀 API', 'Showdown-accurate battles, typed API')}
+            {t('Showdown 판정 그대로, 더 빠르고 쉽게', 'Showdown-accurate battles, faster and simpler')}
           </Heading>
           <Text as="p" display="block" type="large" color="secondary">
             {t(
-              'Pokémon Showdown 시뮬레이터 위에 슬러그 기반 팀·행동 API, 이벤트 스트림, 데미지 계산, AI를 얹은 TypeScript 라이브러리.',
-              'A TypeScript library that adds a slug-based team and action API, an event stream, damage calculation and AI on top of the Pokémon Showdown simulator.',
+              'Pokémon Showdown 시뮬레이터와 결과가 같으면서 턴당 1.6~1.9배 빠른 TypeScript 배틀 엔진. 객체로 내는 행동, 타입 있는 이벤트, 3개 언어 로그, 1~9세대 랜덤배틀, CLI.',
+              'A TypeScript battle engine with the same results as the Pokémon Showdown simulator, 1.6–1.9× faster per turn. Object actions, typed events, logs in three languages, Gen 1–9 random battles and a CLI.',
             )}
           </Text>
           <div className="actions">
@@ -115,6 +130,30 @@ export function Landing() {
             <div key={x.l}><dt>{x.n}</dt><dd>{x.l}</dd></div>
           ))}
         </dl>
+      </section>
+
+      {/* ─── Performance ──────────────────────────────────── */}
+      <section className="band wrap">
+        <SectionHead
+          title={<>{t('Showdown보다', 'Faster than')}<br />{t('빠르게, 결과는 같게', 'Showdown, same results')}</>}
+          sub={t(
+            '같은 배틀(같은 시드·팀·선택)을 Smogon의 Pokémon Showdown 시뮬레이터에 직접 재생한 시간과 이 엔진의 시간. 모든 배틀의 프로토콜 로그가 바이트 단위로 같습니다.',
+            'The same battles (same seed, teams and choices) replayed directly on Smogon’s Pokémon Showdown simulator and on this engine. Every battle’s protocol log is byte-identical.',
+          )}
+          action={<Button label={t('측정 방법', 'Methodology')} size="sm" variant="secondary" href="#/docs/performance" />}
+        />
+        <ApiTable
+          head={t(['형식', 'Showdown 직접', '이 엔진', '속도'], ['Format', 'Showdown directly', 'This engine', 'Speedup'])}
+          rows={[
+            [t('싱글', 'Singles'), '1.001 ms/turn', '0.622 ms/turn', <b>1.61×</b>],
+            [t('더블', 'Doubles'), '3.520 ms/turn', '1.893 ms/turn', <b>1.86×</b>],
+            [t('트리플', 'Triples'), '5.710 ms/turn', '3.133 ms/turn', <b>1.82×</b>],
+            [t('앱 번들 (배틀 페이지)', 'App bundle (battle page)'), '8.7 MB', '3.4 MB', <b>−61%</b>],
+          ]}
+        />
+        <Text as="p" display="block" type="supporting">
+          {t('Node 22, 형식마다 60판, 최고 기록. npm run bench:compare 로 직접 재현할 수 있고, 성능 문서에서 이 브라우저로도 재 볼 수 있습니다.', 'Node 22, 60 battles per format, best run. Reproduce with npm run bench:compare, or measure in this browser on the performance page.')}
+        </Text>
       </section>
 
       {/* ─── Comparison ───────────────────────────────────── */}
@@ -173,7 +212,7 @@ export function Landing() {
       <section className="band wrap install">
         <div className="install-main">
           <Heading level={2} className="sec-title">{t('한 줄로 설치', 'Install in one line')}</Heading>
-          <Text as="p" display="block" color="secondary">{t('타입 선언 포함. 데이터는 번들에 들어 있어 따로 받지 않습니다.', 'Types included. Data ships in the bundle, nothing else to fetch.')}</Text>
+          <Text as="p" display="block" color="secondary">{t('타입 선언 포함. 무거운 데이터(랜덤배틀 세트·기술표·옛 세대)는 preloadData 로 필요할 때만 받습니다.', 'Types included. Heavy data (random-battle sets, learnsets, older generations) loads only when you call preloadData.')}</Text>
           <CodeBlock code={INSTALL} language="bash" hasLanguageLabel={false} width="100%" />
         </div>
         <ul className="entries">

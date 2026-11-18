@@ -5,6 +5,9 @@
   "author": "kyasi",
   "license": "MIT",
   "type": "module",
+  "bin": {
+    "pokebattle": "./dist/cli.js"
+  },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -27,8 +30,11 @@
     "build": "tsup",
     "build:watch": "tsup --watch",
     "prepare": "tsup",
-    "simulate": "tsx scripts/simulate.ts",
+    "cli": "tsx src/cli/index.ts",
+    "simulate": "tsx src/cli/index.ts play",
     "bench": "tsx scripts/bench.ts",
+    "bench:compare": "tsx scripts/bench-compare.ts",
+    "check:dist": "tsup && tsx scripts/check-dist.ts",
     "test": "vitest",
     "test:run": "vitest run",
     "type-check": "tsc --noEmit -p tsconfig.build.json",
@@ -45,6 +51,7 @@
     "simulator"
   ],
   "devDependencies": {
+    "@pkmn/randoms": "^0.11.0",
     "@types/node": "^25.5.0",
     "@types/react": "^19.2.14",
     "react": "^19.2.4",
@@ -63,7 +70,6 @@
   },
   "sideEffects": false,
   "dependencies": {
-    "@pkmn/randoms": "^0.11.0",
     "@pkmn/sim": "^0.11.0",
     "@smogon/calc": "^0.12.0"
   }

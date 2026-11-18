@@ -10,6 +10,7 @@ npm run build    # dist/ 정적 파일 (해시 라우팅이라 어떤 정적 호
 
 - `src/pages/Landing.tsx` — 소개 페이지 (`#/`)
 - `src/pages/docs.tsx` — 문서 페이지 목록과 본문 (`#/docs/<slug>`)
-- `src/examples.ts` — 문서의 "실행" 예제. 브라우저에서 실제 엔진(`../src`)을 돌리고 결과를 텍스트 로그로만 출력합니다. `code`(보여줄 소스)와 `run`(실제 실행)을 같이 고쳐야 합니다.
+- `src/examples.ts` — 문서의 "실행" 예제. 브라우저에서 배포 번들(`../dist`, `src/engine.ts`)을 그대로 돌리고 결과를 텍스트 로그로만 출력합니다. `code`(보여줄 소스)와 `run`(실제 실행)을 같이 고쳐야 합니다.
+- `src/engine.ts` — 엔진 진입점(`../dist`). 사용자가 받는 것과 같은 크기·동작이고, 예제가 쓰는 데이터는 `dataReady` 로 뒤에서 받습니다. `dist` 가 없으면 `npm run dev`/`build` 전에 루트에서 자동으로 빌드합니다.
 - `src/theme.ts` — Astryx `defineTheme` (다크 단일 배경, 액센트 `#b4d3ff`, Host Grotesk / Instrument Sans + Pretendard)
 - 컴포넌트 문서: `npx @astryxdesign/cli component <Name>`

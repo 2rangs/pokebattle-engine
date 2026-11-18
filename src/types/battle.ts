@@ -11,6 +11,9 @@ export type PlayerID = 'p1' | 'p2'
 // rotation: 양쪽 3마리가 나오고 가운데(앞, 슬롯 1)만 행동·피격. 행동 전에 왼쪽/오른쪽을 앞으로 돌릴 수 있다.
 export type BattleFormat = 'singles' | 'doubles' | 'triples' | 'rotation'
 
+/** 세대 */
+export type Generation = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
+
 /** 로테이션 방향: left = 슬롯 0(a) 이 앞으로, right = 슬롯 2(c) 가 앞으로 */
 export type RotateDirection = 'left' | 'right'
 
@@ -75,7 +78,11 @@ export type Action =
       pokemon_id: string          // 행동하는 포켓몬 ID
       move_index: 0 | 1 | 2 | 3 | -1 // -1 = 발버둥 (PP 가 모두 없을 때)
       target_id?: string          // doubles 예약
-      terastallize?: boolean      // 이번 턴 테라스탈
+      terastallize?: boolean      // 이번 턴 테라스탈 (9세대)
+      mega?: boolean              // 메가진화 (6·7세대)
+      ultra_burst?: boolean       // 울트라버스트 (7세대 네크로즈마)
+      zmove?: boolean             // Z기술로 사용 (7세대)
+      dynamax?: boolean           // 다이맥스 (8세대)
       /**
        * rotation 전용: 이 방향의 뒷줄 포켓몬을 앞으로 돌린 뒤(모든 행동보다 먼저) 그 포켓몬이 기술을 쓴다.
        * move_index 는 돌아 들어오는 포켓몬의 기술 슬롯, pokemon_id 는 그 포켓몬(또는 지금 앞 포켓몬) ID.
@@ -104,6 +111,8 @@ export interface MoveOption {
   max_pp: number
   disabled: boolean
   disabled_reason?: string
+  /** 7세대: 이 슬롯으로 쓸 수 있는 Z기술 (슬러그). 없으면 undefined */
+  zmove?: string
 }
 
 /** 팀 프리뷰 요청 (engine.getTeamPreview). phase 'team_preview' 동안에만 존재 */
@@ -132,6 +141,11 @@ export type BattleRequest =
       switches: BattlePokemon[]    // 교체 가능한 벤치
       can_switch: boolean
       can_terastallize: boolean
+      /** 세대별 기믹 (해당 세대·도구가 있을 때만 true) */
+      can_mega_evolve?: boolean
+      can_ultra_burst?: boolean
+      can_zmove?: boolean
+      can_dynamax?: boolean
       forced?: boolean             // 모으기/난동/반동 등으로 기술이 고정됨
       /** rotation: 돌릴 수 있는 방향별 선택지 (앞 포켓몬이 기술에 묶여 있으면 없음) */
       rotate?: RotateOption[]
@@ -180,6 +194,8 @@ export type BattleEvent =
   | { type: 'item_consume';   pokemon_id: string; item: string }
   | { type: 'item_activate';  pokemon_id: string; item: string; effect: string }
   | { type: 'terastallize';   pokemon_id: string; tera_type: string }
+  /** 메가진화·원시회귀·울트라버스트 (species = 바뀐 모습) */
+  | { type: 'mega_evolve';    pokemon_id: string; kind: 'mega' | 'primal' | 'ultra'; species: string; item?: string }
   | { type: 'hit_count';      pokemon_id: string; hits: number }
   | { type: 'activate';       pokemon_id?: string; effect: string; detail?: string }
   | { type: 'forme_change';   pokemon_id: string; species: string }
@@ -195,6 +211,8 @@ export type BattleEventType = BattleEvent['type']
 // ─── 배틀 설정 ────────────────────────────────────────────────
 export interface BattleConfig {
   format: BattleFormat
+  /** 세대 (1~9, 기본 9). doubles 는 3세대부터, triples 는 5·6·9세대, rotation 은 9세대만 */
+  gen?: Generation
   p1: { name: string; team: PokemonSet[] }
   p2: { name: string; team: PokemonSet[] }
   seed?: number           // 랜덤 시드 (재현 가능 배틀용)

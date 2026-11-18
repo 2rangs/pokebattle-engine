@@ -3,6 +3,7 @@
 //
 // 배틀마다 (시드로 재현 가능):
 //  - 포맷: singles 65% / doubles 15% / triples 10% / rotation 10%, 20% 는 팀 프리뷰(+출전 수 선택)
+//  - 세대: 30% 는 그 형식이 있는 1~8세대 (그 세대 랜덤배틀 세트, 메가·Z·다이맥스 포함)
 //  - 팀: Showdown 랜덤배틀 세트 50% / 혼돈 팀(무작위 종·특성·도구·기술·노력치·레벨·테라) 50%
 //  - 선택: 무작위 (singles·rotation 은 엔진의 getAvailableActions — 회전 포함, doubles/triples 는 Showdown 요청 기반), 일부 HeuristicAI
 // 검사(불변식):
@@ -13,28 +14,31 @@
 //  5. 이벤트만으로 재구성한 HP == 시뮬레이터 실제 HP (모든 포켓몬)
 //  6. 기절 이벤트 수 == 기절한 포켓몬 수, 승자 일관성
 //  7. 1% 표본: 같은 시드 재실행 시 프로토콜 로그 동일 (결정성)
+//  8. 전수: 빠른 경로(기본)와 Showdown 원본 경로(fast: false)의 프로토콜 로그 동일 (--no-fast-check 로 끔)
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads'
 import { writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { cpus } from 'node:os'
+import { randomDoublesChoice } from './shared/random-choice.ts'
 
 interface Failure { battle: number; seed: number; kind: string; message: string }
 interface Stats {
-    battles: number; singles: number; doubles: number; triples: number; rotation: number; turns: number; ties: number
-    events: number; choices: number; doublesFallbacks: number; determinismChecks: number
+    battles: number; oldGen: number; singles: number; doubles: number; triples: number; rotation: number; turns: number; ties: number
+    events: number; choices: number; doublesFallbacks: number; determinismChecks: number; fastChecks: number
     failures: Failure[]; failureCount: number; kinds: Record<string, number>
 }
 
 const emptyStats = (): Stats => ({
-    battles: 0, singles: 0, doubles: 0, triples: 0, rotation: 0, turns: 0, ties: 0, events: 0, choices: 0, doublesFallbacks: 0,
-    determinismChecks: 0, failures: [], failureCount: 0, kinds: {},
+    battles: 0, oldGen: 0, singles: 0, doubles: 0, triples: 0, rotation: 0, turns: 0, ties: 0, events: 0, choices: 0, doublesFallbacks: 0,
+    determinismChecks: 0, fastChecks: 0, failures: [], failureCount: 0, kinds: {},
 })
 
 async function runWorker(): Promise<void> {
-    const { BattleEngine, generateRandomTeam, generateChaosTeam, PRNG, HeuristicAI, ACTIVE_PER_SIDE } = await import('../dist/index.js')
+    const { BattleEngine, generateRandomTeam, generateChaosTeam, PRNG, HeuristicAI, ACTIVE_PER_SIDE, preloadData } = await import('../dist/index.js')
+    await preloadData({ gens: [1, 2, 3, 4, 5, 6, 7, 8] })
     type Engine = InstanceType<typeof BattleEngine>
-    const { start, end } = workerData as { start: number; end: number }
+    const { start, end, fastCheck } = workerData as { start: number; end: number; fastCheck: boolean }
     let stats = emptyStats()
     const fail = (battle: number, seed: number, kind: string, message: string) => {
         stats.failureCount++
@@ -43,55 +47,27 @@ async function runWorker(): Promise<void> {
         if (stats.failures.length < 20) stats.failures.push({ battle, seed, kind, message: message.slice(0, 500) })
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    function randomDoublesChoice(req: any, rng: InstanceType<typeof PRNG>): string {
-        if (req.forceSwitch) {
-            const bench: number[] = req.side.pokemon.map((p: { active: boolean; condition: string }, i: number) => (!p.active && !p.condition.endsWith(' fnt') ? i + 1 : 0)).filter(Boolean)
-            rng.shuffle(bench)
-            return req.forceSwitch.map((f: boolean) => (f && bench.length ? `switch ${bench.pop()}` : 'pass')).join(', ')
-        }
-        const usedSwitch = new Set<number>()
-        let tera = false
-        return req.active.map((a: { moves: { disabled?: boolean; target?: string }[]; canTerastallize?: string; trapped?: boolean }, slot: number) => {
-            if (req.side.pokemon[slot]?.condition?.endsWith(' fnt') || req.side.pokemon[slot]?.commanding) return 'pass'
-            const bench: number[] = req.side.pokemon.map((p: { active: boolean; condition: string }, i: number) => (!p.active && !p.condition.endsWith(' fnt') && !usedSwitch.has(i + 1) ? i + 1 : 0)).filter(Boolean)
-            if (!a.trapped && bench.length && rng.chance(10)) {
-                const k = rng.pick(bench)
-                usedSwitch.add(k)
-                return `switch ${k}`
-            }
-            const moves = a.moves.map((m, i) => ({ m, i })).filter(x => !x.m.disabled)
-            if (!moves.length) return 'move 1'
-            const { m, i } = rng.pick(moves)
-            let target = ''
-            const n = req.active.length
-            const foes = Array.from({ length: n }, (_, i) => i + 1)
-            const allies = Array.from({ length: n }, (_, i) => -(i + 1)).filter(t => t !== -(slot + 1))
-            if (['normal', 'any', 'adjacentFoe'].includes(m.target ?? '')) target = ` ${rng.pick(foes)}`
-            else if (['adjacentAlly'].includes(m.target ?? '') && allies.length) target = ` ${rng.pick(allies)}`
-            else if (['adjacentAllyOrSelf'].includes(m.target ?? '')) target = ` ${rng.pick([...allies, -(slot + 1)])}`
-            let t = ''
-            if (a.canTerastallize && !tera && rng.chance(15)) { t = ' terastallize'; tera = true }
-            return `move ${i + 1}${target}${t}`
-        }).join(', ')
-    }
-
-    function playBattle(battleNo: number, check: boolean): { engine: Engine; hash: string } {
+    function playBattle(battleNo: number, check: boolean, fast = true): { engine: Engine; hash: string } {
         const seed = battleNo
         const rng = new PRNG(seed * 7919 + 13)
         const roll = rng.int(100)
         const format = roll < 65 ? 'singles' : roll < 80 ? 'doubles' : roll < 90 ? 'triples' : 'rotation'
         const doubles = format === 'doubles' || format === 'triples' // Showdown 선택 문자열로 진행하는 다중 슬롯 형식
         const minSize = ACTIVE_PER_SIDE[format]
-        const team = () => (rng.chance(50)
-            ? generateRandomTeam({ seed: rng.int(0x7fffffff), format: doubles ? 'gen9randomdoublesbattle' : 'gen9randombattle', size: rng.int(minSize, 6) })
-            : generateChaosTeam({ rng, size: rng.int(minSize, 6) }))
+        // 세대: 70% 9세대, 30% 그 형식이 있는 1~8세대 (옛 세대는 그 세대 랜덤배틀 세트 → 메가·Z·다이맥스 포함)
+        const oldGens = format === 'singles' ? [1, 2, 3, 4, 5, 6, 7, 8] : format === 'doubles' ? [3, 4, 5, 6, 7, 8] : format === 'triples' ? [5, 6] : []
+        const gen = oldGens.length && rng.chance(30) ? rng.pick(oldGens) : 9
+        const team = () => (gen !== 9
+            ? generateRandomTeam({ seed: rng.int(0x7fffffff), format: `gen${gen}randombattle`, size: rng.int(minSize, 6) })
+            : rng.chance(50)
+                ? generateRandomTeam({ seed: rng.int(0x7fffffff), format: doubles ? 'gen9randomdoublesbattle' : 'gen9randombattle', size: rng.int(minSize, 6) })
+                : generateChaosTeam({ rng, size: rng.int(minSize, 6) }))
         const p1team = team(), p2team = team()
         const preview = rng.chance(20)
         const options = preview
             ? { teamPreview: true, pickedTeamSize: rng.int(minSize, Math.min(p1team.length, p2team.length)) }
             : undefined
-        const engine = new BattleEngine({ format, seed, maxTurns: 300, options, p1: { name: 'P1', team: p1team }, p2: { name: 'P2', team: p2team } }, { turnSnapshots: false })
+        const engine = new BattleEngine({ format, gen, seed, maxTurns: 300, options, p1: { name: 'P1', team: p1team }, p2: { name: 'P2', team: p2team } }, { turnSnapshots: false, fast })
         const heuristic = !doubles && rng.chance(5)
         const ais = heuristic ? { p1: new HeuristicAI({ seed }), p2: new HeuristicAI({ seed: seed + 1 }) } : null
         engine.start()
@@ -188,6 +164,7 @@ async function runWorker(): Promise<void> {
     for (let i = start; i < end; i++) {
         try {
             const { engine, hash } = playBattle(i, true)
+            if (engine.gen !== 9) stats.oldGen++
             if (engine.rotation) stats.rotation++
             else if (engine.battle.gameType === 'doubles') stats.doubles++
             else if (engine.battle.gameType === 'triples') stats.triples++
@@ -197,6 +174,11 @@ async function runWorker(): Promise<void> {
                 stats.determinismChecks++
                 const again = playBattle(i, false)
                 if (again.hash !== hash) fail(i, i, 'determinism', 'same seed produced a different protocol log')
+            }
+            if (fastCheck) {
+                stats.fastChecks++
+                const ref = playBattle(i, false, false)
+                if (ref.hash !== hash) fail(i, i, 'fast-path', 'fast path and Showdown original produced different protocol logs')
             }
         } catch (err) {
             fail(i, i, 'exception', (err as Error).stack ?? String(err))
@@ -239,9 +221,9 @@ async function runMain(): Promise<void> {
         const s = start + w * per
         const e = Math.min(start + total, s + per)
         if (s >= e) return resolve()
-        const worker = new Worker(file, { workerData: { start: s, end: e }, execArgv: [] })
+        const worker = new Worker(file, { workerData: { start: s, end: e, fastCheck: !process.argv.includes('--no-fast-check') }, execArgv: [] })
         worker.on('message', (st: Stats) => {
-            for (const k of ['battles', 'singles', 'doubles', 'triples', 'rotation', 'turns', 'ties', 'events', 'choices', 'doublesFallbacks', 'determinismChecks', 'failureCount'] as const) agg[k] += st[k]
+            for (const k of ['battles', 'oldGen', 'singles', 'doubles', 'triples', 'rotation', 'turns', 'ties', 'events', 'choices', 'doublesFallbacks', 'determinismChecks', 'fastChecks', 'failureCount'] as const) agg[k] += st[k]
             agg.failures.push(...st.failures)
             for (const [k, v] of Object.entries(st.kinds)) agg.kinds[k] = (agg.kinds[k] ?? 0) + v
         })

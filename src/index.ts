@@ -5,6 +5,8 @@
 // 엔진
 export { BattleEngine, BattleError, STATUS_FROM_PS, WEATHER_FROM_PS, TERRAIN_FROM_PS, SIDE_FROM_PS, ACTIVE_PER_SIDE, optionsToRules } from './engine/BattleEngine'
 export type { EngineOptions } from './engine/BattleEngine'
+export { replayInputLog, comparableLog } from './engine/replay'
+export type { ReplayOptions } from './engine/replay'
 
 // 데이터
 export {
@@ -32,6 +34,12 @@ export type { BattleAI, HeuristicAIOptions } from './ai'
 export { simulateBattle, generateRandomSet, generateRandomTeam, generateChaosTeam, bst } from './sim'
 export type { SimulateOptions, SimulateResult, RandomSetOptions, RandomTeamOptions, ChaosTeamOptions } from './sim'
 
+// 랜덤배틀 (Showdown 공식 랜덤배틀 생성기·데이터, 1~9세대)
+export {
+    createRandomBattle, getRandomBattleSets, getRandomBattleSet, randomBattleFormatId, randomBattleLevelStats, RANDOM_BATTLE_FORMATS,
+} from './random'
+export type { RandomBattleOptions, RandomBattleFormat, RandomBattleSpecies, RandomBattleRole } from './random'
+
 // 유틸
 export { PRNG } from './utils/rng'
 export type { RandomFn } from './utils/rng'
@@ -42,6 +50,13 @@ export {
     SIDE_CONDITION_KO, FIELD_CONDITION_KO, VOLATILE_NAME_KO, CANT_MOVE_KO, SOURCE_NAME_KO,
 } from './utils/format'
 export type { NameResolver, FormatContext } from './utils/format'
+
+// 다국어 로그 (ko / en / ja 내장, 이름 팩: ja·zh-hans·zh-hant·fr·de·es·it)
+export {
+    createFormatter, describeEvent, registerLocale, getLocale, listLocales, loadNames, registerNames, getNames,
+    NAME_PACKS, CONDITION_ENTITY, SHOWN_VOLATILES, capitalizeSentences, ko, en, ja,
+} from './i18n'
+export type { Formatter, FormatterOptions, Message, Arg, Template, Locale, TermGroup, NameLookup, NamePack, EntityKind } from './i18n'
 
 // 타입
 export type * from './types/battle'

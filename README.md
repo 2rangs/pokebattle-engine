@@ -10,8 +10,39 @@ A Pokémon battle engine built on the **[Pokémon Showdown](https://github.com/s
 - **This package adds on top:**
   - A slug-based team and action API plus validation (`getRequest` / `submitAction`).
   - Typed events converted from Showdown protocol logs, emitted as each log line is written.
-  - Korean battle logs with correct particles (이/가, 은/는 …).
+  - Battle logs in Korean, English and Japanese from one message catalog (Korean particles handled), plus Pokémon/move/ability/item names in 9 languages.
   - AI, Showdown random-battle teams, a React hook, and fuzz testing.
+
+## Performance
+
+Same battles (same seed, teams and choices) replayed through `@pkmn/sim` directly and through this engine.
+Every replay produces a **byte-identical protocol log**; only the speed differs.
+
+| Format | Showdown (`@pkmn/sim`) | This engine | Speedup |
+|---|---|---|---|
+| Singles | 1.001 ms/turn | 0.622 ms/turn | **1.61×** |
+| Doubles | 3.520 ms/turn | 1.893 ms/turn | **1.86×** |
+| Triples | 5.710 ms/turn | 3.133 ms/turn | **1.82×** |
+
+The engine time includes everything it adds on top (typed events, Korean names, state views).
+Measured with `npm run bench:compare -- --battles 60 --rounds 3` on Node 22; run it yourself to reproduce.
+
+**How:** Showdown spends most of a battle looking up `on<Event>` handlers on every status, volatile, ability, item and field effect, with string keys on differently shaped objects, mostly finding nothing. The engine patches that hot path at runtime (`src/engine/fastpath.ts`): each effect's handlers are indexed once, event-name strings are cached and handler lists are built without intermediate arrays, keeping Showdown's exact handler order. The patch applies only to battles the engine creates; `new BattleEngine(config, { fast: false })` runs Showdown's original code for comparison.
+
+## Bundle size
+
+The engine bundles only the parts of `@pkmn/sim` a Gen 9 battle needs (`scripts/slim-sim.ts`): no server stream code (so no `eval` warning in Vite/Rollup), no Gen 1–8 data. The two big data sets that battles don't use load on demand:
+
+| Data | Size (minified) | Needed for |
+|---|---|---|
+| Showdown learnsets | ~2.8 MB | `generateRandomSet` (without a `learnset`), `generateChaosTeam` |
+| Random-battle sets | ~1.1 MB | `generateRandomTeam` |
+
+```ts
+await preloadData()   // loads both (separate chunks); battles, the damage calculator and names work without it
+```
+
+In an app build this took the battle page chunk from 8.7 MB to 3.4 MB. `npm run check:dist` builds and checks that the bundle plays byte-identical battles to the original `@pkmn/sim` and builds the same sets.
 
 ## Install
 
@@ -22,7 +53,9 @@ npm install github:2rangs/pokebattle-engine
 ## Usage
 
 ```ts
-import { BattleEngine, HeuristicAI, formatEvent, parseShowdownTeam, generateRandomTeam } from '@kyasi/pokebattle-engine'
+import { BattleEngine, HeuristicAI, formatEvent, parseShowdownTeam, generateRandomTeam, preloadData } from '@kyasi/pokebattle-engine'
+
+await preloadData()                      // random-battle sets (only needed for generateRandomTeam)
 
 const engine = new BattleEngine({
   format: 'singles',                     // also 'rotation' (same API), 'doubles' | 'triples' (submitChoice)
@@ -111,6 +144,65 @@ Every Showdown protocol message becomes a typed `BattleEvent` (`move_use`, `dama
 - HP and status changes that Showdown applies without a log line (Regenerator, Natural Cure …) also get compensating events.
 - So replaying the event stream alone matches the simulator's HP exactly; the fuzz test checks this.
 
+### Generations
+
+```ts
+await preloadData({ gens: [7] })          // Gen 1–8 data loads on demand (Gen 9 is built in)
+new BattleEngine({ format: 'singles', gen: 7, p1, p2 })
+```
+
+| Gen | Formats | Gimmicks (`getRequest` → action flag) |
+|---|---|---|
+| 1–2 | singles | — |
+| 3–4, 7–8 | singles, doubles | Gen 6–7: `can_mega_evolve` → `mega`, Gen 7: `can_zmove` (+ `moves[i].zmove`) → `zmove`, `can_ultra_burst` → `ultra_burst`, Gen 8: `can_dynamax` → `dynamax` |
+| 5–6 | singles, doubles, triples | |
+| 9 | singles, doubles, triples, rotation | `can_terastallize` → `terastallize` |
+
+Mechanics, the damage calculator and random-battle sets follow the chosen generation. Mega Evolution / Primal Reversion / Ultra Burst emit a `mega_evolve` event, Dynamax a `dynamax` volatile, Z-Power an `activate` event; all have log sentences.
+
+### Random battles
+
+The same team generator, sets and rules as Pokémon Showdown's Random Battle (`@pkmn/randoms`):
+
+```ts
+await preloadData({ gens: [8] })
+const battle = createRandomBattle({ gen: 8, seed: 42 })           // gen 1–9 singles, gen 9 'doubles' | 'monotype'
+const lv50 = createRandomBattle({ seed: 42, level: 50 })           // every Pokémon at Lv. 50 instead of balanced levels
+
+getRandomBattleSet('garchomp')
+// → { species: 'garchomp', level: 74, roles: [{ role: 'Fast Support', moves: ['dragon-tail', 'earthquake', …], abilities: ['rough-skin'], tera_types: ['ground', 'steel'] }, …] }
+getRandomBattleSets(9, 'doubles')                                   // the whole pool
+randomBattleLevelStats(9)                                           // average level by base-stat-total band
+```
+
+- **Balanced levels:** each species has its own level so weaker Pokémon get a bump (Gen 9: Lv. 64–100). It tracks base stat total closely (r ≈ −0.78; ~6.5 levels per 100 BST) but is tuned per species: strong abilities or movepools sit lower (Koraidon 64, Palafin 77, Sneasler 74), drawbacks sit higher (Slaking and Regigigas 84). Sets holding a Mega Stone, Primal orb or Rusted Sword use the transformed form's level.
+- The battle runs on the real random format (`gen9randombattle` …), so Species Clause, Sleep Clause and the other rules match Showdown.
+
+### Battle logs in any language
+
+Events become sentences in two steps, so the wording lives in one place per language:
+
+1. `describeEvent(event, ctx)` → language-neutral messages, e.g. `{ key: 'move.use', params: { pokemon: { pokemon: 'p1_0' }, move: { move: 'earthquake' } } }`.
+2. A locale turns messages into text. Built in: `ko`, `en`, `ja`.
+
+```ts
+import { createFormatter, loadNames } from '@kyasi/pokebattle-engine'
+
+await loadNames('ja')                                   // ko and en names are built in; other packs load on demand
+const log = createFormatter({ locale: 'ja', getPokemon: id => engine.getPokemon(id) })
+engine.on('*', ev => { const line = log.format(ev); if (line) console.log(line) })
+// "ガブリアスの じしん！" "急所に 当たった！ 効果は バツグンだ！ 相手の ヒードランに 197の ダメージ（-100%）"
+
+log.name.item('heavy-duty-boots')                       // 'あつぞこブーツ' — the same names for your UI
+createFormatter({ locale: 'en', getPokemon, perspective: 'p2' })   // p2's point of view ("the opposing …" flips)
+createFormatter({ locale: 'en', getPokemon, messages: { 'move.use': '{pokemon} → {move}' } })  // override a sentence
+```
+
+- **Names come from data, not translations:** Pokémon, moves, abilities, items, types and natures use PokeAPI names (Showdown names for English). Conditions named after a move or ability (Stealth Rock, Trick Room, Taunt, Flash Fire …) reuse that name. Name packs: `ko`, `en`, `ja`, `zh-hans`, `zh-hant`, `fr`, `de`, `es`, `it` (`npm run fetch-pokeapi` regenerates them).
+- **A locale is plain data:** `{ code, messages, terms, fallback?, postProcess? }`. Templates use `{param}`, optional parts `{?{pokemon}: }`, and plural forms `{ one, other }` (`Intl.PluralRules`). Variants are looked up as `key.variant` then `key` (e.g. `status.apply.burn` → `status.apply`).
+- **Add a language:** `registerLocale({ code: 'fr', fallback: en, terms: { … }, messages: { 'move.use': '{pokemon} utilise {move} !', … } })` + `await loadNames('fr')`. Anything missing falls back to the fallback locale.
+- `formatEvent(event, ctx, names?)` still works and is the Korean formatter.
+
 ### Damage calculator
 
 ```ts
@@ -155,14 +247,32 @@ Invariants checked:
 5. **HP rebuilt from events alone equals the simulator's actual HP** (every Pokémon).
 6. Faint count and winner are consistent.
 7. Determinism: re-running the same seed gives the same log (1% sample).
+8. **Fast path = Showdown original:** every battle is replayed with the hot-path patches off (`fast: false`), and the protocol logs must match byte for byte (`--no-fast-check` skips this).
 
 The full 10 million battles run in parallel shards on GitHub Actions ("Fuzz (sharded)" workflow → Run workflow; default 10 shards × 1,000,000). The CI workflow runs 10,000 battles on every push.
+
+## CLI
+
+```bash
+npx pokebattle play  --lang en              # you vs the AI (random-battle teams)
+npx pokebattle play  --team my.txt --foe cpu.json --level 50
+npx pokebattle watch --lang ja --seed 42    # AI vs AI battle log
+npx pokebattle watch --level 50             # every Pokémon at level 50 (random teams default to balanced levels 64–100)
+npx pokebattle watch --gen 7 --lang en      # Gen 7 random battle (Mega Evolution, Z-Moves)
+npx pokebattle watch --json                 # JSON Lines: every engine event + its "text"
+npx pokebattle sim   --battles 500 --vs heuristic --json
+```
+
+- `play` shows both active Pokémon with HP bars and your moves with type, power, PP and the damage range (`previewDamage`). Type a number to use a move, `t1` to Terastallize and use move 1 (`m1` Mega Evolve, `z1` Z-Move, `d1` Dynamax in older gens), `s` to switch, `q` to quit.
+- Team files: Showdown export text, or JSON (`PokemonSet[]` or `{ "pokemons": [...] }`).
+- `--lang ko|en|ja` (or `POKEBATTLE_LANG`), `--seed N` (same seed and choices = same battle), `NO_COLOR` turns off colors.
+- In this repo: `npm run cli -- watch --lang en`, `npm run simulate` (= `play`).
 
 ## Scripts
 
 ```bash
-npm run simulate -- --auto --random      # watch AI vs AI in the terminal (without --auto you play against the AI)
 npm run bench -- 500                     # HeuristicAI vs RandomAI
+npm run bench:compare                    # Showdown vs this engine, same battles (and checks the logs are identical)
 npm run fetch-pokeapi                    # refresh PokeAPI data (src/data/pokeapi.json)
 ```
 
