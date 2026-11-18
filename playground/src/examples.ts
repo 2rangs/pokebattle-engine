@@ -12,8 +12,13 @@ import {
   koName,
   parseShowdownTeam,
   simulateBattle,
-} from '../../src/index'
-import type { BattleEvent, PokemonSet } from '../../src/index'
+  createFormatter,
+  createRandomBattle,
+  getRandomBattleSet,
+  randomBattleLevelStats,
+  comparableLog,
+} from './engine'
+import type { BattleEvent, PokemonSet } from './engine'
 
 export type Logger = (line: string, kind?: LogKind) => void
 export type LogKind = 'out' | 'info' | 'json' | 'error' | 'dim'
@@ -234,6 +239,148 @@ engine.on('*', ev => {
       })
       engine.submitAction({ type: 'move', player: 'p1', pokemon_id: 'p1_0', move_index: 0 })
       engine.submitAction({ type: 'move', player: 'p2', pokemon_id: 'p2_0', move_index: 1 })
+    },
+  },
+
+  formatMulti: {
+    code: `import { createFormatter, loadNames } from '@kyasi/pokebattle-engine'
+
+await loadNames('ja')   // ko·en 이름은 내장, 그 밖의 언어는 필요할 때 불러온다
+for (const locale of ['ko', 'en', 'ja']) {
+  const log = createFormatter({ locale, getPokemon: id => engine.getPokemon(id) })
+  for (const ev of events) { const line = log.format(ev); if (line) console.log(line) }
+}`,
+    run(log) {
+      const team = teamA()
+      const engine = new BattleEngine({ format: 'singles', seed: 3, p1: { name: 'A', team }, p2: { name: 'B', team } })
+      const events: BattleEvent[] = []
+      engine.on('*', ev => events.push(ev))
+      engine.submitAction({ type: 'move', player: 'p1', pokemon_id: 'p1_0', move_index: 0 })
+      engine.submitAction({ type: 'move', player: 'p2', pokemon_id: 'p2_0', move_index: 1 })
+      for (const locale of ['ko', 'en', 'ja']) {
+        log(`── ${locale} ──`, 'info')
+        const f = createFormatter({ locale, getPokemon: id => engine.getPokemon(id) })
+        for (const ev of events) { const line = f.format(ev); if (line && ev.type !== 'battle_start') log(line) }
+      }
+    },
+  },
+
+  describe: {
+    code: `import { describeEvent } from '@kyasi/pokebattle-engine'
+
+// 언어와 무관한 메시지: UI 에서 이름을 굵게 하거나 아이콘을 붙일 때
+describeEvent(damageEvent, { getPokemon: id => engine.getPokemon(id) })`,
+    run(log) {
+      const team = teamA()
+      const engine = new BattleEngine({ format: 'singles', seed: 3, p1: { name: 'A', team }, p2: { name: 'B', team } })
+      const f = createFormatter({ locale: 'en', getPokemon: id => engine.getPokemon(id) })
+      engine.on('damage', ev => {
+        log(JSON.stringify(f.describe(ev)), 'json')
+        log(f.format(ev) ?? '')
+      })
+      engine.submitAction({ type: 'move', player: 'p1', pokemon_id: 'p1_0', move_index: 0 })
+      engine.submitAction({ type: 'move', player: 'p2', pokemon_id: 'p2_0', move_index: 1 })
+    },
+  },
+
+  randomBattle: {
+    code: `import { createRandomBattle, HeuristicAI, createFormatter, preloadData } from '@kyasi/pokebattle-engine'
+
+await preloadData()                                   // 랜덤배틀 세트 (필요할 때 불러온다)
+const engine = createRandomBattle({ seed: 7, level: 50 })   // 'balanced' (기본) | 50 | 100 …
+const log = createFormatter({ locale: 'ko', getPokemon: id => engine.getPokemon(id) })
+engine.on('*', ev => { const line = log.format(ev); if (line) console.log(line) })
+
+const ai = { p1: new HeuristicAI({ seed: 1 }), p2: new HeuristicAI({ seed: 2 }) }
+while (!engine.battle.ended) {
+  for (const p of ['p1', 'p2'] as const) if (engine.getRequest(p)) engine.submitAction(ai[p].chooseAction(engine, p)!)
+}`,
+    run(log) {
+      const engine = createRandomBattle({ seed: 7, level: 50, engine: { turnSnapshots: false } })
+      const f = createFormatter({ locale: 'ko', getPokemon: id => engine.getPokemon(id) })
+      engine.on('*', ev => { const line = f.format(ev); if (line) log(line, ev.type === 'turn_start' ? 'info' : 'out') })
+      const ai = { p1: new HeuristicAI({ seed: 1 }), p2: new HeuristicAI({ seed: 2 }) }
+      engine.start()
+      for (let g = 0; !engine.battle.ended && g < 2000; g++) {
+        for (const p of ['p1', 'p2'] as const) if (!engine.battle.ended && engine.getRequest(p)) engine.submitAction(ai[p].chooseAction(engine, p)!)
+      }
+    },
+  },
+
+  randomSets: {
+    code: `import { getRandomBattleSet, randomBattleLevelStats } from '@kyasi/pokebattle-engine'
+
+getRandomBattleSet('garchomp')            // 레벨·역할·기술 후보·특성·테라 타입
+getRandomBattleSet('mewtwo', 1)           // 1세대
+randomBattleLevelStats(9)                 // 종족값 구간별 평균 레벨`,
+    run(log) {
+      log(json(getRandomBattleSet('garchomp')), 'json')
+      log(json(getRandomBattleSet('mewtwo', 1)), 'json')
+      for (const r of randomBattleLevelStats(9)) log(`BST ${r.bst.padEnd(8)} ${String(r.count).padStart(3)}  avg Lv ${r.avgLevel}  (${r.min}–${r.max})`)
+    },
+  },
+
+  mega: {
+    code: `import { BattleEngine } from '@kyasi/pokebattle-engine'
+
+await preloadData({ gens: [7] })          // 1~8세대 데이터는 필요할 때
+const engine = new BattleEngine({ format: 'singles', gen: 7, seed: 1, p1, p2 })
+engine.getRequest('p1')                   // { can_mega_evolve: true, … }
+engine.submitAction({ type: 'move', player: 'p1', pokemon_id: 'p1_0', move_index: 0, mega: true })`,
+    run(log) {
+      const engine = new BattleEngine({
+        format: 'singles', gen: 7, seed: 1,
+        p1: { name: 'A', team: [{ species: 'charizard', item: 'charizardite-x', ability: 'blaze', moves: ['flare-blitz', 'dragon-claw'], level: 100 }] as unknown as PokemonSet[] },
+        p2: { name: 'B', team: [{ species: 'mewtwo', item: 'mewtwonite-y', ability: 'pressure', moves: ['psystrike'], level: 100 }] as unknown as PokemonSet[] },
+      })
+      const f = createFormatter({ locale: 'ko', getPokemon: id => engine.getPokemon(id) })
+      engine.on('*', ev => { const line = f.format(ev); if (line) log(line) })
+      const req = engine.getRequest('p1')
+      if (req?.type === 'move') log(JSON.stringify({ can_mega_evolve: req.can_mega_evolve, can_terastallize: req.can_terastallize }), 'json')
+      engine.submitAction({ type: 'move', player: 'p1', pokemon_id: 'p1_0', move_index: 0, mega: true })
+      engine.submitAction({ type: 'move', player: 'p2', pokemon_id: 'p2_0', move_index: 0, mega: true })
+    },
+  },
+
+  bench: {
+    code: `// Same battles on Showdown's original path (fast: false) and the engine default
+for (const fast of [false, true]) {
+  const engine = createRandomBattle({ seed, engine: { fast, turnSnapshots: false } })
+  // … same seed + same AI → same choices
+}
+// then compare the protocol logs byte by byte (comparableLog)`,
+    run(log) {
+      const N = 20
+      const run = (fast: boolean) => {
+        let ms = 0, turns = 0
+        const logs: string[] = []
+        for (let i = 0; i < N; i++) {
+          const engine = createRandomBattle({ seed: 100 + i, engine: { fast, turnSnapshots: false } })
+          const ai = { p1: new RandomAI(i), p2: new RandomAI(i + 1000) }
+          const t0 = performance.now()
+          engine.start()
+          for (let g = 0; !engine.battle.ended && g < 2000; g++) {
+            for (const p of ['p1', 'p2'] as const) if (!engine.battle.ended && engine.getRequest(p)) engine.submitAction(ai[p].chooseAction(engine, p)!)
+          }
+          ms += performance.now() - t0
+          turns += engine.battle.turn
+          logs.push(comparableLog(engine.battle))
+        }
+        return { ms, turns, logs }
+      }
+      run(true); run(false) // 워밍업
+      // 브라우저 측정은 흔들리므로 번갈아 세 번 재고 가장 빠른 값
+      let orig = run(false), fast = run(true)
+      for (let r = 0; r < 2; r++) {
+        const o = run(false), f = run(true)
+        if (o.ms < orig.ms) orig = o
+        if (f.ms < fast.ms) fast = f
+      }
+      log(`${N} random battles × 3 rounds (best), ${orig.turns} turns, in this browser — includes AI choices on both sides`, 'info')
+      log(`Showdown original path (fast: false)  ${(orig.ms / orig.turns).toFixed(3)} ms/turn`)
+      log(`pokebattle-engine (default)           ${(fast.ms / fast.turns).toFixed(3)} ms/turn`)
+      log(`speedup: ${(orig.ms / fast.ms).toFixed(2)}x`, 'info')
+      log(`protocol logs identical: ${orig.logs.every((l, i) => l === fast.logs[i]) ? 'yes' : 'NO'}`, orig.logs.every((l, i) => l === fast.logs[i]) ? 'out' : 'error')
     },
   },
 

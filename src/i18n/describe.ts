@@ -124,7 +124,10 @@ export function describeEvent(event: BattleEvent, ctx: FormatContext): Message[]
             // 효과별 문장이 없으면 일반 문장 (포켓몬이 없으면 보여주지 않음 — 일반 문장이 {pokemon} 을 요구)
             return [m(['activate.' + event.effect, event.detail ? 'activate.detail' : 'activate'], params)]
         }
-        case 'forme_change':    return [m('forme', { pokemon: { pokemon: event.pokemon_id } })]
+        case 'forme_change':
+            // 메가진화·원시회귀·울트라버스트는 mega_evolve 문장이 따로 있다 (이벤트는 그대로 남는다)
+            if (/-mega(-[xyz])?$|-primal$|^necrozma-ultra$/.test(event.species)) return null
+            return [m('forme', { pokemon: { pokemon: event.pokemon_id } })]
         case 'message':         return [m('message', { text: { text: event.text } })]
         case 'battle_end':
             if (event.winner === 'draw') return [m('end.draw')]

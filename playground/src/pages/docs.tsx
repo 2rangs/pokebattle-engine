@@ -33,31 +33,33 @@ export const DOCS: DocPage[] = [
     group: 'start',
     title: ['소개', 'Introduction'],
     lead: [
-      'Pokémon Showdown 시뮬레이터 위에 슬러그 기반 API, 타입 있는 이벤트, 한국어 로그를 얹은 배틀 엔진입니다.',
-      'A battle engine that adds a slug-based API, typed events and Korean battle logs on top of the Pokémon Showdown simulator.',
+      'Pokémon Showdown 시뮬레이터와 판정이 100% 같으면서 턴당 1.6~1.9배 빠르고, 객체 하나로 행동을 내는 배틀 엔진입니다.',
+      'A battle engine whose results match the Pokémon Showdown simulator exactly, while running 1.6–1.9× faster per turn and taking actions as plain objects.',
     ],
     body: t => (
       <>
         <P>{t(
-          <>배틀 판정은 전부 Showdown 시뮬레이터(<C>@pkmn/sim</C>)가 합니다. 9세대 기술·특성·도구의 상호작용이 Showdown과 똑같이 동작하고, 이 패키지는 그 위에서 입력을 검증하고, 프로토콜 로그를 이벤트로 바꾸고, 한국어로 읽을 수 있게 만듭니다.</>,
-          <>Every battle rule is decided by the Showdown simulator (<C>@pkmn/sim</C>), so Gen 9 moves, abilities and items interact exactly as they do on Showdown. This package validates input on top of it, turns the protocol log into events, and makes it readable in Korean.</>,
+          <>배틀 판정은 전부 Showdown 시뮬레이터(<C>@pkmn/sim</C>)가 합니다. 1~9세대 기술·특성·도구의 상호작용이 Showdown과 똑같이 동작하고, 이 패키지는 그 위에서 Showdown의 느린 부분을 고쳐 더 빠르게 돌리고, 입력을 검증하고, 프로토콜 로그를 이벤트와 한국어·영어·일본어 문장으로 바꿉니다. 같은 시드의 배틀은 Showdown과 프로토콜 로그가 바이트 단위로 같습니다.</>,
+          <>Every battle rule is decided by the Showdown simulator (<C>@pkmn/sim</C>), so moves, abilities and items in Gens 1–9 interact exactly as they do on Showdown. On top of it this package fixes Showdown’s slow hot path, validates input, and turns the protocol log into typed events and sentences in Korean, English and Japanese. A battle with the same seed produces a byte-identical protocol log to Showdown’s.</>,
         )}</P>
         <H2>{t('구성', 'What’s inside')}</H2>
         <ApiTable
           head={t(['모듈', '하는 일'], ['Module', 'What it does'])}
           rows={[
-            [<C>BattleEngine</C>, t('싱글/더블 배틀 진행. getRequest → submitAction 두 함수로 한 턴이 돈다.', 'Runs singles and doubles. One turn is getRequest → submitAction.')],
+            [<C>BattleEngine</C>, t('1~9세대 싱글·더블·트리플·로테이션. getRequest → submitAction 두 함수로 한 턴이 돈다.', 'Gen 1–9 singles, doubles, triples and rotation. One turn is getRequest → submitAction.')],
             [<C>BattleEvent</C>, t('Showdown 로그 한 줄이 쓰이는 순간 타입 있는 이벤트로 변환. 이벤트만 재생해도 HP가 시뮬레이터와 일치.', 'Each Showdown log line becomes a typed event as it is written. Replaying events alone reproduces the simulator’s HP.')],
-            [<C>formatEvent</C>, t('이벤트 → 한국어 문장. 받침에 맞춰 이/가, 은/는을 고른다.', 'Event → Korean sentence, with the correct particles.')],
+            [<C>createFormatter</C>, t('이벤트 → 한국어·영어·일본어 문장. 이름은 PokeAPI 데이터(9개 언어), 새 언어는 로케일 하나로 추가.', 'Event → Korean, English or Japanese sentence. Names come from PokeAPI data (9 languages); add a language with one locale.')],
+            [<C>createRandomBattle</C>, t('Showdown 공식 랜덤배틀(1~9세대) 팀·레벨·규칙 그대로.', 'Showdown’s official random battles (Gen 1–9): same teams, levels and rules.')],
             [<C>calculateDamage</C>, t('@smogon/calc 기반 데미지 계산. Showdown 계산기와 같은 결과.', 'Damage calculation on @smogon/calc. Same numbers as the Showdown calculator.')],
             [<C>HeuristicAI</C>, t('데미지 계산 기반 AI. RandomAI, simulateBattle과 함께 벤치·퍼징에 사용.', 'Damage-based AI. Used with RandomAI and simulateBattle for benchmarks and fuzzing.')],
             [<C>useBattle</C>, t('React 훅 (@kyasi/pokebattle-engine/react).', 'React hook (@kyasi/pokebattle-engine/react).')],
+            [<C>npx pokebattle</C>, t('터미널에서 대전·관전·대량 시뮬레이션 (CLI).', 'Play, watch and simulate from the terminal (CLI).')],
           ]}
         />
         <H2>{t('이 문서의 예제', 'Examples in these docs')}</H2>
         <P>{t(
           <>각 예제의 <b>실행</b> 버튼은 이 페이지 안에서 실제 엔진을 돌리고, 결과를 콘솔처럼 텍스트로만 출력합니다. 같은 seed를 쓰기 때문에 몇 번을 눌러도 같은 로그가 나옵니다.</>,
-          <>The <b>Run</b> button on each example runs the real engine in this page and prints the result as plain text, like a console. Examples use fixed seeds, so every run prints the same log. Battle lines are in Korean because that is what <C>formatEvent</C> produces.</>,
+          <>The <b>Run</b> button on each example runs the real engine in this page and prints the result as plain text, like a console. Examples use fixed seeds, so every run prints the same log. Battle lines in most examples are Korean (<C>formatEvent</C>); see Battle logs for English and Japanese.</>,
         )}</P>
         <ApiRun id="quickstart" title="quickstart.ts" />
       </>
@@ -77,18 +79,102 @@ export const DOCS: DocPage[] = [
           rows={[
             [<C>@kyasi/pokebattle-engine</C>, t('엔진, 데이터, 계산기, AI, 시뮬레이션, 포매터, 타입', 'Engine, data, calculator, AI, simulation, formatter, types')],
             [<C>@kyasi/pokebattle-engine/react</C>, t('useBattle 훅 (react ≥ 18 peer dependency, 선택)', 'useBattle hook (optional react ≥ 18 peer dependency)')],
+            [<C>npx pokebattle</C>, t('CLI (bin). 엔진을 함께 번들한 Node 단일 파일', 'CLI (bin). A single Node file with the engine bundled')],
           ]}
         />
         <H2>{t('요구 사항', 'Requirements')}</H2>
         <Ul items={t([
-          'Node.js 또는 최신 브라우저. 데이터는 번들에 포함되어 동기로 로드됩니다 (preloadData 불필요).',
-          '의존성: @pkmn/sim, @pkmn/randoms, @smogon/calc.',
+          'Node.js 또는 최신 브라우저. 배틀·데미지 계산·이름은 바로 동작합니다.',
+          '무거운 데이터는 필요할 때만 불러옵니다: await preloadData() 는 랜덤배틀 세트·기술표, preloadData({ gens: [7] }) 는 그 세대 데이터. 번들에서는 각각 별도 청크입니다.',
+          '의존성: @pkmn/sim (필요한 부분만 번들), @smogon/calc.',
           'React는 /react 엔트리를 쓸 때만 필요합니다.',
         ], [
-          'Node.js or a modern browser. Data ships in the bundle and loads synchronously (no preloadData needed).',
-          'Dependencies: @pkmn/sim, @pkmn/randoms, @smogon/calc.',
+          'Node.js or a modern browser. Battles, the damage calculator and names work right away.',
+          'Heavy data loads on demand: await preloadData() fetches random-battle sets and learnsets, preloadData({ gens: [7] }) a generation’s data. Each is a separate chunk in the bundle.',
+          'Dependencies: @pkmn/sim (only the needed parts are bundled), @smogon/calc.',
           'React is only needed for the /react entry.',
         ])} />
+        <Snippet code={`import { preloadData } from '@kyasi/pokebattle-engine'
+
+await preloadData()                 // ${t('generateRandomTeam / createRandomBattle / generateRandomSet 전에', 'before generateRandomTeam / createRandomBattle / generateRandomSet')}
+await preloadData({ gens: [8] })    // ${t('8세대 배틀 전에 (9세대는 내장)', 'before a Gen 8 battle (Gen 9 is built in)')}`} />
+        <H2>{t('번들 크기', 'Bundle size')}</H2>
+        <P>{t(
+          <>엔진은 9세대 배틀에 필요한 Showdown 코드만 번들합니다. 쓰지 않는 스트림 코드(direct <C>eval</C> 포함)와 옛 세대 데이터가 빠져서, Vite/Rollup의 <C>eval</C> 경고가 사라지고 앱의 배틀 청크가 <b>8.7 MB → 3.4 MB</b>로 줄었습니다. 기술표(~2.8 MB), 랜덤배틀 세트(~1.1 MB), 1~8세대 데이터(60~140 kB씩)는 쓸 때만 받습니다.</>,
+          <>The engine bundles only the Showdown code a Gen 9 battle needs. The unused stream code (with its direct <C>eval</C>) and older generations’ data are left out, so the Vite/Rollup <C>eval</C> warning is gone and an app’s battle chunk went from <b>8.7 MB to 3.4 MB</b>. Learnsets (~2.8 MB), random-battle sets (~1.1 MB) and Gen 1–8 data (60–140 kB each) download only when used.</>,
+        )}</P>
+      </>
+    ),
+  },
+  {
+    slug: 'performance',
+    group: 'start',
+    title: ['성능 (Showdown 비교)', 'Performance vs Showdown'],
+    lead: [
+      'Smogon의 Pokémon Showdown 시뮬레이터를 직접 쓸 때보다 턴당 1.6~1.9배 빠르고, 결과(프로토콜 로그)는 바이트 단위로 같습니다.',
+      'Faster than running Smogon’s Pokémon Showdown simulator directly, 1.6–1.9× per turn, with byte-identical results (protocol logs).',
+    ],
+    body: t => (
+      <>
+        <H2>{t('측정 결과', 'Results')}</H2>
+        <P>{t(
+          '같은 배틀(같은 시드·팀·선택)을 Showdown 시뮬레이터(@pkmn/sim)에 그대로 재생한 시간과 이 엔진으로 재생한 시간을 비교했습니다. 엔진 쪽 시간에는 엔진이 얹는 일(타입 있는 이벤트, 한국어 이름, 상태 정리)이 모두 들어 있습니다.',
+          'The same battles (same seed, teams and choices) were replayed through the Showdown simulator (@pkmn/sim) and through this engine. The engine’s time includes everything it adds on top (typed events, Korean names, state views).',
+        )}</P>
+        <ApiTable
+          head={t(['형식', 'Showdown 직접', '이 엔진', '속도', 'Showdown + 엔진 패치만'], ['Format', 'Showdown directly', 'This engine', 'Speedup', 'Showdown + patch only'])}
+          rows={[
+            [t('싱글', 'Singles'), '1.001 ms/turn', '0.622 ms/turn', <b>1.61×</b>, '1.81×'],
+            [t('더블', 'Doubles'), '3.520 ms/turn', '1.893 ms/turn', <b>1.86×</b>, '1.84×'],
+            [t('트리플', 'Triples'), '5.710 ms/turn', '3.133 ms/turn', <b>1.82×</b>, '1.94×'],
+          ]}
+        />
+        <P>{t(
+          <>Node 22, 형식마다 무작위 배틀 60판, 다섯 번 측정 중 가장 빠른 값. 직접 재현: <C>npm run bench:compare</C> (로그가 하나라도 다르면 실패로 끝납니다).</>,
+          <>Node 22, 60 random battles per format, best of five rounds. Reproduce with <C>npm run bench:compare</C> (it fails if any log differs).</>,
+        )}</P>
+        <H2>{t('이 브라우저에서 직접 재기', 'Measure it in this browser')}</H2>
+        <P>{t(
+          <>같은 랜덤배틀을 Showdown 원본 경로(<C>fast: false</C>)와 엔진 기본값으로 돌리고, 두 로그가 같은지도 확인합니다. 브라우저·기기에 따라 수치는 다릅니다.</>,
+          <>Runs the same random battles on Showdown’s original path (<C>fast: false</C>) and on the engine’s default, and checks the logs match. Numbers vary by browser and device.</>,
+        )}</P>
+        <ApiRun id="bench" />
+        <H2>{t('어떻게 빨라졌나', 'How')}</H2>
+        <P>{t(
+          <>Showdown은 이벤트가 생길 때마다 필드 위 모든 상태이상·휘발성 상태·특성·도구·필드 효과에서 <C>on&lt;이벤트&gt;</C> 콜백을 문자열 키로 찾습니다. 효과 객체마다 모양이 달라 이 조회가 느리고, 대부분은 "없음"이라 헛수고입니다. 프로파일상 배틀 시간의 절반 가까이가 여기였습니다.</>,
+          <>On every event Showdown looks up an <C>on&lt;Event&gt;</C> callback by string key on every status, volatile, ability, item and field effect in play. The effect objects all have different shapes, so the lookup is slow, and it mostly finds nothing. Profiling put close to half of a battle’s time there.</>,
+        )}</P>
+        <Ul items={t([
+          '효과마다 가진 콜백 목록을 처음 한 번만 만들어 재사용합니다.',
+          '이벤트 이름 문자열을 캐시하고, 핸들러 목록을 중간 배열 없이 만듭니다.',
+          '핸들러 순서는 원본과 같게 유지합니다 (스피드 동률 판정이 이 순서에 달려 있습니다).',
+          '패치는 엔진이 만든 배틀에만 걸립니다. new BattleEngine(config, { fast: false }) 는 Showdown 원본 코드 그대로입니다.',
+        ], [
+          'Each effect’s callbacks are indexed once and reused.',
+          'Event-name strings are cached and handler lists are built without intermediate arrays.',
+          'Handler order stays exactly as in Showdown (speed ties are decided by it).',
+          'The patch applies only to battles the engine creates; new BattleEngine(config, { fast: false }) runs Showdown’s original code.',
+        ])} />
+        <H2>{t('결과가 같다는 근거', 'Why the results are the same')}</H2>
+        <Ul items={t([
+          '퍼징: 모든 배틀을 패치 없이 한 번 더 돌려 프로토콜 로그를 비교합니다 (1~9세대, 싱글·더블·트리플·로테이션).',
+          'bench:compare: 측정한 모든 배틀의 로그를 원본과 비교합니다.',
+          'check:dist: 배포 번들로 돌린 배틀을 원본 @pkmn/sim 에 다시 재생해 비교합니다 (CI).',
+        ], [
+          'Fuzzing: every battle is replayed without the patch and the protocol logs are compared (Gens 1–9; singles, doubles, triples, rotation).',
+          'bench:compare: every measured battle’s log is compared with the original.',
+          'check:dist: battles played by the published bundle are replayed on the original @pkmn/sim and compared (CI).',
+        ])} />
+        <H2>{t('그 밖의 차이', 'Other differences')}</H2>
+        <ApiTable
+          head={t(['', 'Showdown 직접', '이 엔진'], ['', 'Showdown directly', 'This engine'])}
+          rows={[
+            [t('행동 입력', 'Actions'), t("선택 문자열 'move 1 2, switch 3'", "Choice strings 'move 1 2, switch 3'"), t('객체 + 제출 전 검증, 낼 수 있는 행동 목록', 'Objects, validated before submit, plus the list of legal actions')],
+            [t('결과', 'Output'), t('프로토콜 문자열 로그', 'Protocol string log'), t('타입 있는 이벤트 + 3개 언어 문장', 'Typed events + sentences in 3 languages')],
+            [t('앱 번들', 'App bundle'), t('8.7 MB + eval 경고', '8.7 MB + eval warning'), t('3.4 MB, 무거운 데이터는 필요할 때', '3.4 MB, heavy data on demand')],
+            [t('배틀 복제', 'Battle copy'), 'toJSON → fromJSON (~1 ms)', t('같음 (개선 예정)', 'Same (planned)')],
+          ]}
+        />
       </>
     ),
   },
@@ -118,8 +204,8 @@ export const DOCS: DocPage[] = [
         <ApiRun id="parseTeam" />
         <H2>{t('랜덤 배틀 팀', 'Random battle teams')}</H2>
         <P>{t(
-          <><C>generateRandomTeam</C>은 Showdown 공식 랜덤 배틀 세트를 만듭니다. <C>format</C>에 <C>gen9randomdoublesbattle</C>을 주면 더블용.</>,
-          <><C>generateRandomTeam</C> builds Showdown’s official random battle sets. Pass <C>gen9randomdoublesbattle</C> as <C>format</C> for doubles.</>,
+          <><C>generateRandomTeam</C>은 Showdown 공식 랜덤 배틀 세트를 만듭니다(먼저 <C>await preloadData()</C>). <C>format</C>에 <C>gen9randomdoublesbattle</C>, <C>gen7randombattle</C> 등을 줄 수 있고, 배틀까지 한 번에 만들려면 <a href="#/docs/random">랜덤배틀</a>의 <C>createRandomBattle</C>.</>,
+          <><C>generateRandomTeam</C> builds Showdown’s official random battle sets (call <C>await preloadData()</C> first). <C>format</C> takes <C>gen9randomdoublesbattle</C>, <C>gen7randombattle</C> and so on; to set up the whole battle use <C>createRandomBattle</C> from <a href="#/docs/random">Random battles</a>.</>,
         )}</P>
         <ApiRun id="randomTeam" />
         <ApiTable
@@ -152,17 +238,19 @@ export const DOCS: DocPage[] = [
         <ApiTable
           head={t(['BattleConfig', '설명'], ['BattleConfig', 'Description'])}
           rows={[
-            [<C>format</C>, "'singles' | 'doubles'"],
+            [<C>format</C>, "'singles' | 'doubles' | 'triples' | 'rotation'"],
+            [<C>gen?</C>, t('1~9 (기본 9). 세대별 판정·데이터. 세대별 배틀 문서 참고', '1–9 (default 9). Mechanics and data of that generation; see Generations')],
             [<C>p1, p2</C>, t('{ name: string; team: PokemonSet[] } — 최대 6마리', '{ name: string; team: PokemonSet[] } — up to 6')],
             [<C>seed?</C>, t('같은 seed + 같은 입력 → 같은 배틀', 'Same seed + same input → same battle')],
             [<C>maxTurns?</C>, t('넘기면 무승부 (기본 1000)', 'Draw after this many turns (default 1000)')],
-            [<C>formatid?</C>, t('Showdown 포맷 ID (기본 gen9customgame / gen9doublescustomgame)', 'Showdown format ID (default gen9customgame / gen9doublescustomgame)')],
+            [<C>formatid?</C>, t('Showdown 포맷 ID (기본: 세대·형식의 커스텀 게임, 예 gen9customgame)', 'Showdown format ID (default: the custom game for the gen and format, e.g. gen9customgame)')],
+            [<C>options?</C>, t('규칙 옵션 (규칙 옵션 문서)', 'Rule options (see Rule options)')],
             [<C>rules?</C>, t("추가 규칙, 예: ['Sleep Clause Mod', 'Species Clause']", "Extra rules, e.g. ['Sleep Clause Mod', 'Species Clause']")],
           ]}
         />
         <P>{t(
-          <><C>EngineOptions.turnSnapshots</C>(기본 true)는 <C>turn_end</C> 이벤트에 상태 스냅샷을 붙입니다. 대량 시뮬레이션에선 false로 끄세요.</>,
-          <><C>EngineOptions.turnSnapshots</C> (default true) attaches a state snapshot to <C>turn_end</C>. Turn it off for bulk simulation.</>,
+          <><C>EngineOptions.turnSnapshots</C>(기본 true)는 <C>turn_end</C> 이벤트에 상태 스냅샷을 붙입니다. 대량 시뮬레이션에선 false로 끄세요. <C>EngineOptions.fast</C>(기본 true)는 Showdown 핫패스 패치이고, false면 Showdown 원본 코드로 돕니다(결과는 같음, <a href="#/docs/performance">성능</a>).</>,
+          <><C>EngineOptions.turnSnapshots</C> (default true) attaches a state snapshot to <C>turn_end</C>. Turn it off for bulk simulation. <C>EngineOptions.fast</C> (default true) is the Showdown hot-path patch; false runs Showdown’s original code (same results, see <a href="#/docs/performance">Performance</a>).</>,
         )}</P>
 
         <H2>{t('배틀 흐름', 'Battle flow')}</H2>
@@ -184,7 +272,8 @@ export const DOCS: DocPage[] = [
 
         <H2>{t('행동 제출 — submitAction', 'Submitting — submitAction')}</H2>
         <P>{t('양쪽이 모두 제출되는 순간 턴이 실행되고, 그동안 이벤트가 동기적으로 발생합니다.', 'The turn runs as soon as both sides have submitted, and events fire synchronously while it does.')}</P>
-        <Snippet title="Action" code={`{ type: 'move',   player, pokemon_id, move_index: 0 | 1 | 2 | 3 | -1, terastallize? }  // -1 = Struggle
+        <Snippet title="Action" code={`{ type: 'move',   player, pokemon_id, move_index: 0 | 1 | 2 | 3 | -1,                    // -1 = Struggle
+  terastallize?, mega?, ultra_burst?, zmove?, dynamax?, rotate? }                              // ${t('세대별 기믹', 'per-generation gimmicks')}
 { type: 'switch', player, pokemon_id, switch_to_id }
 { type: 'raw',    player, choice: 'move 1 terastallize' }                                // Showdown choice string`} />
         <ApiRun id="submit" />
@@ -240,7 +329,7 @@ export const DOCS: DocPage[] = [
             [<C>battle_start / battle_end</C>, 'p1, p2, seed / winner'],
             [<C>turn_start / turn_end</C>, 'turn / turn, state (turnSnapshots)'],
             [<C>move_use / move_miss / move_fail</C>, 'pokemon_id, move, target_id / reason'],
-            [<C>damage / heal</C>, 'pokemon_id, amount, source, hp_after, effectiveness?, crit?'],
+            [<C>damage / heal</C>, t('pokemon_id, amount, source, hp_after, effectiveness? (0.25·0.5·1·2·4), crit?', 'pokemon_id, amount, source, hp_after, effectiveness? (0.25, 0.5, 1, 2, 4), crit?')],
             [<C>switch / faint</C>, 'player, out_id, in_id, forced? / pokemon_id'],
             [<C>rotate</C>, t("player, direction ('left' | 'right'), in_id, out_id — 로테이션 배틀", "player, direction ('left' | 'right'), in_id, out_id — rotation battles")],
             [<C>status_apply / status_remove</C>, 'pokemon_id, status, source?'],
@@ -252,6 +341,7 @@ export const DOCS: DocPage[] = [
             [<C>ability_trigger</C>, 'pokemon_id, ability, effect'],
             [<C>item_consume / item_activate</C>, 'pokemon_id, item, effect?'],
             [<C>terastallize / forme_change</C>, 'pokemon_id, tera_type / species'],
+            [<C>mega_evolve</C>, t("pokemon_id, kind ('mega' | 'primal' | 'ultra'), species, item?", "pokemon_id, kind ('mega' | 'primal' | 'ultra'), species, item?")],
             [<C>cant_move / immune / hit_count / activate / message</C>, t('기타 상황', 'Everything else')],
           ]}
         />
@@ -265,6 +355,7 @@ export const DOCS: DocPage[] = [
           collapsible={false}
         />
         <H2>{t('한국어 로그 — formatEvent', 'Korean logs — formatEvent')}</H2>
+        <P>{t(<>영어·일본어 등 다른 언어와 문장 바꾸기는 <a href="#/docs/logs">배틀 로그 (다국어)</a>.</>, <>For English, Japanese and custom wording, see <a href="#/docs/logs">Battle logs</a>.</>)}</P>
         <P>{t(
           <>화면에 보여줄 필요 없는 이벤트는 <C>null</C>을 돌려줍니다. <C>sideName</C>으로 "상대 " 같은 접두어를, 세 번째 인자 <C>NameResolver</C>로 포켓몬·기술 이름 표기를 바꿀 수 있습니다.</>,
           <>Returns <C>null</C> for events that don’t need a line. <C>sideName</C> sets a prefix such as "상대 " (opponent), and the third argument, a <C>NameResolver</C>, changes how Pokémon and move names are written.</>,
@@ -277,6 +368,56 @@ export const DOCS: DocPage[] = [
             [<C>STATUS_NAME_KO, STAT_NAME_KO …</C>, t('상태이상·능력치·날씨·필드 등 한국어 이름표', 'Korean name tables for statuses, stats, weather, fields …')],
           ]}
         />
+      </>
+    ),
+  },
+  {
+    slug: 'logs',
+    group: 'battle',
+    title: ['배틀 로그 (다국어)', 'Battle logs (languages)'],
+    lead: [
+      '같은 이벤트를 한국어·영어·일본어 문장으로. 문장은 언어별 로케일, 이름은 PokeAPI 데이터에서 옵니다.',
+      'The same events as Korean, English or Japanese sentences. Wording lives in per-language locales; names come from PokeAPI data.',
+    ],
+    body: t => (
+      <>
+        <ApiRun id="formatMulti" />
+        <H2>{t('두 단계', 'Two steps')}</H2>
+        <Ul items={t([
+          'describeEvent(event, ctx) → 언어와 무관한 메시지 { key, params }. UI는 이걸로 이름을 굵게 하거나 아이콘을 붙일 수 있습니다.',
+          '로케일이 메시지를 문장으로 바꿉니다. 내장: ko, en, ja.',
+        ], [
+          'describeEvent(event, ctx) → language-neutral messages { key, params }. A UI can use them to bold names or add icons.',
+          'A locale turns messages into sentences. Built in: ko, en, ja.',
+        ])} />
+        <ApiRun id="describe" />
+        <H2>{t('이름은 데이터에서', 'Names come from data')}</H2>
+        <P>{t(
+          <>포켓몬·기술·특성·도구·타입·성격 이름은 PokeAPI 데이터(영어는 Showdown 이름)입니다. 스텔스록·트릭룸·도발처럼 기술·특성 이름과 같은 상태 이름도 따로 번역하지 않고 그 이름을 씁니다. 이름 팩: <C>ko, en, ja, zh-hans, zh-hant, fr, de, es, it</C> (ko·en 외에는 <C>await loadNames(code)</C>로 필요할 때).</>,
+          <>Pokémon, move, ability, item, type and nature names come from PokeAPI (Showdown names for English). Conditions named after a move or ability (Stealth Rock, Trick Room, Taunt …) reuse that name instead of a separate translation. Name packs: <C>ko, en, ja, zh-hans, zh-hant, fr, de, es, it</C> (anything but ko and en loads with <C>await loadNames(code)</C>).</>,
+        )}</P>
+        <H2>{t('옵션', 'Options')}</H2>
+        <Snippet code={`const log = createFormatter({
+  locale: 'en',                                  // ${t("'ko' | 'en' | 'ja' | 직접 만든 Locale", "'ko' | 'en' | 'ja' | your own Locale")}
+  getPokemon: id => engine.getPokemon(id),
+  perspective: 'p2',                             // ${t('p2 시점 ("상대"가 바뀜)', 'p2’s point of view ("the opposing …" flips)')}
+  sideName: p => trainerNames[p],                // ${t('진영 이름', 'side names')}
+  messages: { 'move.use': '{pokemon} → {move}' }, // ${t('문장 일부만 바꾸기', 'override a sentence')}
+})
+log.format(event)           // ${t('문장 또는 null', 'sentence or null')}
+log.name.item('heavy-duty-boots')   // ${t('UI 라벨에도 같은 이름', 'the same names for UI labels')}`} />
+        <H2>{t('새 언어 추가', 'Adding a language')}</H2>
+        <Snippet code={`registerLocale({
+  code: 'fr',
+  fallback: en,                                   // ${t('없는 문장은 영어로', 'missing sentences fall back to English')}
+  terms: { stat: { attack: 'Attaque' /* … */ } },
+  messages: { 'move.use': '{pokemon} utilise {move} !' /* … */ },
+})
+await loadNames('fr')`} />
+        <P>{t(
+          <>문장 틀은 <C>{'{param}'}</C>, 있을 때만 쓰는 부분 <C>{'{?{pokemon}: }'}</C>, 복수형 <C>{'{ one, other }'}</C>(Intl.PluralRules)을 지원합니다. 한국어 조사(이/가, 은/는, (으)로)는 한국어 로케일이 받침에 맞춰 고릅니다. 기존 <C>formatEvent</C>는 한국어 포매터로 그대로 동작합니다.</>,
+          <>Templates support <C>{'{param}'}</C>, optional parts <C>{'{?{pokemon}: }'}</C> and plural forms <C>{'{ one, other }'}</C> (Intl.PluralRules). The Korean locale picks particles (이/가, 은/는, (으)로) to match the preceding word. The existing <C>formatEvent</C> still works as the Korean formatter.</>,
+        )}</P>
       </>
     ),
   },
@@ -322,6 +463,92 @@ export const DOCS: DocPage[] = [
           )}
           collapsible={false}
         />
+      </>
+    ),
+  },
+  {
+    slug: 'generations',
+    group: 'battle',
+    title: ['세대별 배틀', 'Generations'],
+    lead: [
+      'gen: 1~9 로 그 세대의 판정·데이터·기믹으로 배틀합니다. 메가진화·Z기술·다이맥스·테라스탈 모두 같은 행동 API.',
+      'gen: 1–9 runs a battle with that generation’s mechanics, data and gimmicks. Mega Evolution, Z-Moves, Dynamax and Tera share one action API.',
+    ],
+    body: t => (
+      <>
+        <Snippet code={`await preloadData({ gens: [7] })      // ${t('1~8세대 데이터는 필요할 때 (9세대는 내장)', 'Gen 1–8 data on demand (Gen 9 built in)')}
+new BattleEngine({ format: 'singles', gen: 7, p1, p2 })`} />
+        <ApiTable
+          head={t(['세대', '형식', '기믹 (요청 → 행동)'], ['Gen', 'Formats', 'Gimmick (request → action)'])}
+          rows={[
+            ['1–2', t('싱글', 'singles'), '—'],
+            ['3–4', t('싱글, 더블', 'singles, doubles'), '—'],
+            ['5', t('싱글, 더블, 트리플', 'singles, doubles, triples'), '—'],
+            ['6', t('싱글, 더블, 트리플', 'singles, doubles, triples'), <><C>can_mega_evolve</C> → <C>mega</C></>],
+            ['7', t('싱글, 더블', 'singles, doubles'), <><C>can_mega_evolve</C> → <C>mega</C>, <C>can_zmove</C> + <C>moves[i].zmove</C> → <C>zmove</C>, <C>can_ultra_burst</C> → <C>ultra_burst</C></>],
+            ['8', t('싱글, 더블', 'singles, doubles'), <><C>can_dynamax</C> → <C>dynamax</C></>],
+            ['9', t('싱글, 더블, 트리플, 로테이션', 'singles, doubles, triples, rotation'), <><C>can_terastallize</C> → <C>terastallize</C></>],
+          ]}
+        />
+        <ApiRun id="mega" />
+        <Ul items={t([
+          '메가진화·원시회귀·울트라버스트는 mega_evolve 이벤트, 다이맥스는 dynamax 휘발성 상태, Z파워는 activate 이벤트로 나오고, 모두 로그 문장이 있습니다.',
+          'getAvailableActions 는 기믹을 쓰는 행동도 포함합니다 (RandomAI 가 그대로 씁니다).',
+          '데미지 미리보기(previewDamage)는 그 세대 계산기로 계산합니다.',
+          '형식 제한을 어기면(예: 2세대 더블) BattleError.',
+        ], [
+          'Mega Evolution, Primal Reversion and Ultra Burst emit mega_evolve, Dynamax is a dynamax volatile, Z-Power an activate event; all have log sentences.',
+          'getAvailableActions includes gimmick actions (RandomAI uses them as is).',
+          'previewDamage uses that generation’s calculator.',
+          'Unsupported combinations (e.g. Gen 2 doubles) throw a BattleError.',
+        ])} />
+      </>
+    ),
+  },
+  {
+    slug: 'random',
+    group: 'battle',
+    title: ['랜덤배틀', 'Random battles'],
+    lead: [
+      'Smogon/Showdown 랜덤배틀과 같은 팀 생성기·세트·밸런스 레벨·규칙. 1~9세대 싱글, 9세대 더블·모노타입.',
+      'The same team generator, sets, balanced levels and rules as Smogon/Showdown Random Battle. Gen 1–9 singles, Gen 9 doubles and monotype.',
+    ],
+    body: t => (
+      <>
+        <ApiRun id="randomBattle" maxHeight={420} />
+        <ApiTable
+          head={t(['함수', '설명'], ['Function', 'Description'])}
+          rows={[
+            [<C>createRandomBattle({'{ gen, format, seed, level, teamSize }'})</C>, t("두 팀 생성 + 실제 랜덤배틀 포맷으로 배틀 준비. level: 'balanced'(기본) | 숫자", "Builds both teams and sets up the battle on the real random format. level: 'balanced' (default) | a number")],
+            [<C>getRandomBattleSet(species, gen?, format?)</C>, t('한 포켓몬의 레벨·역할·기술 후보·특성·테라 타입', 'One species’ level, roles, candidate moves, abilities, Tera types')],
+            [<C>getRandomBattleSets(gen?, format?)</C>, t('풀 전체', 'The whole pool')],
+            [<C>randomBattleLevelStats(gen?, format?)</C>, t('종족값 구간별 평균 레벨', 'Average level by base stat total band')],
+            [<C>RANDOM_BATTLE_FORMATS</C>, t('지원하는 (세대, 형식, 포맷 ID)', 'Supported (gen, format, format ID)')],
+          ]}
+        />
+        <H2>{t('밸런스 레벨', 'Balanced levels')}</H2>
+        <P>{t(
+          '랜덤배틀은 약한 포켓몬일수록 레벨을 높여 균형을 맞춥니다. 9세대 기준 Lv 64~100이고, 공식이 아니라 종마다 정해 둔 값입니다. 종족값과 강하게 반비례하지만(상관계수 −0.78, 종족값 100 높을 때마다 약 6.5레벨 낮음) 특성·기술폭에 따라 조정됩니다.',
+          'Random battles raise the level of weaker Pokémon to balance them. Gen 9 uses Lv. 64–100, set per species rather than by formula. It tracks base stat total closely (r = −0.78, about 6.5 levels lower per 100 BST) and is adjusted for abilities and movepools.',
+        )}</P>
+        <ApiRun id="randomSets" maxHeight={420} />
+        <Ul items={t([
+          '강하면 더 낮게: 코라이돈 64 (종족값 670), 돌핀맨 77, 포푸니크 74.',
+          '약점이 있으면 더 높게: 게을킹·레지기가스 84 (게으름·슬로스타트).',
+          '같은 종족값 600도 데옥시스 어택폼 72 ~ 후파 85.',
+          '메가스톤·원시 구슬·녹슨검을 든 세트는 바뀐 모습의 레벨을 씁니다.',
+          "level: 50 처럼 고정하면 이 보정이 없어집니다 (공식 랜덤배틀과 다름).",
+        ], [
+          'Stronger sits lower: Koraidon 64 (BST 670), Palafin 77, Sneasler 74.',
+          'Drawbacks sit higher: Slaking and Regigigas 84 (Truant, Slow Start).',
+          'Even at BST 600 it ranges from Deoxys-Attack 72 to Hoopa 85.',
+          'Sets holding a Mega Stone, Primal orb or Rusted Sword use the transformed form’s level.',
+          'A fixed level such as level: 50 removes this balancing (unlike the official format).',
+        ])} />
+        <P>{t(
+          <>배틀은 실제 랜덤배틀 포맷(<C>gen9randombattle</C> 등)으로 돌기 때문에 종 클로즈·슬립 클로즈 등 규칙이 Showdown과 같습니다. 세대마다 생성된 팀 수백 마리를 조회 API와 대조해 레벨이 같은지 테스트합니다.</>,
+          <>Battles run on the real random format (<C>gen9randombattle</C> …), so Species Clause, Sleep Clause and the other rules match Showdown. Tests check hundreds of generated Pokémon per generation against the lookup API’s levels.</>,
+        )}</P>
       </>
     ),
   },
@@ -414,6 +641,7 @@ export const DOCS: DocPage[] = [
             [<C>reflect, lightScreen, auroraVeil</C>, t('방어 측 벽', 'Defender’s screens')],
             [<C>stealthRock, spikes</C>, t('방어 측 해저드 (KO 확률에 반영)', 'Defender’s hazards (counted in KO chance)')],
             [<C>isCrit, helpingHand, doubles, hits</C>, t('공격 측 조건', 'Attacker conditions')],
+            [<C>gen</C>, t('세대 (1~9, 기본 9)', 'Generation (1–9, default 9)')],
           ]}
         />
         <H3>DamageResult</H3>
@@ -487,7 +715,42 @@ export const DOCS: DocPage[] = [
           <>Plays a battle to the end with two AIs and returns <C>{'{ winner, turns, engine, log }'}</C>. Pass <C>onEvent</C> to receive events.</>,
         )}</P>
         <ApiRun id="simulate" />
-        <P>{t(<>터미널에서 더 크게 돌리려면 <C>npm run bench -- 500</C>.</>, <>For a larger run in the terminal: <C>npm run bench -- 500</C>.</>)}</P>
+        <P>{t(<>터미널에서 더 크게 돌리려면 <C>npx pokebattle sim --battles 500</C> 또는 <C>npm run bench -- 500</C>.</>, <>For a larger run in the terminal: <C>npx pokebattle sim --battles 500</C> or <C>npm run bench -- 500</C>.</>)}</P>
+      </>
+    ),
+  },
+
+  {
+    slug: 'cli',
+    group: 'tools',
+    title: ['CLI', 'CLI'],
+    lead: [
+      'npx pokebattle 로 터미널에서 AI와 대전하거나, 관전하거나, 대량 시뮬레이션을 돌립니다.',
+      'npx pokebattle plays against the AI, watches AI battles or runs bulk simulations from the terminal.',
+    ],
+    body: t => (
+      <>
+        <Snippet lang="bash" code={`npx pokebattle play  --lang en                  # ${t('나 vs AI (랜덤배틀 팀)', 'you vs the AI (random-battle teams)')}
+npx pokebattle play  --team my.txt --foe cpu.json --level 50
+npx pokebattle watch --lang ja --seed 42        # ${t('AI vs AI 로그', 'AI vs AI log')}
+npx pokebattle watch --gen 7 --level 100        # ${t('7세대 (메가진화·Z기술)', 'Gen 7 (Mega Evolution, Z-Moves)')}
+npx pokebattle watch --json                     # ${t('JSON Lines: 이벤트 + 문장', 'JSON Lines: events + text')}
+npx pokebattle sim   --battles 500 --vs heuristic --json`} />
+        <ApiTable
+          head={t(['옵션', '설명'], ['Option', 'Description'])}
+          rows={[
+            [<C>--lang ko|en|ja</C>, t('로그 언어 (또는 POKEBATTLE_LANG)', 'Log language (or POKEBATTLE_LANG)')],
+            [<C>--gen 1-9</C>, t('세대: 판정·랜덤배틀 세트·레벨', 'Generation: mechanics, random-battle sets and levels')],
+            [<C>--level N</C>, t("모든 포켓몬 레벨 고정 (기본: 랜덤배틀 밸런스 레벨)", 'Set every Pokémon to level N (default: balanced random-battle levels)')],
+            [<C>--seed N</C>, t('같은 시드 + 같은 선택 = 같은 배틀', 'Same seed + same choices = same battle')],
+            [<C>--team / --foe FILE</C>, t('Showdown 텍스트 또는 JSON 팀 파일', 'Showdown text or JSON team file')],
+            [<C>--json</C>, t('다른 프로그램이 받아 쓰기 좋은 JSON Lines', 'JSON Lines for other programs')],
+          ]}
+        />
+        <P>{t(
+          <><C>play</C>는 양쪽 HP 바와 내 기술(타입·위력·PP·예상 데미지)을 보여줍니다. 숫자로 기술, <C>t1</C> 테라스탈, <C>m1</C> 메가진화, <C>z1</C> Z기술, <C>d1</C> 다이맥스, <C>s</C> 교체, <C>q</C> 종료. 한글·가나 폭에 맞춰 줄을 맞춥니다.</>,
+          <><C>play</C> shows both HP bars and your moves with type, power, PP and the damage range. A number uses a move; <C>t1</C> Terastallizes, <C>m1</C> Mega Evolves, <C>z1</C> uses a Z-Move, <C>d1</C> Dynamaxes; <C>s</C> switches, <C>q</C> quits. Columns line up for Korean and Japanese text.</>,
+        )}</P>
       </>
     ),
   },
@@ -547,19 +810,23 @@ export function Battle({ config }) {
     slug: 'testing',
     group: 'integrate',
     title: ['테스트 & 퍼징', 'Testing & fuzzing'],
-    lead: ['모든 배틀은 seed로 재현됩니다. 퍼저는 매 배틀 일곱 가지 불변식을 검사합니다.', 'Every battle is reproducible from its seed. The fuzzer checks seven invariants on each one.'],
+    lead: ['모든 배틀은 seed로 재현됩니다. 퍼저는 매 배틀 여덟 가지 불변식을 검사합니다.', 'Every battle is reproducible from its seed. The fuzzer checks eight invariants on each one.'],
     body: t => (
       <>
         <Snippet lang="bash" code={`npm test                                  # ${t('유닛 테스트', 'unit tests')}
 npm run fuzz -- --battles 100000 --workers 4
-npm run simulate -- --auto --random       # ${t('터미널에서 AI vs AI 관전', 'watch AI vs AI in the terminal')}`} />
+npm run bench:compare                     # ${t('Showdown 대비 속도 + 로그 동일성', 'speed vs Showdown + identical logs')}
+npm run check:dist                        # ${t('배포 번들 == 원본 @pkmn/sim', 'published bundle == original @pkmn/sim')}
+npx pokebattle watch --gen 8              # ${t('터미널에서 AI vs AI 관전', 'watch AI vs AI in the terminal')}`} />
         <H2>{t('퍼징 입력', 'Fuzz inputs')}</H2>
         <Ul items={t([
-          '형식: 싱글 85% / 더블 15%',
+          '형식: 싱글 65% / 더블 15% / 트리플 10% / 로테이션 10%, 20%는 팀 프리뷰',
+          '세대: 30%는 그 형식이 있는 1~8세대 (그 세대 랜덤배틀 세트, 메가·Z·다이맥스 포함)',
           '팀: Showdown 랜덤 배틀 세트 50%, 카오스 팀(무작위 종·특성·도구·기술·노력치/개체값·레벨 1–100·테라 타입) 50%',
           '선택: 무작위 또는 휴리스틱 AI',
         ], [
-          'Format: singles 85% / doubles 15%',
+          'Format: singles 65% / doubles 15% / triples 10% / rotation 10%, 20% with team preview',
+          'Generation: 30% in Gens 1–8 where the format exists (that gen’s random-battle sets, incl. Mega/Z/Dynamax)',
           'Teams: Showdown random battle sets 50%, chaos teams (random species, abilities, items, moves, EVs/IVs, levels 1–100, Tera types) 50%',
           'Choices: random or heuristic AI',
         ])} />
@@ -573,6 +840,7 @@ npm run simulate -- --auto --random       # ${t('터미널에서 AI vs AI 관전
             '이벤트만으로 복원한 HP가 시뮬레이터의 실제 HP와 같다 (모든 포켓몬).',
             '기절 수와 승자가 일관된다.',
             '같은 seed를 다시 돌리면 같은 로그가 나온다 (1% 샘플).',
+            '빠른 경로(기본)와 Showdown 원본 경로의 프로토콜 로그가 같다 (전수).',
           ], [
             'No exceptions.',
             'Showdown accepts every action the engine offers (singles).',
@@ -581,6 +849,7 @@ npm run simulate -- --auto --random       # ${t('터미널에서 AI vs AI 관전
             'HP rebuilt from events alone equals the simulator’s HP (every Pokémon).',
             'Faint counts and the winner are consistent.',
             'Re-running a seed gives the same log (1% sample).',
+            'The fast path (default) and Showdown’s original path produce the same protocol log (every battle).',
           ]).map(x => <li key={x}>{x}</li>)}
         </ol>
         <P>{t(

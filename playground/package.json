@@ -4,7 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "predev": "test -f ../dist/index.js || npm --prefix .. run build",
     "dev": "vite",
+    "prebuild": "test -f ../dist/index.js || npm --prefix .. run build",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"

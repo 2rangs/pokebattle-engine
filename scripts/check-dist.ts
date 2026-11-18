@@ -7,6 +7,14 @@ import { Battle, Dex } from '@pkmn/sim'
 import { randomDoublesChoice } from './shared/random-choice.ts'
 
 const dist = await import('../dist/index.js')
+
+// 브라우저에는 Node 전역 global 이 없다 (globalThis 로 바뀌어 있어야 한다)
+{
+    const { readdirSync, readFileSync } = await import('node:fs')
+    const offenders = readdirSync('dist').filter(f => /\.(c?js)$/.test(f) && f !== 'cli.js')
+        .filter(f => /(^|[^.\w$])global\.\w/.test(readFileSync(`dist/${f}`, 'utf8')))
+    if (offenders.length) { console.error(`Node-only 'global.' in browser bundle: ${offenders.join(', ')}`); process.exit(1) }
+}
 const i = process.argv.indexOf('--battles')
 const N = i >= 0 ? Number(process.argv[i + 1]) : 300
 

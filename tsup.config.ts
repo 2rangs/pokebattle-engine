@@ -14,6 +14,8 @@ export default defineConfig([
         // @pkmn/sim·@pkmn/randoms 는 필요한 부분만 번들 (scripts/slim-sim.ts). @smogon/calc 는 그대로 의존성
         noExternal: ['@pkmn/sim', '@pkmn/randoms'],
         esbuildPlugins: [slimSim()],
+        // Showdown 코드의 Node 전역(global.Config — 랜덤배틀의 PotD 규칙)이 브라우저에서도 동작하게
+        esbuildOptions(o) { o.define = { ...o.define, global: 'globalThis' } },
     },
     {
         // CLI (npx pokebattle). 엔진을 함께 번들한 단일 파일 — Node 전용

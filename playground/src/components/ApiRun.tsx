@@ -3,6 +3,7 @@ import { Button } from '@astryxdesign/core/Button'
 import { CodeBlock } from '@astryxdesign/core/CodeBlock'
 import { examples, type ExampleId, type LogKind } from '../examples'
 import { useLang } from '../i18n'
+import { dataReady } from '../engine'
 
 interface Line { text: string; kind: LogKind }
 
@@ -25,8 +26,10 @@ export function LogWindow({ id, title, command, maxHeight = 420 }: {
 }) {
   const [lines, setLines] = useState<Line[] | null>(null)
   useEffect(() => {
-    const t = setTimeout(() => setLines(collect(id)), 0)
-    return () => clearTimeout(t)
+    let live = true
+    // 엔진 데이터(랜덤배틀 세트 등)가 준비되면 실행
+    dataReady.then(() => setTimeout(() => { if (live) setLines(collect(id)) }, 0))
+    return () => { live = false }
   }, [id])
   return (
     <figure className="logwin">
@@ -53,7 +56,8 @@ export function ApiRun({ id, title, maxHeight = 360 }: {
   const [lines, setLines] = useState<Line[] | null>(null)
   const [ms, setMs] = useState(0)
 
-  const run = useCallback(() => {
+  const run = useCallback(async () => {
+    await dataReady
     const t0 = performance.now()
     const out = collect(id)
     setMs(performance.now() - t0)
