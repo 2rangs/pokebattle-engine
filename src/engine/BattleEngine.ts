@@ -686,6 +686,8 @@ export class BattleEngine {
             case '-formechange':
             case '-transform': {
                 const p = this.resolve(pos[0])
+                // 기절한 메가진화 포켓몬이 원래 모습으로 돌아가는 줄 — 보여줄 변화가 아니다
+                if (p?.fainted) return
                 const species = cmd === '-transform'
                     ? speciesSlug(this.resolve(pos[1])?.species.id ?? '')
                     : speciesSlug((pos[1] ?? '').split(',')[0]!)
