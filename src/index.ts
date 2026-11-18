@@ -5,6 +5,8 @@
 // 엔진
 export { BattleEngine, BattleError, STATUS_FROM_PS, WEATHER_FROM_PS, TERRAIN_FROM_PS, SIDE_FROM_PS, ACTIVE_PER_SIDE, optionsToRules } from './engine/BattleEngine'
 export type { EngineOptions } from './engine/BattleEngine'
+export { replayInputLog, comparableLog } from './engine/replay'
+export type { ReplayOptions } from './engine/replay'
 
 // 데이터
 export {

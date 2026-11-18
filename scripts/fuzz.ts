@@ -13,28 +13,30 @@
 //  5. 이벤트만으로 재구성한 HP == 시뮬레이터 실제 HP (모든 포켓몬)
 //  6. 기절 이벤트 수 == 기절한 포켓몬 수, 승자 일관성
 //  7. 1% 표본: 같은 시드 재실행 시 프로토콜 로그 동일 (결정성)
+//  8. 전수: 빠른 경로(기본)와 Showdown 원본 경로(fast: false)의 프로토콜 로그 동일 (--no-fast-check 로 끔)
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads'
 import { writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { cpus } from 'node:os'
+import { randomDoublesChoice } from './shared/random-choice.ts'
 
 interface Failure { battle: number; seed: number; kind: string; message: string }
 interface Stats {
     battles: number; singles: number; doubles: number; triples: number; rotation: number; turns: number; ties: number
-    events: number; choices: number; doublesFallbacks: number; determinismChecks: number
+    events: number; choices: number; doublesFallbacks: number; determinismChecks: number; fastChecks: number
     failures: Failure[]; failureCount: number; kinds: Record<string, number>
 }
 
 const emptyStats = (): Stats => ({
     battles: 0, singles: 0, doubles: 0, triples: 0, rotation: 0, turns: 0, ties: 0, events: 0, choices: 0, doublesFallbacks: 0,
-    determinismChecks: 0, failures: [], failureCount: 0, kinds: {},
+    determinismChecks: 0, fastChecks: 0, failures: [], failureCount: 0, kinds: {},
 })
 
 async function runWorker(): Promise<void> {
     const { BattleEngine, generateRandomTeam, generateChaosTeam, PRNG, HeuristicAI, ACTIVE_PER_SIDE } = await import('../dist/index.js')
     type Engine = InstanceType<typeof BattleEngine>
-    const { start, end } = workerData as { start: number; end: number }
+    const { start, end, fastCheck } = workerData as { start: number; end: number; fastCheck: boolean }
     let stats = emptyStats()
     const fail = (battle: number, seed: number, kind: string, message: string) => {
         stats.failureCount++
@@ -43,40 +45,7 @@ async function runWorker(): Promise<void> {
         if (stats.failures.length < 20) stats.failures.push({ battle, seed, kind, message: message.slice(0, 500) })
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    function randomDoublesChoice(req: any, rng: InstanceType<typeof PRNG>): string {
-        if (req.forceSwitch) {
-            const bench: number[] = req.side.pokemon.map((p: { active: boolean; condition: string }, i: number) => (!p.active && !p.condition.endsWith(' fnt') ? i + 1 : 0)).filter(Boolean)
-            rng.shuffle(bench)
-            return req.forceSwitch.map((f: boolean) => (f && bench.length ? `switch ${bench.pop()}` : 'pass')).join(', ')
-        }
-        const usedSwitch = new Set<number>()
-        let tera = false
-        return req.active.map((a: { moves: { disabled?: boolean; target?: string }[]; canTerastallize?: string; trapped?: boolean }, slot: number) => {
-            if (req.side.pokemon[slot]?.condition?.endsWith(' fnt') || req.side.pokemon[slot]?.commanding) return 'pass'
-            const bench: number[] = req.side.pokemon.map((p: { active: boolean; condition: string }, i: number) => (!p.active && !p.condition.endsWith(' fnt') && !usedSwitch.has(i + 1) ? i + 1 : 0)).filter(Boolean)
-            if (!a.trapped && bench.length && rng.chance(10)) {
-                const k = rng.pick(bench)
-                usedSwitch.add(k)
-                return `switch ${k}`
-            }
-            const moves = a.moves.map((m, i) => ({ m, i })).filter(x => !x.m.disabled)
-            if (!moves.length) return 'move 1'
-            const { m, i } = rng.pick(moves)
-            let target = ''
-            const n = req.active.length
-            const foes = Array.from({ length: n }, (_, i) => i + 1)
-            const allies = Array.from({ length: n }, (_, i) => -(i + 1)).filter(t => t !== -(slot + 1))
-            if (['normal', 'any', 'adjacentFoe'].includes(m.target ?? '')) target = ` ${rng.pick(foes)}`
-            else if (['adjacentAlly'].includes(m.target ?? '') && allies.length) target = ` ${rng.pick(allies)}`
-            else if (['adjacentAllyOrSelf'].includes(m.target ?? '')) target = ` ${rng.pick([...allies, -(slot + 1)])}`
-            let t = ''
-            if (a.canTerastallize && !tera && rng.chance(15)) { t = ' terastallize'; tera = true }
-            return `move ${i + 1}${target}${t}`
-        }).join(', ')
-    }
-
-    function playBattle(battleNo: number, check: boolean): { engine: Engine; hash: string } {
+    function playBattle(battleNo: number, check: boolean, fast = true): { engine: Engine; hash: string } {
         const seed = battleNo
         const rng = new PRNG(seed * 7919 + 13)
         const roll = rng.int(100)
@@ -91,7 +60,7 @@ async function runWorker(): Promise<void> {
         const options = preview
             ? { teamPreview: true, pickedTeamSize: rng.int(minSize, Math.min(p1team.length, p2team.length)) }
             : undefined
-        const engine = new BattleEngine({ format, seed, maxTurns: 300, options, p1: { name: 'P1', team: p1team }, p2: { name: 'P2', team: p2team } }, { turnSnapshots: false })
+        const engine = new BattleEngine({ format, seed, maxTurns: 300, options, p1: { name: 'P1', team: p1team }, p2: { name: 'P2', team: p2team } }, { turnSnapshots: false, fast })
         const heuristic = !doubles && rng.chance(5)
         const ais = heuristic ? { p1: new HeuristicAI({ seed }), p2: new HeuristicAI({ seed: seed + 1 }) } : null
         engine.start()
@@ -198,6 +167,11 @@ async function runWorker(): Promise<void> {
                 const again = playBattle(i, false)
                 if (again.hash !== hash) fail(i, i, 'determinism', 'same seed produced a different protocol log')
             }
+            if (fastCheck) {
+                stats.fastChecks++
+                const ref = playBattle(i, false, false)
+                if (ref.hash !== hash) fail(i, i, 'fast-path', 'fast path and Showdown original produced different protocol logs')
+            }
         } catch (err) {
             fail(i, i, 'exception', (err as Error).stack ?? String(err))
         }
@@ -239,9 +213,9 @@ async function runMain(): Promise<void> {
         const s = start + w * per
         const e = Math.min(start + total, s + per)
         if (s >= e) return resolve()
-        const worker = new Worker(file, { workerData: { start: s, end: e }, execArgv: [] })
+        const worker = new Worker(file, { workerData: { start: s, end: e, fastCheck: !process.argv.includes('--no-fast-check') }, execArgv: [] })
         worker.on('message', (st: Stats) => {
-            for (const k of ['battles', 'singles', 'doubles', 'triples', 'rotation', 'turns', 'ties', 'events', 'choices', 'doublesFallbacks', 'determinismChecks', 'failureCount'] as const) agg[k] += st[k]
+            for (const k of ['battles', 'singles', 'doubles', 'triples', 'rotation', 'turns', 'ties', 'events', 'choices', 'doublesFallbacks', 'determinismChecks', 'fastChecks', 'failureCount'] as const) agg[k] += st[k]
             agg.failures.push(...st.failures)
             for (const [k, v] of Object.entries(st.kinds)) agg.kinds[k] = (agg.kinds[k] ?? 0) + v
         })

@@ -29,6 +29,7 @@
     "prepare": "tsup",
     "simulate": "tsx scripts/simulate.ts",
     "bench": "tsx scripts/bench.ts",
+    "bench:compare": "tsx scripts/bench-compare.ts",
     "test": "vitest",
     "test:run": "vitest run",
     "type-check": "tsc --noEmit -p tsconfig.build.json",

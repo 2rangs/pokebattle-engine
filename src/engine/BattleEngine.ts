@@ -18,6 +18,7 @@ import { getMove, speciesSlug, abilitySlug, itemSlug, moveSlug, STAT_FROM_PS } f
 import { speciesToShowdown, toSlug } from '../showdown/ids'
 import { PRNG } from '../utils/rng'
 import { calculateDamage, type CalcPokemonInput, type DamageResult } from '../calc/damage'
+import { enableFastPath } from './fastpath'
 import { FOE_FRONT_LOC, FRONT, frontLocked, installRotationPatches } from './rotation'
 
 type AnyEventListener = (event: BattleEvent) => void
@@ -25,6 +26,11 @@ type AnyEventListener = (event: BattleEvent) => void
 export interface EngineOptions {
     /** turn_end 이벤트에 상태 스냅샷 포함 (기본 true). 대량 시뮬레이션은 false 권장 */
     turnSnapshots?: boolean
+    /**
+     * Showdown 핫패스 패치 사용 (기본 true). 결과(프로토콜 로그)는 원본과 같고 더 빠르다.
+     * false 면 Showdown 원본 경로 그대로 — 동작이 의심될 때 대조용 (src/engine/fastpath.ts)
+     */
+    fast?: boolean
 }
 
 export class BattleError extends Error {
@@ -220,10 +226,12 @@ export class BattleEngine {
             throw new BattleError(`포맷/규칙 오류: ${(err as Error).message}`)
         }
         if (this.rotation) (this.battle as unknown as { rotation: boolean }).rotation = true
+        if (options.fast !== false) enableFastPath(this.battle)
         // 로그가 쓰이는 즉시 이벤트로 변환 (상태가 그 시점과 정확히 일치)
         // eslint-disable-next-line @typescript-eslint/no-this-alias
         const self = this
-        const log: string[] = []
+        // 생성자에서 이미 쓰인 줄(|gametype| 등)은 그대로 유지
+        const log: string[] = [...(this.battle as unknown as { log: string[] }).log]
         log.push = function (...lines: string[]) {
             const n = Array.prototype.push.apply(this, lines)
             if (self.ready) for (const line of lines) self.parseLine(line)

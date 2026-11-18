@@ -13,6 +13,22 @@ A Pokémon battle engine built on the **[Pokémon Showdown](https://github.com/s
   - Korean battle logs with correct particles (이/가, 은/는 …).
   - AI, Showdown random-battle teams, a React hook, and fuzz testing.
 
+## Performance
+
+Same battles (same seed, teams and choices) replayed through `@pkmn/sim` directly and through this engine.
+Every replay produces a **byte-identical protocol log**; only the speed differs.
+
+| Format | Showdown (`@pkmn/sim`) | This engine | Speedup |
+|---|---|---|---|
+| Singles | 1.001 ms/turn | 0.622 ms/turn | **1.61×** |
+| Doubles | 3.520 ms/turn | 1.893 ms/turn | **1.86×** |
+| Triples | 5.710 ms/turn | 3.133 ms/turn | **1.82×** |
+
+The engine time includes everything it adds on top (typed events, Korean names, state views).
+Measured with `npm run bench:compare -- --battles 60 --rounds 3` on Node 22; run it yourself to reproduce.
+
+**How:** Showdown spends most of a battle looking up `on<Event>` handlers on every status, volatile, ability, item and field effect, with string keys on differently shaped objects, mostly finding nothing. The engine patches that hot path at runtime (`src/engine/fastpath.ts`): each effect's handlers are indexed once, event-name strings are cached and handler lists are built without intermediate arrays, keeping Showdown's exact handler order. The patch applies only to battles the engine creates; `new BattleEngine(config, { fast: false })` runs Showdown's original code for comparison.
+
 ## Install
 
 ```bash
@@ -155,6 +171,7 @@ Invariants checked:
 5. **HP rebuilt from events alone equals the simulator's actual HP** (every Pokémon).
 6. Faint count and winner are consistent.
 7. Determinism: re-running the same seed gives the same log (1% sample).
+8. **Fast path = Showdown original:** every battle is replayed with the hot-path patches off (`fast: false`), and the protocol logs must match byte for byte (`--no-fast-check` skips this).
 
 The full 10 million battles run in parallel shards on GitHub Actions ("Fuzz (sharded)" workflow → Run workflow; default 10 shards × 1,000,000). The CI workflow runs 10,000 battles on every push.
 
@@ -163,6 +180,7 @@ The full 10 million battles run in parallel shards on GitHub Actions ("Fuzz (sha
 ```bash
 npm run simulate -- --auto --random      # watch AI vs AI in the terminal (without --auto you play against the AI)
 npm run bench -- 500                     # HeuristicAI vs RandomAI
+npm run bench:compare                    # Showdown vs this engine, same battles (and checks the logs are identical)
 npm run fetch-pokeapi                    # refresh PokeAPI data (src/data/pokeapi.json)
 ```
 
