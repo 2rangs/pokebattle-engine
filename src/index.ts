@@ -45,6 +45,13 @@ export {
 } from './utils/format'
 export type { NameResolver, FormatContext } from './utils/format'
 
+// 다국어 로그 (ko / en / ja 내장, 이름 팩: ja·zh-hans·zh-hant·fr·de·es·it)
+export {
+    createFormatter, describeEvent, registerLocale, getLocale, listLocales, loadNames, registerNames, getNames,
+    NAME_PACKS, CONDITION_ENTITY, SHOWN_VOLATILES, capitalizeSentences, ko, en, ja,
+} from './i18n'
+export type { Formatter, FormatterOptions, Message, Arg, Template, Locale, TermGroup, NameLookup, NamePack, EntityKind } from './i18n'
+
 // 타입
 export type * from './types/battle'
 export type * from './types/pokemon'

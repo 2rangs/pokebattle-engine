@@ -357,12 +357,23 @@ export class BattleEngine {
         if (prevStatus !== p.status) {
             this.lastStatus.set(id, p.status)
             if (prevStatus && !p.status && !p.fainted) this.emit({ type: 'status_remove', pokemon_id: id, status: STATUS_FROM_PS[prevStatus] ?? prevStatus })
-            else if (p.status && !prevStatus) this.emit({ type: 'status_apply', pokemon_id: id, status: STATUS_FROM_PS[p.status] ?? p.status, source: reason })
+            else if (p.status && !prevStatus && STATUS_FROM_PS[p.status]) this.emit({ type: 'status_apply', pokemon_id: id, status: STATUS_FROM_PS[p.status] ?? p.status, source: reason })
         }
     }
 
     private reconcileAll(reason: string): void {
         for (const player of SIDES) for (const p of this.battle[player].pokemon) this.reconcile(p, reason)
+    }
+
+    /** -supereffective / -resisted 의 실제 배율 (Showdown 로그는 2배·4배를 구분하지 않는다). 순수 타입 상성만 본다 */
+    private effectiveness(superEffective: boolean, target: PSPokemon | undefined): number {
+        const move = (this.battle as unknown as { activeMove?: { type: string } | null }).activeMove
+        let mod = superEffective ? 1 : -1
+        if (move && target) {
+            const m = this.battle.dex.getEffectiveness(move.type, target.getTypes())
+            mod = superEffective ? Math.max(1, m) : Math.min(-1, m)
+        }
+        return 2 ** mod
     }
 
     private parseLine(line: string): void {
@@ -419,6 +430,7 @@ export class BattleEngine {
                     pp: 1, priority: 0, target: 'selected-pokemon', effect_chance: null, effect: '', meta: null, stat_changes: [],
                 } as MoveData)
                 this.lastMove = { user: this.idOf(user), move }
+                this.pendingHit.clear() // 대타에 막힌 급소 등, 이전 기술의 플래그가 남지 않게
                 this.emit({ type: 'move_use', pokemon_id: this.idOf(user), move, target_id: this.idOf(this.resolve(pos[2])) })
                 return
             }
@@ -434,7 +446,7 @@ export class BattleEngine {
                 const id = this.idOf(this.resolve(pos[0]))
                 const cur = this.pendingHit.get(id) ?? {}
                 if (cmd === '-crit') cur.crit = true
-                else cur.eff = cmd === '-supereffective' ? 2 : 0.5
+                else cur.eff = this.effectiveness(cmd === '-supereffective', this.resolve(pos[0]))
                 this.pendingHit.set(id, cur)
                 return
             }
@@ -449,11 +461,13 @@ export class BattleEngine {
                 this.lastHp.set(id, now)
                 const source = from ? effectSlug(from) : cmd === '-sethp' ? 'pain-split' : (this.lastMove?.move.name ?? 'move')
                 if (now < prev) {
-                    const hit = !from ? this.pendingHit.get(id) : undefined
+                    // 출처 없는 데미지 = 기술 명중. 단, 기술 사용자 자신이 받은 것(대타출동 비용 등)은 명중이 아니다
+                    const isHit = !from && cmd === '-damage' && id !== this.lastMove?.user
+                    const hit = isHit ? this.pendingHit.get(id) : undefined
                     this.pendingHit.delete(id)
                     this.emit({
                         type: 'damage', pokemon_id: id, amount: prev - now, source, hp_after: now,
-                        effectiveness: !from && cmd === '-damage' ? (hit?.eff ?? 1) : undefined,
+                        effectiveness: isHit ? (hit?.eff ?? 1) : undefined,
                         crit: hit?.crit || undefined,
                     })
                 } else if (now > prev) {
@@ -473,6 +487,7 @@ export class BattleEngine {
             case '-status': {
                 const sp = this.resolve(pos[0])
                 if (sp) this.lastStatus.set(this.idOf(sp), sp.status)
+                if (!STATUS_FROM_PS[pos[1] ?? '']) return // fnt 등 (기절은 faint 이벤트)
                 this.emit({ type: 'status_apply', pokemon_id: this.idOf(sp), status: STATUS_FROM_PS[pos[1] ?? ''] ?? pos[1] ?? '', source: from ? effectSlug(from) : this.lastMove?.move.name })
                 return
             }
@@ -562,6 +577,12 @@ export class BattleEngine {
                     this.emit({ type: 'activate', pokemon_id: this.idOf(p), effect: 'typechange', detail: pos[2] })
                     return
                 }
+                // 미래예지·파멸의소원: 이어지는 출처 없는 데미지는 이 기술의 명중
+                if (cmd === '-end' && (effId === 'futuresight' || effId === 'doomdesire')) {
+                    const move = getMove(effId)
+                    if (move) this.lastMove = { user: '', move }
+                    this.pendingHit.clear()
+                }
                 const key = VOLATILE_FROM_PS[effId]
                     ?? (effId.startsWith('protosynthesis') || effId.startsWith('quarkdrive') ? 'paradox_boost'
                         : effId.startsWith('stockpile') ? 'stockpile' : effId.startsWith('perish') ? 'perish_song' : toSlug(effRaw))
@@ -583,10 +604,15 @@ export class BattleEngine {
                     return
                 }
                 if (effId === 'substitute' && kw.includes('[damage]')) {
-                    this.emit({ type: 'damage', pokemon_id: this.idOf(p), amount: 0, source: 'substitute' })
+                    const id = this.idOf(p)
+                    const hit = this.pendingHit.get(id)
+                    this.pendingHit.delete(id)
+                    this.emit({ type: 'damage', pokemon_id: id, amount: 0, source: 'substitute', crit: hit?.crit || undefined })
                     return
                 }
-                this.emit({ type: 'activate', pokemon_id: this.idOf(p) || undefined, effect: toSlug(effRaw), detail: pos[2] ? toSlug(stripPrefix(pos[2])) : undefined })
+                // 세 번째 인자가 포켓몬이면(가시지않는향기 등의 상대) 세부 효과가 아니다
+                const detail = pos[2] && !this.resolve(pos[2]) ? toSlug(stripPrefix(pos[2])) : undefined
+                this.emit({ type: 'activate', pokemon_id: this.idOf(p) || undefined, effect: toSlug(effRaw), detail })
                 return
             }
             case '-ability':

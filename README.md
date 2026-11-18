@@ -10,7 +10,7 @@ A Pokémon battle engine built on the **[Pokémon Showdown](https://github.com/s
 - **This package adds on top:**
   - A slug-based team and action API plus validation (`getRequest` / `submitAction`).
   - Typed events converted from Showdown protocol logs, emitted as each log line is written.
-  - Korean battle logs with correct particles (이/가, 은/는 …).
+  - Battle logs in Korean, English and Japanese from one message catalog (Korean particles handled), plus Pokémon/move/ability/item names in 9 languages.
   - AI, Showdown random-battle teams, a React hook, and fuzz testing.
 
 ## Performance
@@ -126,6 +126,31 @@ Every Showdown protocol message becomes a typed `BattleEvent` (`move_use`, `dama
 - `damage` / `heal` carry exact amounts plus `hp_after`, `effectiveness` and `crit`.
 - HP and status changes that Showdown applies without a log line (Regenerator, Natural Cure …) also get compensating events.
 - So replaying the event stream alone matches the simulator's HP exactly; the fuzz test checks this.
+
+### Battle logs in any language
+
+Events become sentences in two steps, so the wording lives in one place per language:
+
+1. `describeEvent(event, ctx)` → language-neutral messages, e.g. `{ key: 'move.use', params: { pokemon: { pokemon: 'p1_0' }, move: { move: 'earthquake' } } }`.
+2. A locale turns messages into text. Built in: `ko`, `en`, `ja`.
+
+```ts
+import { createFormatter, loadNames } from '@kyasi/pokebattle-engine'
+
+await loadNames('ja')                                   // ko and en names are built in; other packs load on demand
+const log = createFormatter({ locale: 'ja', getPokemon: id => engine.getPokemon(id) })
+engine.on('*', ev => { const line = log.format(ev); if (line) console.log(line) })
+// "ガブリアスの じしん！" "急所に 当たった！ 効果は バツグンだ！ 相手の ヒードランに 197の ダメージ（-100%）"
+
+log.name.item('heavy-duty-boots')                       // 'あつぞこブーツ' — the same names for your UI
+createFormatter({ locale: 'en', getPokemon, perspective: 'p2' })   // p2's point of view ("the opposing …" flips)
+createFormatter({ locale: 'en', getPokemon, messages: { 'move.use': '{pokemon} → {move}' } })  // override a sentence
+```
+
+- **Names come from data, not translations:** Pokémon, moves, abilities, items, types and natures use PokeAPI names (Showdown names for English). Conditions named after a move or ability (Stealth Rock, Trick Room, Taunt, Flash Fire …) reuse that name. Name packs: `ko`, `en`, `ja`, `zh-hans`, `zh-hant`, `fr`, `de`, `es`, `it` (`npm run fetch-pokeapi` regenerates them).
+- **A locale is plain data:** `{ code, messages, terms, fallback?, postProcess? }`. Templates use `{param}`, optional parts `{?{pokemon}: }`, and plural forms `{ one, other }` (`Intl.PluralRules`). Variants are looked up as `key.variant` then `key` (e.g. `status.apply.burn` → `status.apply`).
+- **Add a language:** `registerLocale({ code: 'fr', fallback: en, terms: { … }, messages: { 'move.use': '{pokemon} utilise {move} !', … } })` + `await loadNames('fr')`. Anything missing falls back to the fallback locale.
+- `formatEvent(event, ctx, names?)` still works and is the Korean formatter.
 
 ### Damage calculator
 
