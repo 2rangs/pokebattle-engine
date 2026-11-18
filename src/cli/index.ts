@@ -7,9 +7,9 @@ import { readFileSync } from 'node:fs'
 import { createInterface } from 'node:readline/promises'
 import {
     BattleEngine, HeuristicAI, RandomAI, createFormatter, loadNames, preloadData, generateRandomTeam, parseShowdownTeam,
-    loadTeam, PRNG, simulateBattle,
+    loadTeam, PRNG, simulateBattle, randomBattleFormatId,
 } from '../index'
-import type { Action, BattleAI, BattleFormat, BattlePokemon, Formatter, PlayerID, PokemonSet } from '../index'
+import type { Action, BattleAI, BattleFormat, BattlePokemon, Formatter, Generation, PlayerID, PokemonSet } from '../index'
 
 // ─── 인자 ─────────────────────────────────────────────────────
 const argv = process.argv.slice(2)
@@ -23,23 +23,25 @@ const lang = opt('lang', process.env.POKEBATTLE_LANG ?? 'ko')!
 const seed = Number(opt('seed', String(Math.floor(Math.random() * 1e9))))
 const json = flag('json')
 /** --level 50 / 100 … 모든 포켓몬 레벨 고정 (없으면 팀 그대로, 랜덤배틀 팀은 밸런스 레벨 70~100) */
-const level = () => (opt('level') ? Number(opt('level')) : undefined)
+const level = () => (opt('level') && opt('level') !== 'balanced' ? Number(opt('level')) : undefined)
+/** --gen 1~9 (기본 9) */
+const gen = Number(opt('gen', '9')) as Generation
 const color = process.stdout.isTTY && !json && !process.env.NO_COLOR
 
 // ─── 화면 문구 (로그 문장은 엔진 로케일, 여기는 CLI 자체 문구만) ──
 const UI: Record<string, Record<string, string>> = {
     ko: {
-        moves: '기술', switch: '교체', tera: '테라스탈 + 기술 (예: t1)', pick: '교체할 포켓몬', invalid: '잘못된 입력입니다.',
+        moves: '기술', mega: '메가진화 + 기술 (예: m1)', ultra: '울트라버스트 + 기술', dynamax: '다이맥스 + 기술 (예: d1)', zmove: 'Z기술 (예: z1)', switch: '교체', tera: '테라스탈 + 기술 (예: t1)', pick: '교체할 포켓몬', invalid: '잘못된 입력입니다.',
         you: '나', foe: '상대', result: '결과', draw: '무승부', win: '{name} 승리', turns: '{n}턴', seed: '시드', quit: 'q) 그만두기',
         power: '위력', preview: '예상', battles: '배틀', winRate: '승률', avgTurns: '평균 턴', time: '시간',
     },
     en: {
-        moves: 'Moves', switch: 'switch', tera: 'Terastallize + move (e.g. t1)', pick: 'Switch to', invalid: 'Invalid input.',
+        moves: 'Moves', mega: 'Mega Evolve + move (e.g. m1)', ultra: 'Ultra Burst + move', dynamax: 'Dynamax + move (e.g. d1)', zmove: 'Z-Move (e.g. z1)', switch: 'switch', tera: 'Terastallize + move (e.g. t1)', pick: 'Switch to', invalid: 'Invalid input.',
         you: 'You', foe: 'Foe', result: 'Result', draw: 'Draw', win: '{name} wins', turns: '{n} turns', seed: 'seed', quit: 'q) quit',
         power: 'BP', preview: 'est.', battles: 'battles', winRate: 'win rate', avgTurns: 'avg turns', time: 'time',
     },
     ja: {
-        moves: 'わざ', switch: '交代', tera: 'テラスタル + わざ (例: t1)', pick: '交代するポケモン', invalid: '入力が正しくありません。',
+        moves: 'わざ', mega: 'メガシンカ + わざ (例: m1)', ultra: 'ウルトラバースト + わざ', dynamax: 'ダイマックス + わざ (例: d1)', zmove: 'Zワザ (例: z1)', switch: '交代', tera: 'テラスタル + わざ (例: t1)', pick: '交代するポケモン', invalid: '入力が正しくありません。',
         you: '自分', foe: '相手', result: '結果', draw: '引き分け', win: '{name}の勝ち', turns: '{n}ターン', seed: 'シード', quit: 'q) やめる',
         power: '威力', preview: '予想', battles: 'バトル', winRate: '勝率', avgTurns: '平均ターン', time: '時間',
     },
@@ -59,6 +61,7 @@ const HELP = `pokebattle — Pokémon Showdown-accurate battles from the termina
   pokebattle sim    [--battles N] [--vs random|heuristic]    many AI battles, stats
 
   --lang ko|en|ja   log language (default ko, or POKEBATTLE_LANG)
+  --gen 1-9         generation (default 9): mechanics, random-battle sets and levels of that generation
   --seed N          same seed + same choices = same battle
   --level N         set every Pokémon to level N (e.g. 50 or 100); random teams default to balanced levels
   --json            JSON Lines: every engine event (+ "text") / sim result
@@ -69,7 +72,7 @@ const HELP = `pokebattle — Pokémon Showdown-accurate battles from the termina
 // ─── 팀 ───────────────────────────────────────────────────────
 function readTeam(file: string | undefined, rng: PRNG, level?: number): PokemonSet[] {
     let team: PokemonSet[]
-    if (!file) team = generateRandomTeam({ seed: rng.int(0x7fffffff) })
+    if (!file) team = generateRandomTeam({ seed: rng.int(0x7fffffff), format: randomBattleFormatId(gen, 'singles') })
     else {
         const text = readFileSync(file, 'utf8')
         if (text.trimStart().startsWith('{') || text.trimStart().startsWith('[')) {
@@ -121,7 +124,7 @@ async function play(): Promise<void> {
     const rng = new PRNG(seed)
     const lv = level()
     const engine = new BattleEngine({
-        format: 'singles', seed,
+        format: 'singles', gen, seed,
         p1: { name: t('you'), team: readTeam(opt('team'), rng, lv) },
         p2: { name: 'AI', team: readTeam(opt('foe'), rng, lv) },
     })
@@ -169,14 +172,26 @@ async function choose(engine: BattleEngine, fmt: Formatter, rl: ReturnType<typeo
     })
     if (req.can_switch) console.log(`  s) ${t('switch')}`)
     if (req.can_terastallize) console.log(`  t<n>) ${t('tera')} → ${fmt.name.type(req.active.tera_type ?? '')}`)
+    if (req.can_mega_evolve) console.log(`  m<n>) ${t('mega')}`)
+    if (req.can_ultra_burst) console.log(`  u<n>) ${t('ultra')}`)
+    if (req.can_dynamax) console.log(`  d<n>) ${t('dynamax')}`)
+    if (req.can_zmove) console.log(`  z<n>) ${t('zmove')}: ${req.moves.filter(m => m.zmove).map(m => `${m.index + 1}→${fmt.name.move(m.zmove!)}`).join(', ')}`)
     console.log(`  ${t('quit')}`)
     for (;;) {
         const input = (await rl.question('> ')).trim().toLowerCase()
         if (input === 'q') return null
         if (input === 's' && req.can_switch) { const a = await switchTo(); if (a) return a; continue }
-        const tera = input.startsWith('t') && req.can_terastallize
-        const opt = req.moves[Number(tera ? input.slice(1) : input) - 1]
-        if (opt && !opt.disabled) return { type: 'move', player: 'p1', pokemon_id: req.active.id, move_index: opt.index, terastallize: tera || undefined }
+        // t1 테라스탈 / m1 메가진화 / u1 울트라버스트 / d1 다이맥스 / z1 Z기술 + 기술 1
+        const prefix = /^[tmudz]/.test(input) ? input[0]! : ''
+        const ok = { t: req.can_terastallize, m: req.can_mega_evolve, u: req.can_ultra_burst, d: req.can_dynamax, z: req.can_zmove }[prefix] ?? true
+        const opt = req.moves[Number(prefix ? input.slice(1) : input) - 1]
+        if (ok && opt && !opt.disabled && (prefix !== 'z' || opt.zmove)) {
+            return {
+                type: 'move', player: 'p1', pokemon_id: req.active.id, move_index: opt.index,
+                ...(prefix === 't' && { terastallize: true }), ...(prefix === 'm' && { mega: true }), ...(prefix === 'u' && { ultra_burst: true }),
+                ...(prefix === 'd' && { dynamax: true }), ...(prefix === 'z' && { zmove: true }),
+            }
+        }
         console.log(`  ${t('invalid')}`)
     }
 }
@@ -186,7 +201,7 @@ function watch(): void {
     const rng = new PRNG(seed)
     const format = (opt('format', 'singles') as BattleFormat)
     const engine = new BattleEngine({
-        format, seed,
+        format, gen, seed,
         p1: { name: 'AI-1', team: readTeam(opt('team'), rng, level()) },
         p2: { name: 'AI-2', team: readTeam(opt('foe'), rng, level()) },
     })
@@ -212,10 +227,11 @@ function sim(): void {
         const rng = new PRNG(seed + i)
         const first = i % 2 === 0
         const foe = (s: number): BattleAI => (vs === 'heuristic' ? new HeuristicAI({ seed: s }) : new RandomAI(s))
+        const rf = randomBattleFormatId(gen, 'singles')
         const r = simulateBattle({
-            format: 'singles', seed: seed + i,
-            p1: { name: 'p1', team: generateRandomTeam({ seed: rng.int(0x7fffffff) }) },
-            p2: { name: 'p2', team: generateRandomTeam({ seed: rng.int(0x7fffffff) }) },
+            format: 'singles', gen, seed: seed + i,
+            p1: { name: 'p1', team: generateRandomTeam({ seed: rng.int(0x7fffffff), format: rf, level: level() }) },
+            p2: { name: 'p2', team: generateRandomTeam({ seed: rng.int(0x7fffffff), format: rf, level: level() }) },
         }, { p1: first ? new HeuristicAI({ seed: i }) : foe(i), p2: first ? foe(i) : new HeuristicAI({ seed: i }) })
         turns += r.turns
         if (r.winner === 'draw') draws++
@@ -231,7 +247,7 @@ function sim(): void {
 
 async function main(): Promise<void> {
     if (command === 'help' || flag('help')) { console.log(HELP); return }
-    await preloadData()
+    await preloadData({ gens: [gen] })
     if (lang !== 'ko' && lang !== 'en') await loadNames(lang)
     if (command === 'play') return play()
     if (command === 'watch') return watch()

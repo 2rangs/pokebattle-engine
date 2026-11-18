@@ -9,7 +9,7 @@ export const SHOWN_VOLATILES = new Set([
     'confusion', 'flinch', 'seeded', 'bound', 'infatuation', 'curse', 'aqua_ring', 'ingrain', 'magnet_rise', 'taunt',
     'encore', 'yawn', 'protect', 'kings_shield', 'spiky_shield', 'baneful_bunker', 'silk_trap', 'burning_bulwark',
     'obstruct', 'endure', 'focus_energy', 'substitute', 'salt_cure', 'flash_fire', 'heal_block', 'embargo', 'destiny_bond',
-    'future-sight', 'doom-desire',
+    'future-sight', 'doom-desire', 'dynamax',
 ])
 
 const PS_STATUS: Record<string, string> = { par: 'paralysis', slp: 'sleep', brn: 'burn', frz: 'freeze', psn: 'poison', tox: 'toxic' }
@@ -115,6 +115,7 @@ export function describeEvent(event: BattleEvent, ctx: FormatContext): Message[]
         case 'item_consume':    return [m('item.consume', { pokemon: { pokemon: event.pokemon_id }, item: { item: event.item } })]
         case 'item_activate':   return [m('item.activate', { pokemon: { pokemon: event.pokemon_id }, item: { item: event.item } })]
         case 'terastallize':    return [m('tera', { pokemon: { pokemon: event.pokemon_id }, type: { type: event.tera_type } })]
+        case 'mega_evolve':     return [m('mega', { pokemon: { pokemon: event.pokemon_id }, ...(event.item ? { item: { item: event.item } } : {}) }, event.kind)]
         case 'hit_count':       return [m('hits', { count: event.hits })]
         case 'activate': {
             const params: Message['params'] = { effect: { effect: event.effect } }

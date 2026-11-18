@@ -8,7 +8,8 @@ import type { Weather, Terrain } from '../types/effect'
 import { speciesToShowdown, moveToShowdown, abilityToShowdown, itemToShowdown, natureToShowdown, typeToShowdown } from '../showdown/ids'
 import { STAT_TO_PS } from '../data/dex'
 
-const gen = Generations.get(9)
+/** 세대별 계산기 데이터 (기본 9세대) */
+const genOf = (n = 9) => Generations.get(n as never)
 
 export interface CalcPokemonInput {
     species:   string
@@ -47,6 +48,8 @@ export interface CalcFieldInput {
     /** 방어 측 해저드 (KO 확률에 반영) */
     stealthRock?: boolean
     spikes?:      number
+    /** 세대 (1~9, 기본 9) */
+    gen?:         number
     /** 공격 측 */
     helpingHand?: boolean
     isCrit?:      boolean
@@ -100,7 +103,8 @@ function statTable(src: EVs | IVs | Partial<StatStages> | undefined): Record<str
     return out
 }
 
-export function toCalcPokemon(input: CalcPokemonInput): Pokemon {
+export function toCalcPokemon(input: CalcPokemonInput, genNum = 9): Pokemon {
+    const gen = genOf(genNum)
     const species = Dex.species.get(speciesToShowdown(input.species))
     if (!species.exists) throw new Error(`알 수 없는 포켓몬: ${input.species}`)
     const ability = input.ability ? Dex.abilities.get(abilityToShowdown(input.ability)) : undefined
@@ -159,8 +163,9 @@ export function calculateDamage(
     move: string,
     field: CalcFieldInput = {},
 ): DamageResult {
-    const atk = attacker instanceof Pokemon ? attacker : toCalcPokemon(attacker)
-    const def = defender instanceof Pokemon ? defender : toCalcPokemon(defender)
+    const gen = genOf(field.gen)
+    const atk = attacker instanceof Pokemon ? attacker : toCalcPokemon(attacker, field.gen)
+    const def = defender instanceof Pokemon ? defender : toCalcPokemon(defender, field.gen)
     const moveData = Dex.moves.get(moveToShowdown(move))
     if (!moveData.exists) throw new Error(`알 수 없는 기술: ${move}`)
     const m = new Move(gen, moveData.name as never, { isCrit: !!field.isCrit, hits: field.hits })

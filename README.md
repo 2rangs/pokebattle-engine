@@ -144,6 +144,40 @@ Every Showdown protocol message becomes a typed `BattleEvent` (`move_use`, `dama
 - HP and status changes that Showdown applies without a log line (Regenerator, Natural Cure …) also get compensating events.
 - So replaying the event stream alone matches the simulator's HP exactly; the fuzz test checks this.
 
+### Generations
+
+```ts
+await preloadData({ gens: [7] })          // Gen 1–8 data loads on demand (Gen 9 is built in)
+new BattleEngine({ format: 'singles', gen: 7, p1, p2 })
+```
+
+| Gen | Formats | Gimmicks (`getRequest` → action flag) |
+|---|---|---|
+| 1–2 | singles | — |
+| 3–4, 7–8 | singles, doubles | Gen 6–7: `can_mega_evolve` → `mega`, Gen 7: `can_zmove` (+ `moves[i].zmove`) → `zmove`, `can_ultra_burst` → `ultra_burst`, Gen 8: `can_dynamax` → `dynamax` |
+| 5–6 | singles, doubles, triples | |
+| 9 | singles, doubles, triples, rotation | `can_terastallize` → `terastallize` |
+
+Mechanics, the damage calculator and random-battle sets follow the chosen generation. Mega Evolution / Primal Reversion / Ultra Burst emit a `mega_evolve` event, Dynamax a `dynamax` volatile, Z-Power an `activate` event; all have log sentences.
+
+### Random battles
+
+The same team generator, sets and rules as Pokémon Showdown's Random Battle (`@pkmn/randoms`):
+
+```ts
+await preloadData({ gens: [8] })
+const battle = createRandomBattle({ gen: 8, seed: 42 })           // gen 1–9 singles, gen 9 'doubles' | 'monotype'
+const lv50 = createRandomBattle({ seed: 42, level: 50 })           // every Pokémon at Lv. 50 instead of balanced levels
+
+getRandomBattleSet('garchomp')
+// → { species: 'garchomp', level: 74, roles: [{ role: 'Fast Support', moves: ['dragon-tail', 'earthquake', …], abilities: ['rough-skin'], tera_types: ['ground', 'steel'] }, …] }
+getRandomBattleSets(9, 'doubles')                                   // the whole pool
+randomBattleLevelStats(9)                                           // average level by base-stat-total band
+```
+
+- **Balanced levels:** each species has its own level so weaker Pokémon get a bump (Gen 9: Lv. 64–100). It tracks base stat total closely (r ≈ −0.78; ~6.5 levels per 100 BST) but is tuned per species: strong abilities or movepools sit lower (Koraidon 64, Palafin 77, Sneasler 74), drawbacks sit higher (Slaking and Regigigas 84). Sets holding a Mega Stone, Primal orb or Rusted Sword use the transformed form's level.
+- The battle runs on the real random format (`gen9randombattle` …), so Species Clause, Sleep Clause and the other rules match Showdown.
+
 ### Battle logs in any language
 
 Events become sentences in two steps, so the wording lives in one place per language:
@@ -223,12 +257,13 @@ The full 10 million battles run in parallel shards on GitHub Actions ("Fuzz (sha
 npx pokebattle play  --lang en              # you vs the AI (random-battle teams)
 npx pokebattle play  --team my.txt --foe cpu.json --level 50
 npx pokebattle watch --lang ja --seed 42    # AI vs AI battle log
-npx pokebattle watch --level 50             # every Pokémon at level 50 (random teams default to balanced levels 70–100)
+npx pokebattle watch --level 50             # every Pokémon at level 50 (random teams default to balanced levels 64–100)
+npx pokebattle watch --gen 7 --lang en      # Gen 7 random battle (Mega Evolution, Z-Moves)
 npx pokebattle watch --json                 # JSON Lines: every engine event + its "text"
 npx pokebattle sim   --battles 500 --vs heuristic --json
 ```
 
-- `play` shows both active Pokémon with HP bars and your moves with type, power, PP and the damage range (`previewDamage`). Type a number to use a move, `t1` to Terastallize and use move 1, `s` to switch, `q` to quit.
+- `play` shows both active Pokémon with HP bars and your moves with type, power, PP and the damage range (`previewDamage`). Type a number to use a move, `t1` to Terastallize and use move 1 (`m1` Mega Evolve, `z1` Z-Move, `d1` Dynamax in older gens), `s` to switch, `q` to quit.
 - Team files: Showdown export text, or JSON (`PokemonSet[]` or `{ "pokemons": [...] }`).
 - `--lang ko|en|ja` (or `POKEBATTLE_LANG`), `--seed N` (same seed and choices = same battle), `NO_COLOR` turns off colors.
 - In this repo: `npm run cli -- watch --lang en`, `npm run simulate` (= `play`).

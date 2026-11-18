@@ -6,7 +6,7 @@ import type { Stats } from '../types/pokemon'
 import type { MoveData, MoveTarget, MoveCategory } from '../types/move'
 import { speciesToShowdown, moveToShowdown, toSlug } from '../showdown/ids'
 import pokeapi from './pokeapi.json'
-import { loadRandoms, loadLearnsets, getRandoms, learnsetsLoaded } from './lazy'
+import { loadRandoms, loadLearnsets, getRandoms, learnsetsLoaded, loadGen, genLoaded } from './lazy'
 
 // ─── PokeAPI 데이터 ───────────────────────────────────────────
 interface PokeApiSpecies {
@@ -217,7 +217,13 @@ export function getTypeChart(): Record<string, Record<string, number>> {
  * 무거운 데이터(랜덤배틀 세트, Showdown 기술표)를 불러온다. 배틀·계산기·이름은 이것 없이도 동작하고,
  * generateRandomTeam / generateRandomSet(기술표 사용) / generateChaosTeam 전에 한 번 필요하다.
  */
-export async function preloadData(): Promise<void> {
+export async function preloadData(opts: { gens?: number[] } = {}): Promise<void> {
     await Promise.all([loadRandoms(), loadLearnsets()])
+    // 세대 데이터는 상위 세대를 상속하므로 하나씩 차례로 (예: 7세대 = 8세대 위에 차이만)
+    for (const g of opts.gens ?? []) if (g !== 9) await loadGen(g)
 }
-export function isDataLoaded(): boolean { return !!getRandoms() && learnsetsLoaded() }
+/** 무거운 데이터가 모두 준비됐는지 (gens: 이 세대 데이터까지) */
+export function isDataLoaded(gens: number[] = []): boolean {
+    return !!getRandoms() && learnsetsLoaded() && gens.every(g => g === 9 || genLoaded(g))
+}
+export { genLoaded }

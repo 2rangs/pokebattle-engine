@@ -34,6 +34,12 @@ export type { BattleAI, HeuristicAIOptions } from './ai'
 export { simulateBattle, generateRandomSet, generateRandomTeam, generateChaosTeam, bst } from './sim'
 export type { SimulateOptions, SimulateResult, RandomSetOptions, RandomTeamOptions, ChaosTeamOptions } from './sim'
 
+// 랜덤배틀 (Showdown 공식 랜덤배틀 생성기·데이터, 1~9세대)
+export {
+    createRandomBattle, getRandomBattleSets, getRandomBattleSet, randomBattleFormatId, randomBattleLevelStats, RANDOM_BATTLE_FORMATS,
+} from './random'
+export type { RandomBattleOptions, RandomBattleFormat, RandomBattleSpecies, RandomBattleRole } from './random'
+
 // 유틸
 export { PRNG } from './utils/rng'
 export type { RandomFn } from './utils/rng'

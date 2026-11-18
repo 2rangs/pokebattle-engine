@@ -21,3 +21,10 @@ export async function loadLearnsets(): Promise<void> {}
 export function learnsetsLoaded(): boolean {
     return true
 }
+
+/** 1~8세대 배틀 데이터 (소스에서는 이미 있음, 빌드에서는 세대별 지연 청크) */
+export async function loadGen(_gen: number): Promise<void> {}
+
+export function genLoaded(_gen: number): boolean {
+    return true
+}

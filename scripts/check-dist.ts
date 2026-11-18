@@ -72,4 +72,48 @@ for (let n = 0; n < N; n++) {
     }
 }
 console.log(`${N} battles (${turns} turns): ${mismatches} protocol log mismatches vs original @pkmn/sim; learnset sets ${learnMismatch ? 'FAILED' : 'identical'}`)
-if (mismatches || learnMismatch) process.exit(1)
+
+// ─── 1~8세대: 세대 데이터 지연 로드 → 랜덤배틀 (메가·Z·다이맥스 포함) == 원본 ───
+let genFail = 0
+let guarded = false
+try { new dist.BattleEngine({ format: 'singles', gen: 7, p1: { name: 'a', team: [] }, p2: { name: 'b', team: [] } }) } catch (e) { guarded = /preloadData/.test((e as Error).message) }
+if (!guarded) { genFail++; console.error('gen 7 battle before preloadData({ gens: [7] }) should ask for it') }
+await dist.preloadData({ gens: [1, 2, 3, 4, 5, 6, 7, 8] })
+const PER_GEN = Math.max(10, Math.round(N / 6))
+for (let gen = 1; gen <= 8; gen++) {
+    let bad = 0, gTurns = 0, gimmicks = 0
+    for (let n = 0; n < PER_GEN; n++) {
+        const engine = dist.createRandomBattle({ gen, seed: n * 31 + gen, engine: { turnSnapshots: false } })
+        const rng = new dist.PRNG(n)
+        const inputs: string[] = []
+        const b = engine.battle
+        const choose = b.choose.bind(b), tie = b.tie.bind(b)
+        b.choose = (sd: string, c: string) => { const ok = choose(sd, c); if (ok) inputs.push(`>${sd} ${c}`); return ok }
+        b.tie = () => { inputs.push('>forcetie'); tie() }
+        engine.start()
+        const header = engine.battle.inputLog.filter((l: string) => !/^>p[12] /.test(l))
+        for (let g = 0; !engine.battle.ended && g < 3000; g++) {
+            for (const p of ['p1', 'p2'] as const) {
+                if (engine.battle.ended || !engine.getRequest(p)) continue
+                const a = rng.pick(engine.getAvailableActions(p)) as { mega?: boolean; zmove?: boolean; dynamax?: boolean; ultra_burst?: boolean }
+                if (a.mega || a.zmove || a.dynamax || a.ultra_burst) gimmicks++
+                engine.submitAction(a)
+            }
+        }
+        gTurns += engine.battle.turn
+        if ([...engine.unhandledProtocol.keys()].length) { bad++; console.error(`gen${gen} battle ${n}: unhandled ${[...engine.unhandledProtocol.keys()]}`) }
+        let orig: Battle | null = null
+        for (const line of [...header, ...inputs]) {
+            const [cmd, ...rest] = line.slice(1).split(' ')
+            const arg = rest.join(' ')
+            if (cmd === 'start') orig = new Battle(JSON.parse(arg))
+            else if (cmd === 'player') { const sp = arg.indexOf(' '); orig!.setPlayer(arg.slice(0, sp) as never, JSON.parse(arg.slice(sp + 1))) }
+            else if (cmd === 'p1' || cmd === 'p2') orig!.choose(cmd, arg)
+            else if (cmd === 'forcetie') orig!.tie()
+        }
+        if (comparable(orig!.log) !== comparable(engine.battle.log)) { bad++; if (bad <= 2) console.error(`MISMATCH gen${gen} battle ${n}`) }
+    }
+    genFail += bad
+    console.log(`gen${gen}: ${PER_GEN} random battles (${gTurns} turns, ${gimmicks} mega/Z/dynamax choices): ${bad} problems`)
+}
+if (mismatches || learnMismatch || genFail) process.exit(1)
