@@ -51,6 +51,7 @@ export const DOCS: DocPage[] = [
             [<C>BattleEvent</C>, t('Showdown 로그 한 줄이 쓰이는 순간 타입 있는 이벤트로 변환. 이벤트만 재생해도 HP가 시뮬레이터와 일치.', 'Each Showdown log line becomes a typed event as it is written. Replaying events alone reproduces the simulator’s HP.')],
             [<C>createFormatter</C>, t('이벤트 → 한국어·영어·일본어 문장. 이름은 PokeAPI 데이터(9개 언어), 새 언어는 로케일 하나로 추가.', 'Event → Korean, English or Japanese sentence. Names come from PokeAPI data (9 languages); add a language with one locale.')],
             [<C>createRandomBattle</C>, t('Showdown 공식 랜덤배틀(1~9세대) 팀·레벨·규칙 그대로.', 'Showdown’s official random battles (Gen 1–9): same teams, levels and rules.')],
+            [<C>createMetronomeBattle</C>, t('손가락흔들기 모드: 기술 고정, 자유 능력치, 고른/랜덤 포켓몬.', 'Metronome mode: Metronome only, free stats, chosen or random Pokémon.')],
             [<C>calculateDamage</C>, t('@smogon/calc 기반 데미지 계산. Showdown 계산기와 같은 결과.', 'Damage calculation on @smogon/calc. Same numbers as the Showdown calculator.')],
             [<C>HeuristicAI</C>, t('데미지 계산 기반 AI. RandomAI, simulateBattle과 함께 벤치·퍼징에 사용.', 'Damage-based AI. Used with RandomAI and simulateBattle for benchmarks and fuzzing.')],
             [<C>useBattle</C>, t('React 훅 (@kyasi/pokebattle-engine/react).', 'React hook (@kyasi/pokebattle-engine/react).')],
@@ -552,6 +553,61 @@ new BattleEngine({ format: 'singles', gen: 7, p1, p2 })`} />
     ),
   },
   {
+    slug: 'metronome',
+    group: 'battle',
+    title: ['손가락흔들기 모드', 'Metronome mode'],
+    lead: [
+      '모든 포켓몬의 기술이 손가락흔들기 하나뿐인 배틀. 포켓몬은 직접 고르거나 랜덤, HP·공격·방어·특공·특방·스피드 실수치와 레벨은 자유롭게 정합니다.',
+      'Every Pokémon knows only Metronome. Pick the Pokémon or roll them at random, and set HP, Attack, Defense, Sp. Atk, Sp. Def, Speed and level freely.',
+    ],
+    body: t => (
+      <>
+        <ApiRun id="metronome" maxHeight={420} />
+        <ApiTable
+          head={t(['옵션', '설명'], ['Option', 'Description'])}
+          rows={[
+            [<C>seed</C>, t('같은 시드 → 같은 랜덤 팀 + 같은 배틀 (같은 선택일 때)', 'Same seed → same random teams and same battle (given the same choices)')],
+            [<C>p1 / p2.team</C>, t("'random'(기본) 또는 종 목록 (1~6마리). 항목은 'pikachu' 같은 문자열이나 { species, nickname, level, ability, item, nature, stats }", "'random' (default) or a list of 1–6 species. Each entry is a string such as 'pikachu' or { species, nickname, level, ability, item, nature, stats }")],
+            [<C>teamSize</C>, t("'random' 팀 크기 1~6 (기본 3, 더블 4)", "Size of 'random' teams, 1–6 (default 3, doubles 4)")],
+            [<C>stats</C>, t('실수치 { hp, attack, defense, special_attack, special_defense, speed } 중 원하는 것만, 1~9999. 전체 → p1/p2.stats → 포켓몬 stats 순으로 덮어씀', 'Any of { hp, attack, defense, special_attack, special_defense, speed }, 1–9999. Global → p1/p2.stats → per-Pokémon stats, later wins')],
+            [<C>level</C>, t('1~100 (기본 100). 팀·포켓몬별로도 지정', '1–100 (default 100); can also be set per side or per Pokémon')],
+            [<C>format</C>, t("'singles'(기본) | 'doubles'", "'singles' (default) | 'doubles'")],
+            [<C>terastal</C>, t('9세대 테라스탈 허용 (기본 false)', 'Allow Terastallization in Gen 9 (default false)')],
+            [<C>gen</C>, t('세대 (기본 9)', 'Generation (default 9)')],
+          ]}
+        />
+        <H2>{t('자유 능력치는 어떻게 들어가나', 'How free stats work')}</H2>
+        <P>{t(
+          <>HP 999 같은 값은 노력치·개체값·성격으로 만들 수 없어서, 엔진이 Showdown 규칙 <C>Custom Stats Mod</C>를 등록해 배틀 시작 직후(선두가 나오기 전) 시뮬레이터 포켓몬의 <C>storedStats</C>·<C>maxhp</C>를 그 값으로 바꿉니다. 폼체인지 뒤에도 값이 유지되고, 변신은 Showdown 그대로 상대의 능력치를 복사합니다. 엔진 상태(<C>getPokemon().stats</C>·<C>max_hp</C>)와 <C>previewDamage</C>도 같은 실수치를 씁니다. 값은 포맷 ID에 실려 <C>replayInputLog</C>로 같은 배틀이 재생됩니다.</>,
+          <>Values such as 999 HP can’t be reached with EVs, IVs and natures, so the engine registers a Showdown rule, <C>Custom Stats Mod</C>, that sets the simulator Pokémon’s <C>storedStats</C> and <C>maxhp</C> right after the battle starts, before the leads come out. The values survive forme changes, and Transform copies the target’s stats as Showdown does. Engine state (<C>getPokemon().stats</C>, <C>max_hp</C>) and <C>previewDamage</C> use the same numbers. The values travel in the format ID, so <C>replayInputLog</C> reproduces the battle.</>,
+        )}</P>
+        <P>{t(
+          <>일반 배틀에서도 세트에 <C>customStats</C>를 주면 같은 방식으로 적용됩니다.</>,
+          <>Ordinary battles can use the same thing by giving a set <C>customStats</C>.</>,
+        )}</P>
+        <Snippet title="PokemonSet.customStats" code={`new BattleEngine({ format: 'singles', p1: { name: 'A', team: [{
+  species: 'pikachu', level: 50, gender: null, ability: 'static', nature: 'hardy',
+  moves: ['thunderbolt'], customStats: { hp: 999, speed: 1 },   // ${t('지정한 것만, 나머지는 평소 계산', 'only these; the rest are computed as usual')}
+}] }, p2: { /* … */ } })`} />
+        <Ul items={t([
+          "'random' 팀은 그 세대까지 나온 포켓몬 전체(과거작 포함)에서 같은 종 없이 뽑습니다. 메가·거다이맥스처럼 배틀 중에만 되는 폼과 아르세우스 타입처럼 특정 도구가 있어야 하는 폼은 빠집니다 (metronomeSpeciesPool).",
+          '도구는 없고 성격은 노력없음(hardy), 특성은 랜덤이면 그 종의 특성 중 하나, 직접 고르면 첫 번째 특성 (ability 로 지정 가능).',
+          '손가락흔들기 PP(16)를 다 쓰면 Showdown 그대로 발버둥을 씁니다.',
+          '범위를 벗어난 능력치·레벨·팀 크기, 없는 포켓몬은 어느 값이 잘못됐는지 적힌 BattleError.',
+          '옵션 객체는 JSON 으로 저장할 수 있어 룸(방) 설정으로 보관했다가 같은 seed 로 같은 배틀을 다시 만들 수 있습니다.',
+          'Showdown 서버의 [Gen 9] Metronome Battle 포맷(더블, 2마리, 특성·도구 금지 목록)은 @pkmn/sim 에 들어 있지 않아, 커스텀 게임 위에 직접 꾸립니다.',
+        ], [
+          "'random' teams draw from every Pokémon released up to that generation (past ones included) without repeating a species. Battle-only formes such as Mega and Gigantamax, and formes that need a specific item such as Arceus types, are left out (metronomeSpeciesPool).",
+          'No items, Hardy nature; the ability is a random one of the species for random teams and its first ability for chosen ones (override with ability).',
+          'Once Metronome’s 16 PP run out the Pokémon uses Struggle, as on Showdown.',
+          'Out-of-range stats, levels or team sizes and unknown species throw a BattleError naming the bad value.',
+          'The options object is plain JSON, so a room can store it and rebuild the same battle from the same seed.',
+          'Showdown’s server-side [Gen 9] Metronome Battle format (doubles, two Pokémon, ability and item bans) is not shipped in @pkmn/sim, so this mode is assembled on Custom Game.',
+        ])} />
+      </>
+    ),
+  },
+  {
     slug: 'rules',
     group: 'battle',
     title: ['규칙 옵션', 'Rule options'],
@@ -734,6 +790,8 @@ npx pokebattle play  --team my.txt --foe cpu.json --level 50
 npx pokebattle watch --lang ja --seed 42        # ${t('AI vs AI 로그', 'AI vs AI log')}
 npx pokebattle watch --gen 7 --level 100        # ${t('7세대 (메가진화·Z기술)', 'Gen 7 (Mega Evolution, Z-Moves)')}
 npx pokebattle watch --json                     # ${t('JSON Lines: 이벤트 + 문장', 'JSON Lines: events + text')}
+npx pokebattle watch --metronome --hp 999       # ${t('손가락흔들기 모드 (랜덤 팀)', 'Metronome mode (random teams)')}
+npx pokebattle play  --metronome --p1 pikachu,snorlax --p2 random --spe 1
 npx pokebattle sim   --battles 500 --vs heuristic --json`} />
         <ApiTable
           head={t(['옵션', '설명'], ['Option', 'Description'])}
@@ -744,6 +802,10 @@ npx pokebattle sim   --battles 500 --vs heuristic --json`} />
             [<C>--seed N</C>, t('같은 시드 + 같은 선택 = 같은 배틀', 'Same seed + same choices = same battle')],
             [<C>--team / --foe FILE</C>, t('Showdown 텍스트 또는 JSON 팀 파일', 'Showdown text or JSON team file')],
             [<C>--json</C>, t('다른 프로그램이 받아 쓰기 좋은 JSON Lines', 'JSON Lines for other programs')],
+            [<C>--metronome</C>, t('손가락흔들기 모드 (play / watch)', 'Metronome mode (play / watch)')],
+            [<C>--p1 / --p2 LIST|random</C>, t('손가락흔들기 모드 팀: 쉼표로 나눈 종 목록, 기본 random', 'Metronome teams: comma-separated species, default random')],
+            [<C>--team-size N</C>, t('랜덤 팀 크기 (1~6, 기본 3)', 'Random team size (1–6, default 3)')],
+            [<C>--hp --atk --def --spa --spd --spe N</C>, t('손가락흔들기 모드: 모든 포켓몬 실수치 고정 (1~9999)', 'Metronome mode: fixed stats for every Pokémon (1–9999)')],
           ]}
         />
         <P>{t(

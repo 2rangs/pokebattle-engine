@@ -40,6 +40,11 @@ export interface PokemonSet {
   ivs?: IVs
   teraType?: string   // 추가
   shiny?: boolean     // 추가
+  /**
+   * 자유 능력치: 지정한 스탯은 계산식(종족값·노력치·개체값·성격) 대신 이 실수치를 쓴다 (1~9999).
+   * 지정하지 않은 스탯은 평소처럼 계산된다. 예: { hp: 999, speed: 1 }
+   */
+  customStats?: Partial<Stats>
 }
 // ─── 성격 ─────────────────────────────────────────────────────
 export type Nature =

@@ -14,6 +14,7 @@ import {
   simulateBattle,
   createFormatter,
   createRandomBattle,
+  createMetronomeBattle,
   getRandomBattleSet,
   randomBattleLevelStats,
   comparableLog,
@@ -301,6 +302,44 @@ while (!engine.battle.ended) {
       engine.on('*', ev => { const line = f.format(ev); if (line) log(line, ev.type === 'turn_start' ? 'info' : 'out') })
       const ai = { p1: new HeuristicAI({ seed: 1 }), p2: new HeuristicAI({ seed: 2 }) }
       engine.start()
+      for (let g = 0; !engine.battle.ended && g < 2000; g++) {
+        for (const p of ['p1', 'p2'] as const) if (!engine.battle.ended && engine.getRequest(p)) engine.submitAction(ai[p].chooseAction(engine, p)!)
+      }
+    },
+  },
+
+  metronome: {
+    code: `import { createMetronomeBattle, HeuristicAI, createFormatter } from '@kyasi/pokebattle-engine'
+
+const engine = createMetronomeBattle({
+  seed: 3,
+  level: 50,
+  stats: { hp: 999 },                                   // 모든 포켓몬 HP 999
+  p1: { team: ['pikachu', { species: 'snorlax', stats: { attack: 400, speed: 1 } }] },  // 직접 고르기
+  p2: { team: 'random' },                               // 랜덤 (시드로 재현)
+  teamSize: 2,
+})
+const log = createFormatter({ locale: 'ko', getPokemon: id => engine.getPokemon(id) })
+engine.on('*', ev => { const line = log.format(ev); if (line) console.log(line) })
+engine.start()
+console.log(engine.getPokemon('p1_1')!.stats)            // { hp: 999, attack: 400, …, speed: 1 }
+
+const ai = { p1: new HeuristicAI({ seed: 1 }), p2: new HeuristicAI({ seed: 2 }) }
+while (!engine.battle.ended) {
+  for (const p of ['p1', 'p2'] as const) if (engine.getRequest(p)) engine.submitAction(ai[p].chooseAction(engine, p)!)
+}`,
+    run(log) {
+      const engine = createMetronomeBattle({
+        seed: 3, level: 50, stats: { hp: 999 }, teamSize: 2,
+        p1: { team: ['pikachu', { species: 'snorlax', stats: { attack: 400, speed: 1 } }] },
+        p2: { team: 'random' },
+        engine: { turnSnapshots: false },
+      })
+      const f = createFormatter({ locale: 'ko', getPokemon: id => engine.getPokemon(id) })
+      engine.on('*', ev => { const line = f.format(ev); if (line) log(line, ev.type === 'turn_start' ? 'info' : 'out') })
+      engine.start()
+      log(json(engine.getPokemon('p1_1')!.stats), 'json')
+      const ai = { p1: new HeuristicAI({ seed: 1 }), p2: new HeuristicAI({ seed: 2 }) }
       for (let g = 0; !engine.battle.ended && g < 2000; g++) {
         for (const p of ['p1', 'p2'] as const) if (!engine.battle.ended && engine.getRequest(p)) engine.submitAction(ai[p].chooseAction(engine, p)!)
       }

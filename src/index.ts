@@ -40,6 +40,12 @@ export {
 } from './random'
 export type { RandomBattleOptions, RandomBattleFormat, RandomBattleSpecies, RandomBattleRole } from './random'
 
+// 손가락흔들기 모드 (기술 = 손가락흔들기 고정, 자유 능력치, 고른/랜덤 포켓몬)
+export { createMetronomeBattle, buildMetronomeTeam, metronomeSpeciesPool, METRONOME_MOVE } from './metronome'
+export type { MetronomeBattleOptions, MetronomeSideOptions, MetronomePokemonInput, MetronomeStats, MetronomeFormat } from './metronome'
+export { CUSTOM_STATS_RULE, CUSTOM_STAT_MIN, CUSTOM_STAT_MAX } from './engine/customstats'
+export { toCustomStats } from './showdown/sets'
+
 // 유틸
 export { PRNG } from './utils/rng'
 export type { RandomFn } from './utils/rng'

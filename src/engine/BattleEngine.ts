@@ -14,13 +14,14 @@ import type {
 import type { BattlePokemon, PokemonSet, StatStages } from '../types/pokemon'
 import type { FieldCondition, PrimaryStatus, SideCondition, Terrain, Weather } from '../types/effect'
 import type { MoveData, MoveSlot } from '../types/move'
-import { toShowdownSet } from '../showdown/sets'
+import { toCustomStats, toShowdownSet } from '../showdown/sets'
 import { genLoaded } from '../data/lazy'
 import { getMove, speciesSlug, abilitySlug, itemSlug, moveSlug, STAT_FROM_PS } from '../data/dex'
 import { speciesToShowdown, toSlug } from '../showdown/ids'
 import { PRNG } from '../utils/rng'
 import { calculateDamage, type CalcPokemonInput, type DamageResult } from '../calc/damage'
 import { enableFastPath } from './fastpath'
+import { CUSTOM_STATS_RULE, encodeCustomStats, ensureCustomStatsRule } from './customstats'
 import { FOE_FRONT_LOC, FRONT, frontLocked, installRotationPatches } from './rotation'
 
 type AnyEventListener = (event: BattleEvent) => void
@@ -148,6 +149,25 @@ export function optionsToRules(options: BattleRuleOptions = {}): { battle: strin
     return { battle, validate }
 }
 
+/** 팀의 set.customStats → 'Custom Stats Mod = …' 규칙 (없으면 null) */
+function customStatsRule(config: BattleConfig): string | null {
+    const entries: Parameters<typeof encodeCustomStats>[0] = []
+    for (const player of SIDES) {
+        config[player].team.slice(0, 6).forEach((set, index) => {
+            let stats
+            try {
+                stats = toCustomStats(set.customStats, `${player}: ${set.species}.customStats`)
+            } catch (err) {
+                throw new BattleError((err as Error).message)
+            }
+            if (stats) entries.push({ side: player, index, stats })
+        })
+    }
+    if (!entries.length) return null
+    ensureCustomStatsRule(config.gen ?? 9)
+    return `${CUSTOM_STATS_RULE} = ${encodeCustomStats(entries)}`
+}
+
 /** config → 배틀용 / 팀 검사용 Showdown 포맷 ID */
 function buildFormatId(config: BattleConfig): { formatid: string; validatorid: string | null } {
     const base = formatBase(config.format, config.gen ?? 9)
@@ -162,7 +182,9 @@ function buildFormatId(config: BattleConfig): { formatid: string; validatorid: s
     const hasPreview = Dex.formats.getRuleTable(stripped).has('teampreview')
     const preview = !!(opts.teamPreview || opts.pickedTeamSize)
     const previewRule = preview === hasPreview ? [] : [preview ? 'Team Preview' : '!Team Preview']
-    const rules = [...strip, ...previewRule, ...battle, ...validate, ...(config.rules ?? [])]
+    // 자유 능력치(set.customStats)가 있으면 그 규칙을 붙인다 (./customstats.ts)
+    const custom = customStatsRule(config)
+    const rules = [...strip, ...previewRule, ...battle, ...validate, ...(custom ? [custom] : []), ...(config.rules ?? [])]
     const formatid = rules.length ? `${root}@@@${rules.join(',')}` : root
     if (!Dex.formats.get(formatid).exists) throw new BattleError(`알 수 없는 포맷: ${formatid}`)
     const noPreview = Dex.formats.getRuleTable(Dex.formats.get(base.validator)).has('teampreview') ? '!Team Preview,' : ''
@@ -261,6 +283,8 @@ export class BattleEngine {
     readonly options: EngineOptions
     /** 팀 단위 규칙 검사용 포맷 (검사할 규칙이 없으면 null) */
     private validatorFormat: string | null = null
+    /** 자유 능력치(Custom Stats Mod) 배틀 여부 → 데미지 미리보기에 실제 실수치를 넘긴다 */
+    private customStats = false
 
     constructor(config: BattleConfig, options: EngineOptions = {}) {
         this.config = config
@@ -280,6 +304,7 @@ export class BattleEngine {
         }
         const { formatid, validatorid } = buildFormatId(config)
         this.validatorFormat = validatorid
+        this.customStats = formatid.includes(CUSTOM_STATS_RULE)
         try {
             this.battle = new Battle({ formatid: formatid as never, seed: toPSSeed(this.seed) as never })
         } catch (err) {
@@ -1402,6 +1427,13 @@ export class BattleEngine {
             terastallized: !!p.terastallized || tera,
             alliesFainted: p.side.pokemon.filter(x => x.fainted).length,
             boostedStat: boostedVol ? (boostedVol.slice(-3) as CalcPokemonInput['boostedStat']) : undefined,
+            // 자유 능력치: 시뮬레이터의 실제 실수치를 그대로 (변신 중이면 복사된 능력치)
+            ...(this.customStats || p.transformed ? {
+                stats: {
+                    hp: p.maxhp, attack: p.storedStats.atk, defense: p.storedStats.def,
+                    special_attack: p.storedStats.spa, special_defense: p.storedStats.spd, speed: p.storedStats.spe,
+                },
+            } : {}),
         }
     }
 
