@@ -1,7 +1,9 @@
 // ─── PokemonSet (PokeAPI 슬러그) ↔ Showdown PokemonSet ─────────
 import { Dex, toID } from '@pkmn/sim'
 import type { PokemonSet as PSSet, StatsTable } from '@pkmn/sim'
-import type { PokemonSet, EVs, IVs, Nature } from '../types/pokemon'
+import type { PokemonSet, EVs, IVs, Nature, Stats } from '../types/pokemon'
+import { CUSTOM_STAT_MIN, CUSTOM_STAT_MAX } from '../engine/customstats'
+import type { PSCustomStats } from '../engine/customstats'
 import { speciesToShowdown, moveToShowdown, abilityToShowdown, itemToShowdown, natureToShowdown, typeToShowdown } from './ids'
 import { speciesSlug, moveSlug, abilitySlug, itemSlug, STAT_TO_PS, STAT_FROM_PS } from '../data/dex'
 
@@ -29,6 +31,25 @@ function fromStatsTable(t: Partial<StatsTable> | undefined, skip: number): EVs {
         ;(out as Record<string, number>)[STAT_FROM_PS[k] ?? k] = v
     }
     return out
+}
+
+/** 자유 능력치 검사 + Showdown 키로 변환 (지정한 것만) */
+export function toCustomStats(src: Partial<Stats> | undefined, label = 'customStats'): PSCustomStats | undefined {
+    if (src === undefined || src === null) return undefined
+    if (typeof src !== 'object') throw new SetError(`${label}: 객체여야 합니다 (예: { hp: 999 })`)
+    const out: PSCustomStats = {}
+    for (const [k, v] of Object.entries(src)) {
+        if (v === undefined || v === null) continue
+        const key = STAT_TO_PS[k] ?? k
+        if (!['hp', 'atk', 'def', 'spa', 'spd', 'spe'].includes(key)) {
+            throw new SetError(`${label}: 알 수 없는 능력치 '${k}' (hp, attack, defense, special_attack, special_defense, speed)`)
+        }
+        if (typeof v !== 'number' || !Number.isInteger(v) || v < CUSTOM_STAT_MIN || v > CUSTOM_STAT_MAX) {
+            throw new SetError(`${label}.${STAT_FROM_PS[key]}: ${CUSTOM_STAT_MIN}~${CUSTOM_STAT_MAX} 정수여야 합니다 (받은 값: ${String(v)})`)
+        }
+        out[key as keyof PSCustomStats] = v
+    }
+    return Object.keys(out).length ? out : undefined
 }
 
 /** 프로토콜에 쓰이는 이름이라 구분자 문자 제거 */
@@ -75,6 +96,8 @@ export function toShowdownSet(set: PokemonSet, strict = true): PSSet {
 
     const teraType = set.teraType ? typeToShowdown(set.teraType) : species.types[0]!
     const nickname = set.nickname ? cleanName(set.nickname) : ''
+    // 자유 능력치는 검사만 한다 (배틀에는 'Custom Stats Mod' 규칙으로 들어간다: ../engine/customstats.ts)
+    toCustomStats(set.customStats, `${set.species}.customStats`)
 
     return {
         name:     nickname || species.baseSpecies,

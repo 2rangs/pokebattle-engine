@@ -3,7 +3,7 @@
 import { calculate, Field, Generations, Move, Pokemon, Side } from '@smogon/calc'
 import type { State } from '@smogon/calc'
 import { Dex } from '@pkmn/sim'
-import type { EVs, IVs, StatStages } from '../types/pokemon'
+import type { EVs, IVs, StatStages, Stats } from '../types/pokemon'
 import type { Weather, Terrain } from '../types/effect'
 import { speciesToShowdown, moveToShowdown, abilityToShowdown, itemToShowdown, natureToShowdown, typeToShowdown } from '../showdown/ids'
 import { STAT_TO_PS } from '../data/dex'
@@ -33,6 +33,8 @@ export interface CalcPokemonInput {
     alliesFainted?: number
     /** 고대활성/쿼크차지로 오른 스탯 */
     boostedStat?: 'atk' | 'def' | 'spa' | 'spd' | 'spe' | 'auto'
+    /** 실수치 직접 지정 (자유 능력치). 지정한 스탯은 계산식 대신 이 값 (랭크·도구 보정은 그대로 적용) */
+    stats?:    Partial<Stats>
 }
 
 export interface CalcFieldInput {
@@ -103,6 +105,23 @@ function statTable(src: EVs | IVs | Partial<StatStages> | undefined): Record<str
     return out
 }
 
+/**
+ * 실수치 고정. @smogon/calc 는 계산 중에 Pokemon 을 clone() 하며 능력치를 다시 계산하므로 clone 도 감싼다.
+ * curHP 는 clone 생성자가 (계산된) 최대 HP 로 자르므로 원래 값을 되돌린다.
+ */
+function fixStats(p: Pokemon, fixed: Record<string, number>, curHP: number): Pokemon {
+    for (const [k, v] of Object.entries(fixed)) {
+        const key = k as keyof Pokemon['rawStats']
+        p.rawStats[key] = v
+        p.stats[key] = v
+    }
+    p.originalCurHP = Math.max(0, Math.min(p.rawStats.hp, curHP))
+    p.clone = function (this: Pokemon) {
+        return fixStats(Pokemon.prototype.clone.call(this), fixed, this.originalCurHP)
+    }
+    return p
+}
+
 export function toCalcPokemon(input: CalcPokemonInput, genNum = 9): Pokemon {
     const gen = genOf(genNum)
     const species = Dex.species.get(speciesToShowdown(input.species))
@@ -128,6 +147,11 @@ export function toCalcPokemon(input: CalcPokemonInput, genNum = 9): Pokemon {
     if (item?.exists) opts.item = item.name as never
     if (input.terastallized && input.teraType) opts.teraType = typeToShowdown(input.teraType) as never
     const p = new Pokemon(gen, species.name, opts)
+    if (input.stats) {
+        const fixed: Record<string, number> = {}
+        for (const [k, v] of Object.entries(statTable(input.stats))) if (Number.isFinite(v) && v >= 1) fixed[k] = Math.floor(v)
+        if (Object.keys(fixed).length) fixStats(p, fixed, fixed.hp ?? p.maxHP())
+    }
     if (input.curHP !== undefined) p.originalCurHP = Math.max(0, Math.min(p.maxHP(), Math.floor(input.curHP)))
     else if (input.hpPercent !== undefined) p.originalCurHP = Math.max(1, Math.min(p.maxHP(), Math.floor(p.maxHP() * input.hpPercent / 100)))
     return p

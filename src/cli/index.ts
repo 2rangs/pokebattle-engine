@@ -2,14 +2,15 @@
 //   pokebattle play  [--team <파일>] [--foe <파일>] [--lang ko|en|ja] [--seed N] [--level N]
 //   pokebattle watch [--lang ..] [--seed N] [--format singles|rotation] [--json]
 //   pokebattle sim   [--battles N] [--seed N] [--vs random|heuristic] [--json]
+//   손가락흔들기 모드: play / watch 에 --metronome [--p1 pikachu,snorlax] [--p2 random] [--team-size N] [--hp 999 --atk N …]
 // 팀 파일: Showdown 내보내기 텍스트, 또는 JSON (PokemonSet[] / { pokemons: [...] })
 import { readFileSync } from 'node:fs'
 import { createInterface } from 'node:readline/promises'
 import {
     BattleEngine, HeuristicAI, RandomAI, createFormatter, loadNames, preloadData, generateRandomTeam, parseShowdownTeam,
-    loadTeam, PRNG, simulateBattle, randomBattleFormatId,
+    loadTeam, PRNG, simulateBattle, randomBattleFormatId, createMetronomeBattle,
 } from '../index'
-import type { Action, BattleAI, BattleFormat, BattlePokemon, Formatter, Generation, PlayerID, PokemonSet } from '../index'
+import type { Action, BattleAI, BattleFormat, BattlePokemon, Formatter, Generation, MetronomeStats, PlayerID, PokemonSet } from '../index'
 
 // ─── 인자 ─────────────────────────────────────────────────────
 const argv = process.argv.slice(2)
@@ -66,6 +67,13 @@ const HELP = `pokebattle — Pokémon Showdown-accurate battles from the termina
   --level N         set every Pokémon to level N (e.g. 50 or 100); random teams default to balanced levels
   --json            JSON Lines: every engine event (+ "text") / sim result
 
+  Metronome mode (play / watch): every move is Metronome
+  --metronome                 turn it on
+  --p1 / --p2 LIST|random     species, comma separated (e.g. pikachu,snorlax), default random
+  --team-size N               size of random teams (1-6, default 3)
+  --hp --atk --def --spa --spd --spe N   fixed stats for every Pokémon (1-9999, e.g. --hp 999)
+  --level N                   level (1-100, default 100)
+
   Team files: Showdown export text, or JSON (PokemonSet[] or { "pokemons": [...] }).
   Without a team file, random-battle teams are used.`
 
@@ -81,6 +89,28 @@ function readTeam(file: string | undefined, rng: PRNG, level?: number): PokemonS
         } else team = parseShowdownTeam(text)
     }
     return level ? team.map(s => ({ ...s, level })) : team
+}
+
+// ─── 손가락흔들기 모드 ──────────────────────────────────────────
+const metronome = flag('metronome')
+const STAT_FLAGS = { hp: 'hp', atk: 'attack', def: 'defense', spa: 'special_attack', spd: 'special_defense', spe: 'speed' } as const
+
+function metronomeBattle(names: [string, string]): BattleEngine {
+    const stats: MetronomeStats = {}
+    for (const [f, key] of Object.entries(STAT_FLAGS)) {
+        const v = opt(f)
+        if (v !== undefined) stats[key] = Number(v)
+    }
+    const team = (v: string | undefined) => (!v || v === 'random' ? 'random' as const : v.split(',').map(x => x.trim()).filter(Boolean))
+    return createMetronomeBattle({
+        seed, gen,
+        format: opt('format') === 'doubles' ? 'doubles' : 'singles',
+        teamSize: opt('team-size') ? Number(opt('team-size')) : undefined,
+        level: level(),
+        stats,
+        p1: { name: names[0], team: team(opt('p1')) },
+        p2: { name: names[1], team: team(opt('p2')) },
+    })
 }
 
 // ─── 출력 ─────────────────────────────────────────────────────
@@ -123,7 +153,7 @@ function result(engine: BattleEngine): string {
 async function play(): Promise<void> {
     const rng = new PRNG(seed)
     const lv = level()
-    const engine = new BattleEngine({
+    const engine = metronome ? metronomeBattle([t('you'), 'AI']) : new BattleEngine({
         format: 'singles', gen, seed,
         p1: { name: t('you'), team: readTeam(opt('team'), rng, lv) },
         p2: { name: 'AI', team: readTeam(opt('foe'), rng, lv) },
@@ -200,7 +230,7 @@ async function choose(engine: BattleEngine, fmt: Formatter, rl: ReturnType<typeo
 function watch(): void {
     const rng = new PRNG(seed)
     const format = (opt('format', 'singles') as BattleFormat)
-    const engine = new BattleEngine({
+    const engine = metronome ? metronomeBattle(['AI-1', 'AI-2']) : new BattleEngine({
         format, gen, seed,
         p1: { name: 'AI-1', team: readTeam(opt('team'), rng, level()) },
         p2: { name: 'AI-2', team: readTeam(opt('foe'), rng, level()) },
