@@ -6,6 +6,7 @@ import type { Stats } from '../types/pokemon'
 import type { MoveData, MoveTarget, MoveCategory } from '../types/move'
 import { speciesToShowdown, moveToShowdown, toSlug } from '../showdown/ids'
 import pokeapi from './pokeapi.json'
+import { loadRandoms, loadLearnsets, getRandoms, learnsetsLoaded } from './lazy'
 
 // ─── PokeAPI 데이터 ───────────────────────────────────────────
 interface PokeApiSpecies {
@@ -212,5 +213,11 @@ export function getTypeChart(): Record<string, Record<string, number>> {
 }
 
 /** 하위 호환: 이제 데이터는 동기적으로 사용 가능 */
-export async function preloadData(): Promise<void> {}
-export function isDataLoaded(): boolean { return true }
+/**
+ * 무거운 데이터(랜덤배틀 세트, Showdown 기술표)를 불러온다. 배틀·계산기·이름은 이것 없이도 동작하고,
+ * generateRandomTeam / generateRandomSet(기술표 사용) / generateChaosTeam 전에 한 번 필요하다.
+ */
+export async function preloadData(): Promise<void> {
+    await Promise.all([loadRandoms(), loadLearnsets()])
+}
+export function isDataLoaded(): boolean { return !!getRandoms() && learnsetsLoaded() }

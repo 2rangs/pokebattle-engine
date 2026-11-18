@@ -1,7 +1,7 @@
 // ─── 자동 배틀 / 팀 생성 ──────────────────────────────────────
 import { Dex, toID } from '@pkmn/sim'
 import type { Species as PSSpecies } from '@pkmn/sim'
-import { TeamGenerators } from '@pkmn/randoms'
+import { getRandoms, learnsetsLoaded } from '../data/lazy'
 import type { BattleConfig, BattleEvent, PlayerID } from '../types/battle'
 import type { PokemonSet, Nature, EVs } from '../types/pokemon'
 import type { BattleAI } from '../ai'
@@ -66,6 +66,8 @@ export interface RandomTeamOptions {
 export function generateRandomTeam(opts: RandomTeamOptions = {}): PokemonSet[] {
     const seed = opts.seed ?? Math.floor(Math.random() * 0x7fffffff)
     const r = new PRNG(seed)
+    const TeamGenerators = getRandoms()
+    if (!TeamGenerators) throw new Error('generateRandomTeam: 먼저 await preloadData() 를 호출하세요 (랜덤배틀 세트는 필요할 때 불러옵니다)')
     const gen = TeamGenerators.getTeamGenerator(opts.format ?? 'gen9randombattle', [r.int(0x10000), r.int(0x10000), r.int(0x10000), r.int(0x10000)] as never)
     const team = gen.getTeam().slice(0, opts.size ?? 6).map(s => fromShowdownSet(s as never))
     return opts.level ? team.map(s => ({ ...s, level: opts.level! })) : team
@@ -99,6 +101,7 @@ const GOOD_STATUS = new Set([
 ])
 
 function psLearnset(species: PSSpecies): string[] {
+    if (!learnsetsLoaded()) throw new Error('기술표가 필요합니다: 먼저 await preloadData() 를 호출하세요 (또는 learnset 옵션 지정)')
     const out = new Set<string>()
     let s: PSSpecies | undefined = species
     for (let guard = 0; s && guard < 5; guard++) {

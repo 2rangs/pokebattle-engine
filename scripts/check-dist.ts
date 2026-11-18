@@ -1,0 +1,75 @@
+// ─── 번들(dist)이 원본 @pkmn/sim 과 같은 배틀을 하는지 확인 ─────
+// npm run build && npx tsx scripts/check-dist.ts [--battles 300]
+// dist 는 @pkmn/sim 을 필요한 부분만 번들한다 (scripts/slim-sim.ts). 그 엔진으로 배틀을 돌리고,
+// 같은 입력을 node_modules 의 원본 @pkmn/sim 에 재생해서 프로토콜 로그가 바이트 단위로 같은지 본다.
+// 기술표를 쓰는 기능(generateRandomSet / generateChaosTeam)도 원본과 같은 결과인지 본다.
+import { Battle, Dex } from '@pkmn/sim'
+import { randomDoublesChoice } from './shared/random-choice.ts'
+
+const dist = await import('../dist/index.js')
+const i = process.argv.indexOf('--battles')
+const N = i >= 0 ? Number(process.argv[i + 1]) : 300
+
+if (dist.isDataLoaded()) throw new Error('isDataLoaded() should be false before preloadData()')
+let threw = false
+try { dist.generateRandomTeam({ seed: 1 }) } catch { threw = true }
+if (!threw) throw new Error('generateRandomTeam should ask for preloadData() first')
+await dist.preloadData()
+if (!dist.isDataLoaded()) throw new Error('isDataLoaded() should be true after preloadData()')
+
+// 기술표: 번들의 지연 로드 결과로 만든 세트 == 소스(원본 @pkmn/sim 기술표)로 만든 세트
+const src = await import('../src/index.ts')
+await src.preloadData()
+let learnMismatch = 0
+const species = Dex.species.all().filter(s => s.num > 0 && !s.isNonstandard && !s.battleOnly).map(s => s.id)
+for (const id of species) {
+    const a = JSON.stringify(dist.generateRandomSet(id, { rng: new dist.PRNG(1) }))
+    const b = JSON.stringify(src.generateRandomSet(id, { rng: new src.PRNG(1) }))
+    if (a !== b && ++learnMismatch <= 3) console.error(`LEARNSET MISMATCH ${id}\n  dist ${a}\n  src  ${b}`)
+}
+console.log(`generateRandomSet: ${species.length} species, ${learnMismatch} mismatches`)
+
+const comparable = (log: readonly string[]) => log.filter(l => !l.startsWith('|t:|')).join('\n')
+let mismatches = 0, turns = 0
+for (let n = 0; n < N; n++) {
+    const rng = new dist.PRNG(n * 7919 + 13)
+    const format = (['singles', 'doubles', 'triples'] as const)[n % 3]
+    const multi = format !== 'singles'
+    const team = () => (n % 2 ? dist.generateChaosTeam({ rng, size: 6 }) : dist.generateRandomTeam({ seed: rng.int(0x7fffffff), format: multi ? 'gen9randomdoublesbattle' : 'gen9randombattle' }))
+    const engine = new dist.BattleEngine({ format, seed: n, maxTurns: 200, p1: { name: 'A', team: team() }, p2: { name: 'B', team: team() } }, { turnSnapshots: false })
+    const inputs: string[] = []
+    const b = engine.battle
+    const choose = b.choose.bind(b), tie = b.tie.bind(b)
+    b.choose = (s: string, c: string) => { const ok = choose(s, c); if (ok) inputs.push(`>${s} ${c}`); return ok }
+    b.tie = () => { inputs.push('>forcetie'); tie() }
+    engine.start()
+    const header = engine.battle.inputLog.filter((l: string) => !/^>p[12] /.test(l))
+    let g = 0
+    while (!engine.battle.ended && g++ < 5000) {
+        for (const p of ['p1', 'p2'] as const) {
+            if (engine.battle.ended) break
+            if (multi) {
+                const req = engine.getRawRequest(p)
+                if (!req || req.wait || engine.battle[p].isChoiceDone()) continue
+                try { engine.submitChoice(p, randomDoublesChoice(req, rng)) } catch { engine.submitChoice(p, 'default') }
+            } else if (engine.getRequest(p)) engine.submitAction(rng.pick(engine.getAvailableActions(p)))
+        }
+    }
+    turns += engine.battle.turn
+    // 원본 @pkmn/sim 으로 재생
+    let orig: Battle | null = null
+    for (const line of [...header, ...inputs]) {
+        const [cmd, ...rest] = line.slice(1).split(' ')
+        const arg = rest.join(' ')
+        if (cmd === 'start') orig = new Battle(JSON.parse(arg))
+        else if (cmd === 'player') { const sp = arg.indexOf(' '); orig!.setPlayer(arg.slice(0, sp) as never, JSON.parse(arg.slice(sp + 1))) }
+        else if (cmd === 'p1' || cmd === 'p2') orig!.choose(cmd, arg)
+        else if (cmd === 'forcetie') orig!.tie()
+    }
+    if (comparable(orig!.log) !== comparable(engine.battle.log)) {
+        mismatches++
+        if (mismatches <= 3) console.error(`MISMATCH battle ${n} (${format})`)
+    }
+}
+console.log(`${N} battles (${turns} turns): ${mismatches} protocol log mismatches vs original @pkmn/sim; learnset sets ${learnMismatch ? 'FAILED' : 'identical'}`)
+if (mismatches || learnMismatch) process.exit(1)

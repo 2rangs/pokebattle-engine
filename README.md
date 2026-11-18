@@ -29,6 +29,21 @@ Measured with `npm run bench:compare -- --battles 60 --rounds 3` on Node 22; run
 
 **How:** Showdown spends most of a battle looking up `on<Event>` handlers on every status, volatile, ability, item and field effect, with string keys on differently shaped objects, mostly finding nothing. The engine patches that hot path at runtime (`src/engine/fastpath.ts`): each effect's handlers are indexed once, event-name strings are cached and handler lists are built without intermediate arrays, keeping Showdown's exact handler order. The patch applies only to battles the engine creates; `new BattleEngine(config, { fast: false })` runs Showdown's original code for comparison.
 
+## Bundle size
+
+The engine bundles only the parts of `@pkmn/sim` a Gen 9 battle needs (`scripts/slim-sim.ts`): no server stream code (so no `eval` warning in Vite/Rollup), no Gen 1–8 data. The two big data sets that battles don't use load on demand:
+
+| Data | Size (minified) | Needed for |
+|---|---|---|
+| Showdown learnsets | ~2.8 MB | `generateRandomSet` (without a `learnset`), `generateChaosTeam` |
+| Random-battle sets | ~1.1 MB | `generateRandomTeam` |
+
+```ts
+await preloadData()   // loads both (separate chunks); battles, the damage calculator and names work without it
+```
+
+In an app build this took the battle page chunk from 8.7 MB to 3.4 MB. `npm run check:dist` builds and checks that the bundle plays byte-identical battles to the original `@pkmn/sim` and builds the same sets.
+
 ## Install
 
 ```bash
@@ -38,7 +53,9 @@ npm install github:2rangs/pokebattle-engine
 ## Usage
 
 ```ts
-import { BattleEngine, HeuristicAI, formatEvent, parseShowdownTeam, generateRandomTeam } from '@kyasi/pokebattle-engine'
+import { BattleEngine, HeuristicAI, formatEvent, parseShowdownTeam, generateRandomTeam, preloadData } from '@kyasi/pokebattle-engine'
+
+await preloadData()                      // random-battle sets (only needed for generateRandomTeam)
 
 const engine = new BattleEngine({
   format: 'singles',                     // also 'rotation' (same API), 'doubles' | 'triples' (submitChoice)

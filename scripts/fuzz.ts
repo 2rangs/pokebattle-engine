@@ -34,7 +34,8 @@ const emptyStats = (): Stats => ({
 })
 
 async function runWorker(): Promise<void> {
-    const { BattleEngine, generateRandomTeam, generateChaosTeam, PRNG, HeuristicAI, ACTIVE_PER_SIDE } = await import('../dist/index.js')
+    const { BattleEngine, generateRandomTeam, generateChaosTeam, PRNG, HeuristicAI, ACTIVE_PER_SIDE, preloadData } = await import('../dist/index.js')
+    await preloadData()
     type Engine = InstanceType<typeof BattleEngine>
     const { start, end, fastCheck } = workerData as { start: number; end: number; fastCheck: boolean }
     let stats = emptyStats()
