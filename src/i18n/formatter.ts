@@ -68,6 +68,22 @@ const prettify = (slug: string) => slug.replace(/[-_]/g, ' ').replace(/\b\w/g, c
 const OPTIONAL = /\{\?((?:[^{}]|\{\w+\})*)\}/g
 const PLACEHOLDER = /\{(\w+)\}/g
 
+/** Z크리스탈 이름 앞부분 → 타입 */
+const Z_CRYSTAL_TYPE: Record<string, string> = {
+    normal: 'normal', fir: 'fire', water: 'water', electr: 'electric', grass: 'grass', ic: 'ice', fightin: 'fighting',
+    poison: 'poison', ground: 'ground', flyin: 'flying', psych: 'psychic', bugin: 'bug', rock: 'rock', ghost: 'ghost',
+    dragon: 'dragon', darkin: 'dark', steel: 'steel', fair: 'fairy',
+}
+/** 전용 Z크리스탈 → 포켓몬 (이름은 "포켓몬 이름 + Z") */
+const SPECIES_Z: Record<string, string> = {
+    'pikanium-z': 'pikachu', 'pikashunium-z': 'pikachu', 'aloraichium-z': 'raichu', 'decidium-z': 'decidueye', 'eevium-z': 'eevee',
+    'incinium-z': 'incineroar', 'kommonium-z': 'kommo-o', 'lunalium-z': 'lunala', 'lycanium-z': 'lycanroc', 'marshadium-z': 'marshadow',
+    'mewnium-z': 'mew', 'mimikium-z': 'mimikyu', 'primarium-z': 'primarina', 'snorlium-z': 'snorlax', 'solganium-z': 'solgaleo',
+    'ultranecrozium-z': 'necrozma',
+}
+/** 세대가 바뀌며 영어 이름이 바뀐 아이템 (PokeAPI 이름 데이터는 옛 슬러그) */
+const RENAMED_ITEMS: Record<string, string> = { leek: 'stick' }
+
 export function createFormatter(options: FormatterOptions): Formatter {
     const locale = typeof options.locale === 'object' ? options.locale
         : getLocale(options.locale ?? 'ko') ?? (() => { throw new Error(`로케일이 없습니다: ${options.locale} (등록: ${listLocales().join(', ')})`) })()
@@ -118,12 +134,32 @@ export function createFormatter(options: FormatterOptions): Formatter {
 
     function entity(kind: EntityKind, slug: string): string {
         const o = kind === 'species' ? overrides.pokemon : kind === 'nature' ? undefined : overrides[kind]
-        return o?.(slug) ?? dataName(kind, slug) ?? prettify(slug)
+        const override = o?.(slug)
+        if (override) return override
+        if (kind === 'item' && !getNames(chain[0]!.names ?? chain[0]!.code)?.item(slug)) {
+            // 이 언어 이름 데이터에 없는 아이템: 타입 Z크리스탈 ('fairium-z' → 페어리Z), 이름이 바뀐 아이템 (leek → 대파)
+            const z = slug.match(/^([a-z]+?)i?um-z$/)
+            const type = z && Z_CRYSTAL_TYPE[z[1]!]
+            if (type) return `${entity('type', type)}Z`
+            const owner = SPECIES_Z[slug]
+            if (owner) return `${entity('species', owner)}Z`
+            const renamed = RENAMED_ITEMS[slug] && dataName('item', RENAMED_ITEMS[slug]!)
+            if (renamed) return renamed
+        }
+        const name = dataName(kind, slug)
+        if (name) return name
+        // 변화 기술의 Z기술 ('z-quiver-dance' → Z + 나비춤, 영어는 Z-Quiver Dance)
+        if (kind === 'move' && slug.startsWith('z-')) {
+            const base = o?.(slug.slice(2)) ?? dataName('move', slug.slice(2))
+            if (base) return `${locale.code === 'en' ? 'Z-' : 'Z'}${base}`
+        }
+        return prettify(slug)
     }
 
     // 출처는 기술·도구·특성·상태·날씨·조건 중 무엇이든 될 수 있다. 종류는 언어와 무관하게(영어 데이터로) 정한다
     const en = getNames('en')!
     function effect(slug: string): string {
+        if (slug.startsWith('z-') && en.move(slug.slice(2))) return entity('move', slug)
         const key = slug.replace(/-/g, '_')
         const t = term('effect', slug) ?? term('effect', key) ?? term('volatile', key) ?? term('status', key) ?? term('weather', key)
         if (t !== null) return t

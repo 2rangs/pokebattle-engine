@@ -35,6 +35,7 @@
     "bench": "tsx scripts/bench.ts",
     "bench:compare": "tsx scripts/bench-compare.ts",
     "check:dist": "tsup && tsx scripts/check-dist.ts",
+    "regression": "tsx scripts/regression.ts --strict",
     "test": "vitest",
     "test:run": "vitest run",
     "type-check": "tsc --noEmit -p tsconfig.build.json",

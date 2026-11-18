@@ -264,6 +264,10 @@ await preloadData({ gens: [8] })    // ${t('8세대 배틀 전에 (9세대는 �
           <>Showdown의 request를 엔진 형식으로 정리해서 돌려줍니다. 입력할 게 없으면 <C>null</C>. 그림자밟기 같은 숨은 교체 금지, 봉인 같은 숨은 사용 불가, 반동·모으기 턴의 기술 고정(<C>forced: true</C>)까지 실제 상태로 반영합니다.</>,
           <>Returns Showdown’s request in engine form, or <C>null</C> when there is nothing to choose. Hidden trapping (Shadow Tag), hidden disables (Imprison) and locked moves on recharge or charge turns (<C>forced: true</C>) come from live state.</>,
         )}</P>
+        <P>{t(
+          <>턴 중간 교체(<C>reason: 'self_switch'</C>)는 <C>source</C>에 원인이 붙습니다. 기술 <C>{"{ kind: 'move', id: 'u-turn' }"}</C>(배턴터치는 랭크, 꼬리자르기는 대타가 넘어감), 아이템 <C>'eject-button'</C>·<C>'eject-pack'</C>, 특성 <C>'emergency-exit'</C>·<C>'wimp-out'</C>. 교체할 수 있는지(<C>can_switch</C>)는 그림자밟기·개미지옥·자력·검은눈빛·조이기류·물고버티기·페어리록 같은 구속과 그 예외(고스트타입, 비행·부유·풍선, 탈출용껍질)를 Showdown 판정 그대로 따릅니다.</>,
+          <>A mid-turn switch (<C>reason: 'self_switch'</C>) names its cause in <C>source</C>: a move <C>{"{ kind: 'move', id: 'u-turn' }"}</C> (Baton Pass passes stat stages, Shed Tail a substitute), an item <C>'eject-button'</C> / <C>'eject-pack'</C>, or an ability <C>'emergency-exit'</C> / <C>'wimp-out'</C>. Whether you can switch (<C>can_switch</C>) follows Showdown’s trapping rules exactly: Shadow Tag, Arena Trap, Magnet Pull, Mean Look, binding moves, Jaw Lock, Fairy Lock, and their exceptions (Ghost types, Flying / Levitate / Air Balloon, Shed Shell).</>,
+        )}</P>
         <ApiRun id="request" />
 
         <H2>{t('행동 제출 — submitAction', 'Submitting — submitAction')}</H2>
@@ -326,13 +330,13 @@ await preloadData({ gens: [8] })    // ${t('8세대 배틀 전에 (9세대는 �
             [<C>turn_start / turn_end</C>, 'turn / turn, state (turnSnapshots)'],
             [<C>move_use / move_miss / move_fail</C>, 'pokemon_id, move, target_id / reason'],
             [<C>damage / heal</C>, t('pokemon_id, amount, source, hp_after, effectiveness? (0.25·0.5·1·2·4), crit?', 'pokemon_id, amount, source, hp_after, effectiveness? (0.25, 0.5, 1, 2, 4), crit?')],
-            [<C>switch / faint</C>, 'player, out_id, in_id, forced? / pokemon_id'],
+            [<C>switch / faint</C>, t("player, out_id, in_id, forced?, source? ({ kind: 'move' | 'item' | 'ability', id }) / pokemon_id", "player, out_id, in_id, forced?, source? ({ kind: 'move' | 'item' | 'ability', id }) / pokemon_id")],
             [<C>rotate</C>, t("player, direction ('left' | 'right'), in_id, out_id — 로테이션 배틀", "player, direction ('left' | 'right'), in_id, out_id — rotation battles")],
             [<C>status_apply / status_remove</C>, 'pokemon_id, status, source?'],
             [<C>volatile_apply / volatile_remove</C>, 'pokemon_id, volatile'],
             [<C>stat_change</C>, 'pokemon_id, stat, stages, actual?'],
             [<C>weather_change / terrain_change</C>, 'weather | terrain, source'],
-            [<C>side_start / side_end</C>, 'player, condition, layers?'],
+            [<C>side_start / side_end</C>, t('player, condition, layers? / pokemon_id? (독압정을 흡수한 독타입)', 'player, condition, layers? / pokemon_id? (the Poison type that absorbed Toxic Spikes)')],
             [<C>field_start / field_end</C>, 'condition (trick_room, gravity …)'],
             [<C>ability_trigger</C>, 'pokemon_id, ability, effect'],
             [<C>item_consume / item_activate</C>, 'pokemon_id, item, effect?'],
@@ -870,11 +874,17 @@ export function Battle({ config }) {
     lead: ['모든 배틀은 seed로 재현됩니다. 퍼저는 매 배틀 여덟 가지 불변식을 검사합니다.', 'Every battle is reproducible from its seed. The fuzzer checks eight invariants on each one.'],
     body: t => (
       <>
-        <Snippet lang="bash" code={`npm test                                  # ${t('유닛 테스트', 'unit tests')}
+        <Snippet lang="bash" code={`npm test                                  # ${t('유닛 테스트 + 회귀 스냅샷', 'unit tests + regression snapshots')}
+npm run regression -- --random 300        # ${t('모든 기술·특성·아이템 + 1~9세대·더블 랜덤배틀', 'every move, ability, item + Gen 1–9 and doubles random battles')}
 npm run fuzz -- --battles 100000 --workers 4
 npm run bench:compare                     # ${t('Showdown 대비 속도 + 로그 동일성', 'speed vs Showdown + identical logs')}
 npm run check:dist                        # ${t('배포 번들 == 원본 @pkmn/sim', 'published bundle == original @pkmn/sim')}
 npx pokebattle watch --gen 8              # ${t('터미널에서 AI vs AI 관전', 'watch AI vs AI in the terminal')}`} />
+        <H2>{t('회귀 전수 점검', 'Regression sweep')}</H2>
+        <P>{t(
+          <>판정은 Showdown이 하므로, 점검 대상은 엔진이 그 위에 더한 부분입니다. 9세대 모든 기술(예전 기술은 그 기술이 있는 마지막 세대), 모든 특성, 모든 지닌 도구를 각각 배틀에 넣고, 1~9세대 랜덤배틀과 9세대 더블까지 돌리면서 다음을 찾습니다: 처리 못한 로그 줄, 전용 문장 없이 범용 문장으로 나간 로그, 한국어 로그 속 영어, 문장이 빠진 이벤트, 이벤트만으로 다시 만든 HP·상태이상·랭크가 실제와 다른 경우, 엔진이 내준 행동을 Showdown이 거부하는 경우, 미리보기 범위를 벗어난 데미지. CI에서 <C>--strict</C>로 돌고, 세대별 고정 시드 배틀의 전체 로그는 스냅샷 테스트로 고정합니다.</>,
+          <>Showdown decides the rules, so the sweep checks what the engine adds on top. It puts every Gen 9 move (older moves in the last gen that has them), every ability and every held item into its own battle, then runs Gen 1–9 random battles and Gen 9 doubles, looking for: unhandled log lines, log lines that fell back to a catch-all sentence, English inside Korean logs, events with no sentence, HP / status / stat stages rebuilt from events that differ from the real state, actions the engine offers that Showdown rejects, and damage outside the preview range. CI runs it with <C>--strict</C>, and snapshot tests pin the full log of a fixed-seed battle for every generation.</>,
+        )}</P>
         <H2>{t('퍼징 입력', 'Fuzz inputs')}</H2>
         <Ul items={t([
           '형식: 싱글 65% / 더블 15% / 트리플 10% / 로테이션 10%, 20%는 팀 프리뷰',

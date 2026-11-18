@@ -9,7 +9,7 @@ import type { Pokemon as PSPokemon, Side as PSSide } from '@pkmn/sim'
 import type {
     Generation,
     Action, BattleConfig, BattleEvent, BattleEventType, BattleFormat, BattleRequest, BattleRuleOptions, BattleState,
-    CantMoveReason, MoveOption, PlayerID, RotateDirection, RotateOption, Side, SwitchReason, TeamPreviewRequest,
+    CantMoveReason, MoveOption, PlayerID, RotateDirection, RotateOption, Side, SwitchReason, SwitchSource, TeamPreviewRequest,
 } from '../types/battle'
 import type { BattlePokemon, PokemonSet, StatStages } from '../types/pokemon'
 import type { FieldCondition, PrimaryStatus, SideCondition, Terrain, Weather } from '../types/effect'
@@ -212,6 +212,8 @@ function toPSSeed(seed: number): [number, number, number, number] {
 /** "[from] item: Life Orb" → 'life-orb' 같은 슬러그 */
 function effectSlug(effect: string): string {
     const e = effect.replace(/^\[from\]\s*/, '').trim()
+    // 탈이 벗겨질 때의 데미지: "[from] pokemon: Mimikyu-Busted"
+    if (/^pokemon:\s*mimikyu/i.test(e)) return 'disguise'
     const m = e.match(/^(item|ability|move):\s*(.+)$/)
     if (m) {
         const name = m[2]!
@@ -224,6 +226,23 @@ function effectSlug(effect: string): string {
     if (WEATHER_FROM_PS[id]) return WEATHER_FROM_PS[id]!
     return toSlug(e)
 }
+
+/** 맞거나 랭크가 떨어지면 지닌 포켓몬을 교체시키는 아이템 */
+const SWITCH_ITEMS = new Set(['eject-button', 'eject-pack'])
+/** HP 가 절반 아래로 떨어지면 교체되는 특성 */
+const SWITCH_ABILITIES = new Set(['emergencyexit', 'wimpout'])
+
+function stagesOf(p: PSPokemon): StatStages {
+    const stages: StatStages = { attack: 0, defense: 0, special_attack: 0, special_defense: 0, speed: 0, accuracy: 0, evasion: 0 }
+    for (const [k, v] of Object.entries(p.boosts)) {
+        const key = STAT_FROM_PS[k] as keyof StatStages
+        if (key) stages[key] = v as number
+    }
+    return stages
+}
+
+/** "[of] p2a: Garchomp" 같은 키워드 인자 */
+const kwArg = (kw: string[], name: string) => kw.find(k => k.startsWith(`[${name}]`))?.slice(name.length + 2).trim()
 
 const stripPrefix = (s: string | undefined) => (s ?? '').replace(/^(move|ability|item):\s*/, '')
 
@@ -252,6 +271,11 @@ export class BattleEngine {
     private lastActive: Record<PlayerID, string[]> = { p1: [], p2: [] }
     private pendingHit = new Map<string, { crit?: boolean; eff?: number }>()
     private lastMove: { user: string; move: MoveData } | null = null
+    /** 턴 중 교체를 일으킨 아이템 (탈출버튼·탈출팩: 교체 줄에 [from] 이 없다) / 레드카드로 끌려 나올 쪽 */
+    private switchItem: Partial<Record<PlayerID, string>> = {}
+    /** 랭크를 직접 바꾼 줄(-setboost 등) 다음에 stat_set 을 낼 포켓몬 (줄이 쓰일 때 시뮬 상태가 아직 안 바뀌었을 수 있다) */
+    private pendingStages = new Set<PSPokemon>()
+    private dragItem: Partial<Record<PlayerID, string>> = {}
     private unknownLines = new Map<string, number>()
     /** rotation: 여러 슬롯을 한꺼번에 채워야 하는 교체 요청에서 지금까지 고른 슬롯 → 포켓몬 */
     private switchPicks: Partial<Record<PlayerID, { req: unknown; picks: Map<number, string> }>> = {}
@@ -418,7 +442,8 @@ export class BattleEngine {
         if (prevStatus !== p.status) {
             this.lastStatus.set(id, p.status)
             if (prevStatus && !p.status && !p.fainted) this.emit({ type: 'status_remove', pokemon_id: id, status: STATUS_FROM_PS[prevStatus] ?? prevStatus })
-            else if (p.status && !prevStatus && STATUS_FROM_PS[p.status]) this.emit({ type: 'status_apply', pokemon_id: id, status: STATUS_FROM_PS[p.status] ?? p.status, source: reason })
+            // 다른 상태이상으로 조용히 바뀜 (1·2세대: 교체하면 맹독 → 독) 은 source 'reconcile' (문장 없음)
+            else if (p.status && STATUS_FROM_PS[p.status] && !p.fainted) this.emit({ type: 'status_apply', pokemon_id: id, status: STATUS_FROM_PS[p.status] ?? p.status, source: prevStatus ? 'reconcile' : reason })
         }
     }
 
@@ -438,6 +463,7 @@ export class BattleEngine {
     }
 
     private parseLine(line: string): void {
+        if (this.pendingStages.size) this.flushStages(line)
         if (!line.startsWith('|')) {
             if (this.splitState === 2) this.splitState = 0 // addSplit 의 빈 공개 줄
             return
@@ -481,7 +507,10 @@ export class BattleEngine {
                 if (outPoke && outPoke !== p) this.reconcile(outPoke, 'switch-out')
                 if (p) this.reconcile(p, 'switch-in')
                 this.lastActive[player][slot] = inId
-                this.emit({ type: 'switch', player, out_id: out === inId ? '' : out, in_id: inId, forced: cmd === 'drag' || undefined })
+                const source = this.switchSourceOf(player, cmd, from, outPoke)
+                delete this.switchItem[player]
+                delete this.dragItem[player]
+                this.emit({ type: 'switch', player, out_id: out === inId ? '' : out, in_id: inId, forced: cmd === 'drag' || undefined, ...(source ? { source } : {}) })
                 return
             }
             case 'move': {
@@ -520,7 +549,7 @@ export class BattleEngine {
                 const prev = this.lastHp.get(id) ?? p.maxhp
                 const now = Math.max(0, p.hp)
                 this.lastHp.set(id, now)
-                const source = from ? effectSlug(from) : cmd === '-sethp' ? 'pain-split' : (this.lastMove?.move.name ?? 'move')
+                const source = from ? effectSlug(from) : cmd === '-sethp' ? 'pain-split' : (this.lastMove?.move.name ?? '')
                 if (now < prev) {
                     // 출처 없는 데미지 = 기술 명중. 단, 기술 사용자 자신이 받은 것(대타출동 비용 등)은 명중이 아니다
                     const isHit = !from && cmd === '-damage' && id !== this.lastMove?.user
@@ -554,7 +583,8 @@ export class BattleEngine {
             }
             case '-curestatus': {
                 const sp = this.resolve(pos[0])
-                if (sp) this.lastStatus.set(this.idOf(sp), sp.status)
+                // 로그 줄이 상태를 지우기 전에 올 수 있다 (자연회복 등) → 줄 기준으로 '없음' 을 기록해 보정이 한 번 더 내지 않게
+                if (sp) this.lastStatus.set(this.idOf(sp), '')
                 this.emit({ type: 'status_remove', pokemon_id: this.idOf(sp), status: STATUS_FROM_PS[pos[1] ?? ''] ?? pos[1] ?? '' })
                 return
             }
@@ -568,9 +598,14 @@ export class BattleEngine {
                 return
             }
             case '-setboost': case '-clearboost': case '-clearallboost': case '-clearpositiveboost':
-            case '-clearnegativeboost': case '-invertboost': case '-swapboost': case '-copyboost':
+            case '-clearnegativeboost': case '-invertboost': case '-swapboost': case '-copyboost': {
                 this.emit({ type: 'activate', pokemon_id: this.idOf(this.resolve(pos[0])) || undefined, effect: cmd.slice(1) })
+                // 바뀐 랭크는 숫자가 로그에 없다 → 다음 줄에서 stat_set 으로 알린다
+                const touched = cmd === '-clearallboost' ? SIDES.flatMap(s => this.battle[s].active)
+                    : cmd === '-swapboost' || cmd === '-copyboost' ? [this.resolve(pos[0]), this.resolve(pos[1])] : [this.resolve(pos[0])]
+                for (const t of touched) if (t) this.pendingStages.add(t)
                 return
+            }
             case '-weather': {
                 if (kw.includes('[upkeep]')) return
                 const w = WEATHER_FROM_PS[toID(pos[0] ?? '')] ?? null
@@ -602,7 +637,10 @@ export class BattleEngine {
                     const layers = (this.battle[player]?.sideConditions[id] as { layers?: number } | undefined)?.layers
                     this.emit({ type: 'side_start', player, condition: cond, layers })
                 } else {
-                    this.emit({ type: 'side_end', player, condition: cond })
+                    // 독타입이 독압정을 밟아 없앤 경우 [of] 로 그 포켓몬이 온다
+                    const of = kw.find(k => k.startsWith('[of]'))
+                    const by = of ? this.idOf(this.resolve(of.slice(4).trim())) : ''
+                    this.emit({ type: 'side_end', player, condition: cond, ...(by ? { pokemon_id: by } : {}) })
                 }
                 return
             }
@@ -644,10 +682,13 @@ export class BattleEngine {
                     if (move) this.lastMove = { user: '', move }
                     this.pendingHit.clear()
                 }
-                const key = VOLATILE_FROM_PS[effId]
+                // 조이기류가 끝날 때는 기술 이름 + [partiallytrapped]
+                const key = kw.includes('[partiallytrapped]') ? 'bound' : VOLATILE_FROM_PS[effId]
                     ?? (effId.startsWith('protosynthesis') || effId.startsWith('quarkdrive') ? 'paradox_boost'
                         : effId.startsWith('stockpile') ? 'stockpile' : effId.startsWith('perish') ? 'perish_song' : toSlug(effRaw))
-                this.emit({ type: cmd === '-start' ? 'volatile_apply' : 'volatile_remove', pokemon_id: this.idOf(p), volatile: key })
+                const count = cmd === '-start' && /^(perish|stockpile)\d$/.test(effId) ? Number(effId.slice(-1)) : undefined
+                if (cmd === '-start') this.emit({ type: 'volatile_apply', pokemon_id: this.idOf(p), volatile: key, ...(count !== undefined ? { count } : {}) })
+                else this.emit({ type: 'volatile_remove', pokemon_id: this.idOf(p), volatile: key })
                 return
             }
             case '-singleturn':
@@ -673,7 +714,8 @@ export class BattleEngine {
                 }
                 // 세 번째 인자가 포켓몬이면(가시지않는향기 등의 상대) 세부 효과가 아니다
                 const detail = pos[2] && !this.resolve(pos[2]) ? toSlug(stripPrefix(pos[2])) : undefined
-                this.emit({ type: 'activate', pokemon_id: this.idOf(p) || undefined, effect: toSlug(effRaw), detail })
+                const kind = pos[1]?.match(/^(ability|item|move):/)?.[1] as 'ability' | 'item' | 'move' | undefined
+                this.emit({ type: 'activate', pokemon_id: this.idOf(p) || undefined, effect: toSlug(effRaw), detail, ...(kind ? { kind } : {}) })
                 return
             }
             case '-ability':
@@ -682,12 +724,35 @@ export class BattleEngine {
             case '-endability':
                 this.emit({ type: 'activate', pokemon_id: this.idOf(this.resolve(pos[0])), effect: 'ability-suppressed' })
                 return
-            case '-item':
-                this.emit({ type: 'item_activate', pokemon_id: this.idOf(this.resolve(pos[0])), item: itemSlug(pos[1] ?? ''), effect: from ? effectSlug(from) : 'reveal' })
+            case '-item': {
+                const of = kwArg(kw, 'of')
+                const target = of ? this.idOf(this.resolve(of)) : ''
+                let owner = this.resolve(pos[0])
+                // 5세대 통찰은 아이템 주인을 비워 둔다 → [of] 의 상대 중 그 아이템을 가진 포켓몬
+                if (!owner && of) {
+                    const frisker = this.resolve(of)
+                    owner = frisker?.side.foe.active.find(a => a && toID(a.item) === toID(pos[1] ?? ''))
+                }
+                this.emit({ type: 'item_activate', pokemon_id: this.idOf(owner), item: itemSlug(pos[1] ?? ''), effect: from ? effectSlug(from) : 'reveal', ...(target ? { target_id: target } : {}) })
                 return
-            case '-enditem':
-                this.emit({ type: 'item_consume', pokemon_id: this.idOf(this.resolve(pos[0])), item: itemSlug(pos[1] ?? '') })
+            }
+            case '-enditem': {
+                const p = this.resolve(pos[0])
+                const item = itemSlug(pos[1] ?? '')
+                const of = kwArg(kw, 'of')
+                const target = of ? this.resolve(of) : undefined
+                if (p && SWITCH_ITEMS.has(item)) this.switchItem[p.side.id as PlayerID] = item
+                if (target && item === 'red-card') this.dragItem[target.side.id as PlayerID] = item
+                // 원인: 먹음 / 반감 열매 / [from] 기술·특성 (탁쳐서떨어뜨리기·벌레먹음 등)
+                const source = kw.includes('[eat]') ? 'eat' : kw.includes('[weaken]') ? 'weaken' : from ? effectSlug(from) : undefined
+                this.emit({
+                    type: 'item_consume', pokemon_id: this.idOf(p), item,
+                    ...(target ? { target_id: this.idOf(target) } : {}),
+                    ...(source ? { source } : {}),
+                    ...(kw.includes('[silent]') ? { silent: true } : {}),
+                })
                 return
+            }
             case '-mega':
             case '-burst':
             case '-primal': {
@@ -713,6 +778,7 @@ export class BattleEngine {
                 const p = this.resolve(pos[0])
                 // 기절한 메가진화 포켓몬이 원래 모습으로 돌아가는 줄 — 보여줄 변화가 아니다
                 if (p?.fainted) return
+                if (cmd === '-transform' && p) this.pendingStages.add(p) // 변신은 상대 랭크도 복사한다
                 const species = cmd === '-transform'
                     ? speciesSlug(this.resolve(pos[1])?.species.id ?? '')
                     : speciesSlug((pos[1] ?? '').split(',')[0]!)
@@ -738,9 +804,13 @@ export class BattleEngine {
             case '-hitcount':
                 this.emit({ type: 'hit_count', pokemon_id: this.idOf(this.resolve(pos[0])), hits: Number(pos[1] ?? 1) })
                 return
-            case '-prepare':
-                this.emit({ type: 'activate', pokemon_id: this.idOf(this.resolve(pos[0])), effect: 'charging', detail: toSlug(pos[1] ?? '') })
+            case '-prepare': {
+                // 2턴 기술의 준비 턴. 썰렁개그는 준비 문장이 따로 있다 (기를 모으는 게 아니다)
+                const move = moveSlug(stripPrefix(pos[1]))
+                if (move === 'chilly-reception') this.emit({ type: 'activate', pokemon_id: this.idOf(this.resolve(pos[0])), effect: move })
+                else this.emit({ type: 'activate', pokemon_id: this.idOf(this.resolve(pos[0])), effect: 'charging', detail: toSlug(pos[1] ?? '') })
                 return
+            }
             case '-ohko':
                 this.emit({ type: 'activate', effect: 'ohko' })
                 return
@@ -876,14 +946,28 @@ export class BattleEngine {
     }
     private cacheable = true
 
+    /**
+     * 랭크를 직접 바꾼 줄 다음 줄에서 stat_set 을 낸다. 다음 줄이 같은 포켓몬의 -boost/-unboost 면
+     * 시뮬은 그 변화까지 이미 적용했으므로 (Z나비춤: 떨어진 랭크 회복 → 바로 상승) 그만큼 빼서 낸다.
+     */
+    private flushStages(nextLine: string): void {
+        const [cmd, who, stat, amount] = nextLine.slice(1).split('|')
+        const next = cmd === '-boost' || cmd === '-unboost' ? this.resolve(who) : undefined
+        for (const p of this.pendingStages) {
+            const id = this.idOf(p)
+            if (!id) continue
+            const stages = stagesOf(p)
+            const key = STAT_FROM_PS[stat ?? ''] as keyof StatStages | undefined
+            if (next === p && key) stages[key] -= Number(amount ?? 0) * (cmd === '-unboost' ? -1 : 1)
+            this.emit({ type: 'stat_set', pokemon_id: id, stages })
+        }
+        this.pendingStages.clear()
+    }
+
     private buildView(p: PSPokemon): BattlePokemon {
         const id = this.idOf(p)
         const set = this.sets.get(id)!
-        const stages: StatStages = { attack: 0, defense: 0, special_attack: 0, special_defense: 0, speed: 0, accuracy: 0, evasion: 0 }
-        for (const [k, v] of Object.entries(p.boosts)) {
-            const key = STAT_FROM_PS[k] as keyof StatStages
-            if (key) stages[key] = v as number
-        }
+        const stages = stagesOf(p)
         const volatile_statuses: BattlePokemon['volatile_statuses'] = {}
         for (const [k, st] of Object.entries(p.volatiles)) {
             const key = (VOLATILE_FROM_PS[k] ?? (k.startsWith('protosynthesis') || k.startsWith('quarkdrive') ? 'paradox_boost' : k)) as keyof BattlePokemon['volatile_statuses']
@@ -1018,6 +1102,30 @@ export class BattleEngine {
         return { player, team, pick: Math.min(req.maxChosenTeamSize ?? team.length, team.length), raw: req }
     }
 
+    /** 교체 줄의 원인: [from] 기술(유턴 등) → 끌어낸 기술·레드카드 → 탈출버튼·탈출팩 → 위기회피·도망태세 */
+    private switchSourceOf(player: PlayerID, cmd: string, from: string | undefined, outPoke: PSPokemon | undefined): SwitchSource | undefined {
+        if (from) return { kind: 'move', id: moveSlug(effectSlug(from)) }
+        if (cmd === 'drag') {
+            const item = this.dragItem[player]
+            if (item) return { kind: 'item', id: item }
+            const m = this.lastMove && this.byId.get(this.lastMove.user)
+            if (m && m.side.id !== player && Dex.moves.get(toID(this.lastMove!.move.name)).forceSwitch) return { kind: 'move', id: this.lastMove!.move.name }
+            return undefined
+        }
+        if (cmd !== 'switch' || !outPoke || outPoke.fainted) return undefined
+        return this.pendingSwitchSource(player, outPoke)
+    }
+
+    /** 턴 중 교체 요청의 원인 (기절·일반 교체가 아닐 때) */
+    private pendingSwitchSource(player: PlayerID, poke: PSPokemon): SwitchSource | undefined {
+        const item = this.switchItem[player]
+        if (item) return { kind: 'item', id: item }
+        if (typeof poke.switchFlag === 'string' && poke.switchFlag) return { kind: 'move', id: moveSlug(poke.switchFlag) }
+        const ability = toID(poke.ability)
+        if (SWITCH_ABILITIES.has(ability)) return { kind: 'ability', id: abilitySlug(ability) }
+        return undefined
+    }
+
     /** 플레이어가 지금 내려야 할 결정 (singles / rotation). 필요 없으면 null. 팀 프리뷰는 getTeamPreview */
     getRequest(player: PlayerID): BattleRequest | null {
         this.start()
@@ -1039,7 +1147,9 @@ export class BattleEngine {
             const options = this.switchOptions(player, req).filter(p => !picked.has(p.id))
             const reviving = req.side?.pokemon?.some((p: { reviving?: boolean }) => p.reviving)
             const reason: SwitchReason = reviving ? 'revival_blessing' : active.fainted ? 'faint' : 'self_switch'
-            return { type: 'switch', player, reason, active, switches: options, raw: req }
+            const live = side.active[slot]
+            const source = reason === 'self_switch' && live ? this.pendingSwitchSource(player, live) : undefined
+            return { type: 'switch', player, reason, ...(source ? { source } : {}), active, switches: options, raw: req }
         }
 
         const live = side.active[front]

@@ -20,7 +20,7 @@ import { writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { cpus } from 'node:os'
-import { randomDoublesChoice } from './shared/random-choice.ts'
+import { randomDoublesChoice } from '../src/utils/random-choice.ts'
 
 interface Failure { battle: number; seed: number; kind: string; message: string }
 interface Stats {
