@@ -207,9 +207,9 @@ createFormatter({ locale: 'en', getPokemon, messages: { 'move.use': '{pokemon} â
 ### Damage calculator
 
 ```ts
-import { calculateDamage } from '@kyasi/pokebattle-engine'
+import { calculateDamage, formatKO } from '@kyasi/pokebattle-engine'
 
-calculateDamage(
+const r = calculateDamage(
   { species: 'garchomp', level: 50, nature: 'jolly', evs: { attack: 252, speed: 252 } },
   { species: 'gholdengo', level: 50, evs: { hp: 4 } },
   'earthquake',
