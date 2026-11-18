@@ -25,9 +25,16 @@ export type Logger = (line: string, kind?: LogKind) => void
 export type LogKind = 'out' | 'info' | 'json' | 'error' | 'dim'
 
 export interface Example {
+  /** 보여줄 소스. 주석은 L(ko, en) 표시로 두 언어를 담고, localizeCode 로 고른다 */
   code: string
   run: (log: Logger) => void
 }
+
+// 예제 코드 주석의 두 언어 (화면에서 고른다)
+const L = (ko: string, en: string) => `⟪${ko}‖${en}⟫`
+/** 예제 코드에서 현재 언어의 주석만 남긴다 */
+export const localizeCode = (code: string, lang: 'ko' | 'en') =>
+  code.replace(/⟪([^‖]*)‖([^⟫]*)⟫/g, (_, ko: string, en: string) => (lang === 'ko' ? ko : en))
 
 const SHOWDOWN_TEAM = `Garchomp @ Choice Scarf
 Ability: Rough Skin
@@ -126,7 +133,7 @@ console.log(team[0])`,
   randomTeam: {
     code: `import { generateRandomTeam } from '@kyasi/pokebattle-engine'
 
-// Showdown gen9randombattle 세트. 같은 seed → 같은 팀
+// ${L('Showdown gen9randombattle 세트. 같은 seed → 같은 팀', 'Showdown gen9randombattle sets. Same seed → same team')}
 const team = generateRandomTeam({ seed: 7, size: 3 })
 for (const s of team) {
   console.log(\`Lv.\${s.level} \${s.species} @ \${s.item} [\${s.ability}] — \${s.moves.join(', ')}\`)
@@ -186,7 +193,7 @@ for (const p of engine.allActive()) console.log(p.id, p.species, \`\${p.hp}/\${p
   invalid: {
     code: `try {
   engine.submitAction({ type: 'move', player: 'p1', pokemon_id: 'p1_0', move_index: 3 })
-  engine.submitAction({ type: 'move', player: 'p1', pokemon_id: 'p1_0', move_index: 0 }) // 같은 턴에 두 번
+  engine.submitAction({ type: 'move', player: 'p1', pokemon_id: 'p1_0', move_index: 0 }) // ${L('같은 턴에 두 번', 'twice in the same turn')}
 } catch (err) {
   console.log(err.name, err.message)
 }`,
@@ -205,9 +212,9 @@ for (const p of engine.allActive()) console.log(p.id, p.species, \`\${p.hp}/\${p
 
   events: {
     code: `engine.on('*', ev => console.log(JSON.stringify(ev)))
-// 특정 타입만:
+// ${L('특정 타입만:', 'one event type only:')}
 const off = engine.on('damage', ev => { /* ev.amount, ev.hp_after, ev.effectiveness, ev.crit */ })
-off() // 구독 해제
+off() // ${L('구독 해제', 'unsubscribe')}
 
 engine.submitAction({ type: 'move', player: 'p1', pokemon_id: 'p1_0', move_index: 0 })
 engine.submitAction({ type: 'move', player: 'p2', pokemon_id: 'p2_0', move_index: 1 })`,
@@ -246,7 +253,7 @@ engine.on('*', ev => {
   formatMulti: {
     code: `import { createFormatter, loadNames } from '@kyasi/pokebattle-engine'
 
-await loadNames('ja')   // ko·en 이름은 내장, 그 밖의 언어는 필요할 때 불러온다
+await loadNames('ja')   // ${L('ko·en 이름은 내장, 그 밖의 언어는 필요할 때 불러온다', 'ko and en names are built in; other languages load on demand')}
 for (const locale of ['ko', 'en', 'ja']) {
   const log = createFormatter({ locale, getPokemon: id => engine.getPokemon(id) })
   for (const ev of events) { const line = log.format(ev); if (line) console.log(line) }
@@ -269,7 +276,7 @@ for (const locale of ['ko', 'en', 'ja']) {
   describe: {
     code: `import { describeEvent } from '@kyasi/pokebattle-engine'
 
-// 언어와 무관한 메시지: UI 에서 이름을 굵게 하거나 아이콘을 붙일 때
+// ${L('언어와 무관한 메시지: UI 에서 이름을 굵게 하거나 아이콘을 붙일 때', 'language-neutral messages: for bold names or icons in a UI')}
 describeEvent(damageEvent, { getPokemon: id => engine.getPokemon(id) })`,
     run(log) {
       const team = teamA()
@@ -287,8 +294,8 @@ describeEvent(damageEvent, { getPokemon: id => engine.getPokemon(id) })`,
   randomBattle: {
     code: `import { createRandomBattle, HeuristicAI, createFormatter, preloadData } from '@kyasi/pokebattle-engine'
 
-await preloadData()                                   // 랜덤배틀 세트 (필요할 때 불러온다)
-const engine = createRandomBattle({ seed: 7, level: 50 })   // 'balanced' (기본) | 50 | 100 …
+await preloadData()                                   // ${L('랜덤배틀 세트 (필요할 때 불러온다)', 'random battle sets (loaded on demand)')}
+const engine = createRandomBattle({ seed: 7, level: 50 })   // ${L('\'balanced\' (기본) | 50 | 100 …', '\'balanced\' (default) | 50 | 100 …')}
 const log = createFormatter({ locale: 'ko', getPokemon: id => engine.getPokemon(id) })
 engine.on('*', ev => { const line = log.format(ev); if (line) console.log(line) })
 
@@ -314,9 +321,9 @@ while (!engine.battle.ended) {
 const engine = createMetronomeBattle({
   seed: 3,
   level: 50,
-  stats: { hp: 999 },                                   // 모든 포켓몬 HP 999
-  p1: { team: ['pikachu', { species: 'snorlax', stats: { attack: 400, speed: 1 } }] },  // 직접 고르기
-  p2: { team: 'random' },                               // 랜덤 (시드로 재현)
+  stats: { hp: 999 },                                   // ${L('모든 포켓몬 HP 999', 'HP 999 for every Pokémon')}
+  p1: { team: ['pikachu', { species: 'snorlax', stats: { attack: 400, speed: 1 } }] },  // ${L('직접 고르기', 'picked by hand')}
+  p2: { team: 'random' },                               // ${L('랜덤 (시드로 재현)', 'random (reproducible from the seed)')}
   teamSize: 2,
 })
 const log = createFormatter({ locale: 'ko', getPokemon: id => engine.getPokemon(id) })
@@ -349,9 +356,9 @@ while (!engine.battle.ended) {
   randomSets: {
     code: `import { getRandomBattleSet, randomBattleLevelStats } from '@kyasi/pokebattle-engine'
 
-getRandomBattleSet('garchomp')            // 레벨·역할·기술 후보·특성·테라 타입
-getRandomBattleSet('mewtwo', 1)           // 1세대
-randomBattleLevelStats(9)                 // 종족값 구간별 평균 레벨`,
+getRandomBattleSet('garchomp')            // ${L('레벨·역할·기술 후보·특성·테라 타입', 'level, roles, move pool, abilities, Tera types')}
+getRandomBattleSet('mewtwo', 1)           // ${L('1세대', 'Gen 1')}
+randomBattleLevelStats(9)                 // ${L('종족값 구간별 평균 레벨', 'average level by base stat total')}`,
     run(log) {
       log(json(getRandomBattleSet('garchomp')), 'json')
       log(json(getRandomBattleSet('mewtwo', 1)), 'json')
@@ -362,7 +369,7 @@ randomBattleLevelStats(9)                 // 종족값 구간별 평균 레벨`,
   mega: {
     code: `import { BattleEngine } from '@kyasi/pokebattle-engine'
 
-await preloadData({ gens: [7] })          // 1~8세대 데이터는 필요할 때
+await preloadData({ gens: [7] })          // ${L('1~8세대 데이터는 필요할 때', 'Gen 1–8 data loads on demand')}
 const engine = new BattleEngine({ format: 'singles', gen: 7, seed: 1, p1, p2 })
 engine.getRequest('p1')                   // { can_mega_evolve: true, … }
 engine.submitAction({ type: 'move', player: 'p1', pokemon_id: 'p1_0', move_index: 0, mega: true })`,
@@ -382,12 +389,12 @@ engine.submitAction({ type: 'move', player: 'p1', pokemon_id: 'p1_0', move_index
   },
 
   bench: {
-    code: `// Same battles on Showdown's original path (fast: false) and the engine default
+    code: `// ${L('같은 배틀을 Showdown 원래 경로(fast: false)와 엔진 기본 경로로 돌린다', 'Same battles on Showdown\'s original path (fast: false) and the engine default')}
 for (const fast of [false, true]) {
   const engine = createRandomBattle({ seed, engine: { fast, turnSnapshots: false } })
-  // … same seed + same AI → same choices
+  // ${L('… 같은 seed + 같은 AI → 같은 선택', '… same seed + same AI → same choices')}
 }
-// then compare the protocol logs byte by byte (comparableLog)`,
+// ${L('그다음 두 프로토콜 로그를 바이트 단위로 비교 (comparableLog)', 'then compare the protocol logs byte by byte (comparableLog)')}`,
     run(log) {
       const N = 20
       const run = (fast: boolean) => {
@@ -495,7 +502,7 @@ for (const m of req.moves) {
 const s = getSpecies('urshifu-rapid-strike')!
 console.log(s.id, s.name, s.showdown, s.nameKo, s.types, s.base_stats)
 
-const m = getMove('Make It Rain')!       // Showdown 이름도 OK
+const m = getMove('Make It Rain')!       // ${L('Showdown 이름도 OK', 'Showdown names work too')}
 console.log(m.name, m.type, m.power, m.accuracy)
 
 console.log(koName.move('headlong-rush'), koName.ability('protosynthesis'),
@@ -549,15 +556,15 @@ console.log(wins)`,
   p1: { name: 'A', team: generateRandomTeam({ seed: 1, format: 'gen9randomdoublesbattle', size: 4 }) },
   p2: { name: 'B', team: generateRandomTeam({ seed: 2, format: 'gen9randomdoublesbattle', size: 4 }) } })
 
-// Showdown choice string: one per slot, comma separated. Targets 1/2 = foes, -1/-2 = allies.
-// Only single-target moves take a target, so read them from the raw request.
+// ${L('Showdown 선택 문자열: 칸마다 하나, 쉼표로 구분. 대상 1/2 = 상대, -1/-2 = 같은 편.', 'Showdown choice string: one per slot, comma separated. Targets 1/2 = foes, -1/-2 = allies.')}
+// ${L('대상을 받는 건 단일 대상 기술뿐이라 원본 요청에서 읽는다.', 'Only single-target moves take a target, so read them from the raw request.')}
 const choose = (player: 'p1' | 'p2', foe: number) =>
   engine.getRawRequest(player).active.map(slot => {
     const i = slot.moves.findIndex(m => !m.disabled && m.target === 'normal')
     return i >= 0 ? \`move \${i + 1} \${foe}\` : 'move 1'
   }).join(', ')
 
-engine.submitChoice('p1', choose('p1', 1))   // e.g. 'move 2 1, move 1 1'
+engine.submitChoice('p1', choose('p1', 1))   // ${L('예: \'move 2 1, move 1 1\'', 'e.g. \'move 2 1, move 1 1\'')}
 engine.submitChoice('p2', choose('p2', 2))`,
     run(log) {
       const engine = new BattleEngine({
@@ -592,8 +599,8 @@ engine.submitChoice('p2', choose('p2', 2))`,
   p1: { name: 'A', team: generateRandomTeam({ seed: 3, format: 'gen9randomdoublesbattle', size: 4, level: 50 }) },
   p2: { name: 'B', team: generateRandomTeam({ seed: 4, format: 'gen9randomdoublesbattle', size: 4, level: 50 }) } })
 
-console.log(engine.getActivePokemon('p1').map(p => p.species))  // 3 slots per side
-engine.submitChoice('p1', 'default')   // or e.g. 'move 1 2, move 1 1, move 2 3'
+console.log(engine.getActivePokemon('p1').map(p => p.species))  // ${L('편마다 3칸', '3 slots per side')}
+engine.submitChoice('p1', 'default')   // ${L('또는 예: \'move 1 2, move 1 1, move 2 3\'', 'or e.g. \'move 1 2, move 1 1, move 2 3\'')}
 engine.submitChoice('p2', 'default')`,
     run(log) {
       const engine = new BattleEngine({
@@ -617,10 +624,10 @@ engine.submitChoice('p2', 'default')`,
   p1: { name: 'A', team: generateRandomTeam({ seed: 7, size: 4, level: 50 }) },
   p2: { name: 'B', team: generateRandomTeam({ seed: 8, size: 4, level: 50 }) } })
 
-const req = engine.getRequest('p1')!       // front = middle slot
+const req = engine.getRequest('p1')!       // ${L('앞 = 가운데 칸', 'front = middle slot')}
 if (req.type === 'move') {
   console.log(req.active.species, req.rotate?.map(r => r.direction + ' ' + r.pokemon.species))
-  const left = req.rotate![0]!               // rotate left, then the incoming Pokémon attacks
+  const left = req.rotate![0]!               // ${L('왼쪽으로 돌린 뒤 나온 포켓몬이 공격', 'rotate left, then the incoming Pokémon attacks')}
   engine.submitAction({ type: 'move', player: 'p1', pokemon_id: left.pokemon.id, move_index: 0, rotate: 'left' })
 }
 engine.submitAction(engine.getAvailableActions('p2')[0]!)`,
@@ -648,7 +655,7 @@ engine.submitAction(engine.getAvailableActions('p2')[0]!)`,
 
   teamPreview: {
     code: `const engine = new BattleEngine({ format: 'singles', seed: 2,
-  options: { pickedTeamSize: 3, level: 50 },        // 6 → 3, team preview turns on
+  options: { pickedTeamSize: 3, level: 50 },        // ${L('6 → 3, 팀 프리뷰가 켜진다', '6 → 3, team preview turns on')}
   p1: { name: 'A', team: generateRandomTeam({ seed: 5 }) },
   p2: { name: 'B', team: generateRandomTeam({ seed: 6 }) } })
 

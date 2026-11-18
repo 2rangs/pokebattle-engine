@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Button } from '@astryxdesign/core/Button'
 import { CodeBlock } from '@astryxdesign/core/CodeBlock'
-import { examples, type ExampleId, type LogKind } from '../examples'
+import { examples, localizeCode, type ExampleId, type LogKind } from '../examples'
 import { useLang } from '../i18n'
 import { dataReady } from '../engine'
 
@@ -51,7 +51,7 @@ export function ApiRun({ id, title, maxHeight = 360 }: {
   title?: string
   maxHeight?: number
 }) {
-  const { t } = useLang()
+  const { t, lang } = useLang()
   const ex = examples[id]
   const [lines, setLines] = useState<Line[] | null>(null)
   const [ms, setMs] = useState(0)
@@ -66,7 +66,7 @@ export function ApiRun({ id, title, maxHeight = 360 }: {
 
   return (
     <div className="run">
-      <CodeBlock code={ex.code} language="ts" title={title} width="100%" container="section" maxHeight={420} />
+      <CodeBlock code={localizeCode(ex.code, lang)} language="ts" title={title} width="100%" container="section" maxHeight={420} />
       <div className="run-bar">
         <span className="run-label">
           {lines ? `${t('출력', 'Output')} · ${lines.length} ${t('줄', 'lines')} · ${ms.toFixed(0)} ms` : t('출력', 'Output')}
