@@ -173,6 +173,23 @@ export function toCalcField(field: CalcFieldInput = {}): Field {
     })
 }
 
+/**
+ * KO 문구를 원하는 언어로 (koText 는 한국어 고정).
+ * 예: formatKO(r, 'en') → 'guaranteed OHKO' · '43.8% chance to 2HKO', 'ja' → '確定1発' · '乱数2発 (43.8%)'
+ */
+export function formatKO(result: Pick<DamageResult, 'koChance' | 'koHits'>, locale: 'ko' | 'en' | 'ja' = 'ko'): string {
+    const n = result.koHits
+    const chance = result.koChance
+    if (!n || chance <= 0) return ''
+    const pct = (chance * 100).toFixed(1)
+    if (locale === 'en') {
+        const hko = n === 1 ? 'OHKO' : `${n}HKO`
+        return chance >= 1 ? `guaranteed ${hko}` : `${pct}% chance to ${hko}`
+    }
+    if (locale === 'ja') return chance >= 1 ? `確定${n}発` : `乱数${n}発 (${pct}%)`
+    return koTextKo(chance, n)
+}
+
 function koTextKo(chance: number, n: number): string {
     if (!n) return ''
     if (chance >= 1) return `확정 ${n}타`

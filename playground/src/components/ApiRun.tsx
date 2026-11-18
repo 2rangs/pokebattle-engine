@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Button } from '@astryxdesign/core/Button'
 import { CodeBlock } from '@astryxdesign/core/CodeBlock'
-import { examples, type ExampleId, type LogKind } from '../examples'
+import { examples, localizeCode, type DocLang, type ExampleId, type LogKind } from '../examples'
 import { useLang } from '../i18n'
 import { dataReady } from '../engine'
 
 interface Line { text: string; kind: LogKind }
 
-function collect(id: ExampleId): Line[] {
+function collect(id: ExampleId, lang: DocLang): Line[] {
   const out: Line[] = []
   try {
-    examples[id].run((text, kind = 'out') => { out.push({ text, kind }) })
+    examples[id].run((text, kind = 'out') => { out.push({ text, kind }) }, lang)
   } catch (err) {
     out.push({ text: `${(err as Error).name}: ${(err as Error).message}`, kind: 'error' })
   }
@@ -24,13 +24,14 @@ export function LogWindow({ id, title, command, maxHeight = 420 }: {
   command: string
   maxHeight?: number
 }) {
+  const { lang } = useLang()
   const [lines, setLines] = useState<Line[] | null>(null)
   useEffect(() => {
     let live = true
-    // 엔진 데이터(랜덤배틀 세트 등)가 준비되면 실행
-    dataReady.then(() => setTimeout(() => { if (live) setLines(collect(id)) }, 0))
+    // 엔진 데이터(랜덤배틀 세트 등)가 준비되면 실행. 언어를 바꾸면 그 언어로 다시
+    dataReady.then(() => setTimeout(() => { if (live) setLines(collect(id, lang)) }, 0))
     return () => { live = false }
-  }, [id])
+  }, [id, lang])
   return (
     <figure className="logwin">
       <figcaption className="logwin-bar">
@@ -51,22 +52,24 @@ export function ApiRun({ id, title, maxHeight = 360 }: {
   title?: string
   maxHeight?: number
 }) {
-  const { t } = useLang()
+  const { t, lang } = useLang()
   const ex = examples[id]
-  const [lines, setLines] = useState<Line[] | null>(null)
+  // 출력은 실행한 언어와 함께 둔다. 언어를 바꾸면 이전 언어의 출력은 숨긴다 (다시 실행하면 새 언어로)
+  const [out, setOut] = useState<{ lang: DocLang; lines: Line[] } | null>(null)
+  const lines = out?.lang === lang ? out.lines : null
   const [ms, setMs] = useState(0)
 
   const run = useCallback(async () => {
     await dataReady
     const t0 = performance.now()
-    const out = collect(id)
+    const result = collect(id, lang)
     setMs(performance.now() - t0)
-    setLines(out)
-  }, [id])
+    setOut({ lang, lines: result })
+  }, [id, lang])
 
   return (
     <div className="run">
-      <CodeBlock code={ex.code} language="ts" title={title} width="100%" container="section" maxHeight={420} />
+      <CodeBlock code={localizeCode(ex.code, lang)} language="ts" title={title} width="100%" container="section" maxHeight={420} />
       <div className="run-bar">
         <span className="run-label">
           {lines ? `${t('출력', 'Output')} · ${lines.length} ${t('줄', 'lines')} · ${ms.toFixed(0)} ms` : t('출력', 'Output')}

@@ -207,15 +207,16 @@ createFormatter({ locale: 'en', getPokemon, messages: { 'move.use': '{pokemon} �
 ### Damage calculator
 
 ```ts
-import { calculateDamage } from '@kyasi/pokebattle-engine'
+import { calculateDamage, formatKO } from '@kyasi/pokebattle-engine'
 
-calculateDamage(
+const r = calculateDamage(
   { species: 'garchomp', level: 50, nature: 'jolly', evs: { attack: 252, speed: 252 } },
   { species: 'gholdengo', level: 50, evs: { hp: 4 } },
   'earthquake',
   { weather: 'sandstorm', reflect: false, isCrit: false },
 )
 // → { range: [180, …, 212], min: 180, max: 212, minPercent: 110.4, maxPercent: 130.1, koText: '확정 1타', desc: '252 Atk Garchomp Earthquake vs. …' }
+formatKO(r, 'en')   // 'guaranteed OHKO' (koText is Korean; formatKO takes 'ko' | 'en' | 'ja')
 ```
 
 ### Data
