@@ -10,7 +10,7 @@
 // 3. 모든 재생의 프로토콜 로그가 기록과 바이트 단위로 같은지 확인한다. 하나라도 다르면 종료 코드 1.
 import { BattleEngine, generateRandomTeam, PRNG, preloadData, replayInputLog, comparableLog } from '../src/index'
 import type { BattleConfig, BattleFormat } from '../src/index'
-import { randomDoublesChoice } from './shared/random-choice'
+import { randomDoublesChoice } from '../src/utils/random-choice'
 
 const arg = (name: string, def: string) => {
     const i = process.argv.indexOf(`--${name}`)

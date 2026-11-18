@@ -1,4 +1,4 @@
-import type { BattlePokemon, PokemonSet } from './pokemon'
+import type { BattlePokemon, PokemonSet, StatStages } from './pokemon'
 import type { Weather, Terrain, SideCondition, FieldCondition, DurationEffect } from './effect'
 import type { MoveData } from './move'
 
@@ -191,7 +191,8 @@ export type BattleEvent =
   | { type: 'faint';          pokemon_id: string }
   | { type: 'status_apply';   pokemon_id: string; status: string; source?: string }
   | { type: 'status_remove';  pokemon_id: string; status: string }
-  | { type: 'volatile_apply'; pokemon_id: string; volatile: string }
+  /** count: 멸망의노래 카운트·비축 횟수처럼 숫자가 붙는 상태 */
+  | { type: 'volatile_apply'; pokemon_id: string; volatile: string; count?: number }
   | { type: 'volatile_remove';pokemon_id: string; volatile: string }
   | { type: 'stat_change';    pokemon_id: string; stat: string; stages: number; actual?: number }
   | { type: 'weather_change'; weather: Weather; source: string }
@@ -207,13 +208,22 @@ export type BattleEvent =
   | { type: 'rotate';         player: PlayerID; direction: RotateDirection; in_id: string; out_id: string }
   | { type: 'ability_trigger';pokemon_id: string; ability: string; effect: string }
   /** target_id: 아이템이 향한 상대 (레드카드) */
-  | { type: 'item_consume';   pokemon_id: string; item: string; target_id?: string }
-  | { type: 'item_activate';  pokemon_id: string; item: string; effect: string }
+  /**
+   * 아이템이 없어짐. source: 원인 ('eat' 열매를 먹음, 'weaken' 반감 열매, 'gem' 주얼, 'knock-off', 'stealeat'(벌레먹음·쪼기),
+   * 'incinerate', 'corrosive-gas', 'fling', 'trick', 'thief' …, 없으면 아이템 자체 효과로 소모). target_id: 원인 쪽 포켓몬 ([of]).
+   * silent: 바로 뒤의 item_activate 가 같은 일을 알린다 (트릭·도둑질로 넘어감)
+   */
+  | { type: 'item_consume';   pokemon_id: string; item: string; target_id?: string; source?: string; silent?: boolean }
+  /** effect: 'reveal' 또는 원인 슬러그 ('trick', 'thief', 'frisk', 'harvest', 'recycle', 'bestow', 'symbiosis' …). target_id: [of] 쪽 */
+  | { type: 'item_activate';  pokemon_id: string; item: string; effect: string; target_id?: string }
   | { type: 'terastallize';   pokemon_id: string; tera_type: string }
   /** 메가진화·원시회귀·울트라버스트 (species = 바뀐 모습) */
   | { type: 'mega_evolve';    pokemon_id: string; kind: 'mega' | 'primal' | 'ultra'; species: string; item?: string }
   | { type: 'hit_count';      pokemon_id: string; hits: number }
-  | { type: 'activate';       pokemon_id?: string; effect: string; detail?: string }
+  /** kind: 효과의 종류 (Showdown 로그의 'ability:' / 'item:' / 'move:' 접두어) */
+  | { type: 'activate';       pokemon_id?: string; effect: string; detail?: string; kind?: 'ability' | 'item' | 'move' }
+  /** 랭크가 직접 정해짐 (배북·흑안개·뒤집기·스왑 등): 그 포켓몬의 지금 랭크 전체. 이벤트만으로 상태를 재구성할 때 쓴다 */
+  | { type: 'stat_set';       pokemon_id: string; stages: StatStages }
   | { type: 'forme_change';   pokemon_id: string; species: string }
   | { type: 'message';        text: string }
   | { type: 'battle_end';     winner: PlayerID | 'draw' }

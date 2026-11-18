@@ -227,9 +227,30 @@ calculateDamage(
 ## Testing
 
 ```bash
-npm test                                 # unit tests (mapping coverage, abilities, switching, calc parity …)
+npm test                                 # unit tests (mapping coverage, abilities, switching, calc parity …) + regression snapshots
+npm run regression -- --random 300       # every move, ability and item + random battles Gen 1–9 + doubles
 npm run fuzz -- --battles 100000 --workers 4
 ```
+
+### Regression sweep (`scripts/regression.ts`)
+
+The battle rules come from Showdown, so the sweep checks what the engine adds on top of them. It plays every Gen 9 move (and every older move in the latest gen that has it), every ability and every held item in its own battle, then Showdown random battles for Gens 1–9 and Gen 9 doubles. It reports:
+
+| Check | Meaning |
+|---|---|
+| `protocol` | a Showdown log line the engine doesn't handle |
+| `generic` | a log line that fell back to a catch-all sentence ("{pokemon}: {effect}") instead of a real one |
+| `untranslated` | English or raw slugs inside a Korean log line |
+| `silent` | an event with no sentence that Showdown does show |
+| `event-id` | an event missing its Pokémon id |
+| `replay` | HP, status or stat stages rebuilt from events alone differ from the real state (an event is missing data) |
+| `request` | an action the engine offers that Showdown rejects, or one Showdown accepts that the engine doesn't offer |
+| `preview` | real damage outside the damage preview range |
+| `crash` | an exception |
+
+`--strict` exits non-zero on any finding not listed as intended (CI runs it). `--case random:gen2#12` replays one battle and writes its log. Reports go to `.scratch/regression/findings.{md,json}`.
+
+`src/tests/engine/regression.test.ts` pins the full Korean and English log of a fixed-seed random battle for every generation plus doubles. A change in rules, events or wording shows up as a snapshot diff; update it on purpose with `npx vitest run -u`.
 
 ### Fuzz tests (`scripts/fuzz.ts`)
 

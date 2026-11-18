@@ -10,7 +10,24 @@ export const SHOWN_VOLATILES = new Set([
     'encore', 'yawn', 'protect', 'kings_shield', 'spiky_shield', 'baneful_bunker', 'silk_trap', 'burning_bulwark',
     'obstruct', 'endure', 'focus_energy', 'substitute', 'salt_cure', 'flash_fire', 'heal_block', 'embargo', 'destiny_bond',
     'future-sight', 'doom-desire', 'dynamax', 'octolock',
+    'perish_song', 'uproar', 'charge', 'stockpile', 'focus-punch', 'beak-blast', 'shell-trap', 'power-trick', 'quick-guard', 'wide-guard',
+    'torment', 'disable', 'imprison', 'syrup-bomb', 'tar-shot', 'smack-down', 'autotomize', 'slow_start', 'max-guard', 'illusion',
+    'neutralizing-gas', 'paradox_boost', 'nightmare', 'telekinesis', 'laser-focus', 'electrify', 'magic-coat', 'snatch', 'grudge',
+    'rage-powder', 'follow-me', 'spotlight', 'powder', 'helping-hand', 'foresight', 'miracle-eye', 'no-retreat', 'minimize', 'defense_curl',
+    'bide', 'reflect', 'light-screen', 'crafty-shield', 'mat-block', 'sky-drop', 'instruct', 'laser-focus',
 ])
+
+/** 말없이 상태를 맞추는 이벤트의 출처 (Showdown 도 문장을 내지 않는다) */
+const QUIET_SOURCES = new Set(['reconcile'])
+
+/** Showdown 이 그대로 보내는 안내 문장 → 메시지 키 */
+const KNOWN_MESSAGES: Record<string, string> = {
+    'Sleep Clause Mod activated.': 'message.sleep-clause',
+    'Freeze Clause Mod activated.': 'message.freeze-clause',
+    'Freeze Clause activated.': 'message.freeze-clause',
+    'Endless Battle Clause activated!': 'message.endless-battle',
+    'Evasion Clause Mod activated.': 'message.evasion-clause',
+}
 
 /** 조이기류 (상대를 몇 턴 묶어 두는 기술): 하나의 문장으로 */
 const PARTIAL_TRAP = new Set([
@@ -45,7 +62,7 @@ export function describeEvent(event: BattleEvent, ctx: FormatContext): Message[]
         case 'cant_move':
             if (event.reason === 'other') {
                 return [event.detail
-                    ? m('cant.other.detail', { pokemon: { pokemon: event.pokemon_id }, effect: { effect: event.detail } })
+                    ? m(['cant.other.' + event.detail, 'cant.other.detail'], { pokemon: { pokemon: event.pokemon_id }, effect: { effect: event.detail } })
                     : m('cant.other', { pokemon: { pokemon: event.pokemon_id } })]
             }
             return [m('cant', { pokemon: { pokemon: event.pokemon_id } }, event.reason)]
@@ -76,6 +93,7 @@ export function describeEvent(event: BattleEvent, ctx: FormatContext): Message[]
                 : m('immune', { pokemon: { pokemon: event.pokemon_id } })]
         case 'faint':           return [m('faint', { pokemon: { pokemon: event.pokemon_id } })]
         case 'status_apply':
+            if (event.source && QUIET_SOURCES.has(event.source)) return null
             return [m('status.apply', { pokemon: { pokemon: event.pokemon_id }, status: { term: 'status', key: event.status } }, event.status)]
         case 'status_remove':
             return [m('status.remove', { pokemon: { pokemon: event.pokemon_id }, status: { term: 'status', key: event.status } }, event.status)]
@@ -83,7 +101,9 @@ export function describeEvent(event: BattleEvent, ctx: FormatContext): Message[]
         case 'volatile_remove': {
             if (!SHOWN_VOLATILES.has(event.volatile)) return null
             const key = event.type === 'volatile_apply' ? 'volatile.start' : 'volatile.end'
-            return [m(key, { pokemon: { pokemon: event.pokemon_id }, volatile: { effect: event.volatile } }, event.volatile)]
+            const params: Message['params'] = { pokemon: { pokemon: event.pokemon_id }, volatile: { effect: event.volatile } }
+            if (event.type === 'volatile_apply' && event.count !== undefined) params.count = event.count
+            return [m(key, params, event.volatile)]
         }
         case 'stat_change': {
             const params = { pokemon: { pokemon: event.pokemon_id }, stat: { term: 'stat' as const, key: event.stat } }
@@ -128,12 +148,20 @@ export function describeEvent(event: BattleEvent, ctx: FormatContext): Message[]
             return event.out_id ? [m('rotate.out', { ...params, out: { pokemon: event.out_id } })] : [m('rotate', params)]
         }
         case 'ability_trigger': return [m('ability', { pokemon: { pokemon: event.pokemon_id }, ability: { ability: event.ability } })]
-        case 'item_consume':
-            return [m(['item.consume.' + event.item, 'item.consume'], {
+        case 'item_consume': {
+            if (event.silent) return null // 트릭·도둑질: 이어지는 item_activate 가 알린다
+            const keys = [...(event.source ? ['item.consume.' + event.source] : []), 'item.consume.' + event.item, 'item.consume']
+            return [m(keys, {
                 pokemon: { pokemon: event.pokemon_id }, item: { item: event.item },
                 ...(event.target_id ? { target: { pokemon: event.target_id } } : {}),
             })]
-        case 'item_activate':   return [m(['item.activate.' + event.item, 'item.activate'], { pokemon: { pokemon: event.pokemon_id }, item: { item: event.item } })]
+        }
+        case 'item_activate':
+            return [m(['item.activate.' + event.effect, 'item.activate.' + event.item, 'item.activate'], {
+                pokemon: { pokemon: event.pokemon_id }, item: { item: event.item },
+                ...(event.target_id ? { target: { pokemon: event.target_id } } : {}),
+            })]
+        case 'stat_set':        return null // 앞의 activate 가 문장을 낸다 (상태 재구성용)
         case 'terastallize':    return [m('tera', { pokemon: { pokemon: event.pokemon_id }, type: { type: event.tera_type } })]
         case 'mega_evolve':     return [m('mega', { pokemon: { pokemon: event.pokemon_id }, ...(event.item ? { item: { item: event.item } } : {}) }, event.kind)]
         case 'hit_count':       return [m('hits', { count: event.hits })]
@@ -143,13 +171,18 @@ export function describeEvent(event: BattleEvent, ctx: FormatContext): Message[]
             if (event.detail) params.detail = { effect: event.detail }
             // 효과별 문장이 없으면 일반 문장 (포켓몬이 없으면 보여주지 않음 — 일반 문장이 {pokemon} 을 요구)
             const key = PARTIAL_TRAP.has(event.effect) ? 'activate.bound' : 'activate.' + event.effect
-            return [m([key, event.detail ? 'activate.detail' : 'activate'], params)]
+            // 전용 문장이 없으면: 특성은 "[특성] 포켓몬", 아이템은 "포켓몬의 아이템이 효과를 발휘했다"
+            const kindKey = event.kind === 'ability' ? ['activate.ability'] : event.kind === 'item' ? ['activate.item'] : []
+            return [m([key, ...kindKey, event.detail ? 'activate.detail' : 'activate'], params)]
         }
         case 'forme_change':
             // 메가진화·원시회귀·울트라버스트는 mega_evolve 문장이 따로 있다 (이벤트는 그대로 남는다)
             if (/-mega(-[xyz])?$|-primal$|^necrozma-ultra$/.test(event.species)) return null
             return [m('forme', { pokemon: { pokemon: event.pokemon_id } })]
-        case 'message':         return [m('message', { text: { text: event.text } })]
+        case 'message': {
+            const known = KNOWN_MESSAGES[event.text]
+            return [m(known ? [known, 'message'] : 'message', { text: { text: event.text } })]
+        }
         case 'battle_end':
             if (event.winner === 'draw') return [m('end.draw')]
             return [m(named ? ['end.win.named', `end.win.${rel(event.winner)}`] : `end.win.${rel(event.winner)}`, { side: { side: event.winner } })]

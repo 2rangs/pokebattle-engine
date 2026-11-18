@@ -812,11 +812,17 @@ export function Battle({ config }) {
     lead: ['모든 배틀은 seed로 재현됩니다. 퍼저는 매 배틀 여덟 가지 불변식을 검사합니다.', 'Every battle is reproducible from its seed. The fuzzer checks eight invariants on each one.'],
     body: t => (
       <>
-        <Snippet lang="bash" code={`npm test                                  # ${t('유닛 테스트', 'unit tests')}
+        <Snippet lang="bash" code={`npm test                                  # ${t('유닛 테스트 + 회귀 스냅샷', 'unit tests + regression snapshots')}
+npm run regression -- --random 300        # ${t('모든 기술·특성·아이템 + 1~9세대·더블 랜덤배틀', 'every move, ability, item + Gen 1–9 and doubles random battles')}
 npm run fuzz -- --battles 100000 --workers 4
 npm run bench:compare                     # ${t('Showdown 대비 속도 + 로그 동일성', 'speed vs Showdown + identical logs')}
 npm run check:dist                        # ${t('배포 번들 == 원본 @pkmn/sim', 'published bundle == original @pkmn/sim')}
 npx pokebattle watch --gen 8              # ${t('터미널에서 AI vs AI 관전', 'watch AI vs AI in the terminal')}`} />
+        <H2>{t('회귀 전수 점검', 'Regression sweep')}</H2>
+        <P>{t(
+          <>판정은 Showdown이 하므로, 점검 대상은 엔진이 그 위에 더한 부분입니다. 9세대 모든 기술(예전 기술은 그 기술이 있는 마지막 세대), 모든 특성, 모든 지닌 도구를 각각 배틀에 넣고, 1~9세대 랜덤배틀과 9세대 더블까지 돌리면서 다음을 찾습니다: 처리 못한 로그 줄, 전용 문장 없이 범용 문장으로 나간 로그, 한국어 로그 속 영어, 문장이 빠진 이벤트, 이벤트만으로 다시 만든 HP·상태이상·랭크가 실제와 다른 경우, 엔진이 내준 행동을 Showdown이 거부하는 경우, 미리보기 범위를 벗어난 데미지. CI에서 <C>--strict</C>로 돌고, 세대별 고정 시드 배틀의 전체 로그는 스냅샷 테스트로 고정합니다.</>,
+          <>Showdown decides the rules, so the sweep checks what the engine adds on top. It puts every Gen 9 move (older moves in the last gen that has them), every ability and every held item into its own battle, then runs Gen 1–9 random battles and Gen 9 doubles, looking for: unhandled log lines, log lines that fell back to a catch-all sentence, English inside Korean logs, events with no sentence, HP / status / stat stages rebuilt from events that differ from the real state, actions the engine offers that Showdown rejects, and damage outside the preview range. CI runs it with <C>--strict</C>, and snapshot tests pin the full log of a fixed-seed battle for every generation.</>,
+        )}</P>
         <H2>{t('퍼징 입력', 'Fuzz inputs')}</H2>
         <Ul items={t([
           '형식: 싱글 65% / 더블 15% / 트리플 10% / 로테이션 10%, 20%는 팀 프리뷰',

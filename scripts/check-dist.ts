@@ -4,7 +4,7 @@
 // 같은 입력을 node_modules 의 원본 @pkmn/sim 에 재생해서 프로토콜 로그가 바이트 단위로 같은지 본다.
 // 기술표를 쓰는 기능(generateRandomSet / generateChaosTeam)도 원본과 같은 결과인지 본다.
 import { Battle, Dex } from '@pkmn/sim'
-import { randomDoublesChoice } from './shared/random-choice.ts'
+import { randomDoublesChoice } from '../src/utils/random-choice.ts'
 
 const dist = await import('../dist/index.js')
 

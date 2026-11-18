@@ -42,6 +42,8 @@ const reverse = (m: KoMap) => {
 }
 const SLUG_BY_PS_MOVE = reverse(API.moves)
 const SLUG_BY_PS_ABILITY = reverse(API.abilities)
+// Showdown 로그는 두 혼연일체를 'As One' 하나로 쓴다 (이름은 같다)
+if (!SLUG_BY_PS_ABILITY.has('asone')) SLUG_BY_PS_ABILITY.set('asone', 'as-one-glastrier')
 const SLUG_BY_PS_ITEM = reverse(API.items)
 
 // ─── Showdown ID → PokeAPI 슬러그 ──────────────────────────────
