@@ -218,3 +218,7 @@ body { font-family: var(--font-family-body); -webkit-font-smoothing: antialiased
 .bar.is-base, .swatch.is-base { background: #77786f; }
 .bar.is-ours, .swatch.is-ours { background: #3987e5; }
 .bars-row:hover .bar { filter: brightness(1.15); }
+
+/* ─── 배틀 데모 (#/demo) — 나머지는 src/demo 의 Tailwind 유틸리티 ─── */
+.demo { display: flex; flex-direction: column; gap: 24px; padding-block: 32px 64px; word-break: keep-all; }
+.demo-fallback { padding-block: 64px; color: var(--muted); }

@@ -13,6 +13,8 @@ A Pokémon battle engine built on the **[Pokémon Showdown](https://github.com/s
   - Battle logs in Korean, English and Japanese from one message catalog (Korean particles handled), plus Pokémon/move/ability/item names in 9 languages.
   - AI, Showdown random-battle teams, a React hook, and fuzz testing.
 
+**[Docs](https://2rangs.github.io/portfolio/pokebattle-engine/) · [Battle demo](https://2rangs.github.io/portfolio/pokebattle-engine/#/demo)**: watch two CPUs battle or fight one yourself in the browser, with animated sprites, logs in ko/en/ja and shareable replay links (seed + actions only).
+
 ## Performance
 
 Same battles (same seed, teams and choices) replayed through `@pkmn/sim` directly and through this engine.

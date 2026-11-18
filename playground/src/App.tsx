@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { AppShell } from '@astryxdesign/core/AppShell'
 import { SideNav, SideNavItem, SideNavSection } from '@astryxdesign/core/SideNav'
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl'
@@ -12,18 +13,23 @@ import { LANGS, useLang, type Lang } from './i18n'
 
 const REPO = 'https://github.com/2rangs/pokebattle-engine'
 
+// 배틀 데모는 엔진 데이터·배틀 화면이 커서 따로 받는다
+const Demo = lazy(() => import('./demo'))
+
 export default function App() {
   const route = useRoute()
   const { lang, setLang, t } = useLang()
   const slug = route.startsWith('/docs/') ? route.slice(6) : null
   const doc = slug ? DOCS.find(d => d.slug === slug) ?? DOCS[0]! : null
   const idx = doc ? DOCS.indexOf(doc) : -1
+  const demo = route === '/demo' || route.startsWith('/demo/') || route.startsWith('/demo?')
 
   const nav = [
     { label: t('문서', 'Docs'), href: '#/docs/introduction', on: doc?.group === 'start' },
     { label: 'API', href: '#/docs/engine', on: doc?.group === 'battle' },
     { label: t('도구', 'Tools'), href: '#/docs/damage', on: doc?.group === 'tools' },
     { label: t('연동', 'Integration'), href: '#/docs/react', on: doc?.group === 'integrate' },
+    { label: t('데모', 'Demo'), href: '#/demo', on: demo },
   ]
 
   const header = (
@@ -76,6 +82,10 @@ export default function App() {
             {idx < DOCS.length - 1 && <a className="next" href={`#/docs/${DOCS[idx + 1]!.slug}`}><span>{t('다음', 'Next')}</span>{docTitle(DOCS[idx + 1]!, lang)}</a>}
           </nav>
         </article>
+      ) : demo ? (
+        <Suspense fallback={<div className="wrap demo-fallback" role="status">{t('데모를 불러오는 중…', 'Loading the demo…')}</div>}>
+          <Demo route={route} />
+        </Suspense>
       ) : (
         <Landing />
       )}
