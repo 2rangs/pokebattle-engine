@@ -99,6 +99,7 @@ engine.previewDamage('p1', 0)            // damage preview of my move against th
 - `getRequest(player)` returns a decision based on Showdown's request, plus details hidden from the request:
   - Hidden trapping (Shadow Tag etc.) and hidden disables (Imprison) are reflected from live state.
   - Revival Blessing offers only fainted Pokémon (`reason: 'revival_blessing'`).
+  - A mid-turn switch (`reason: 'self_switch'`) says what caused it in `source`: a move (`{ kind: 'move', id: 'u-turn' | 'baton-pass' | 'shed-tail' | … }`), an item (`'eject-button'`, `'eject-pack'`) or an ability (`'emergency-exit'`, `'wimp-out'`). `switch` events carry the same `source`, and forced switches (`forced: true`) name the move or Red Card that dragged the Pokémon out.
   - Recharge, charging and rampage turns force the move (`forced: true`).
 - **Doubles / triples:** use `getRawRequest(player)` + `submitChoice(player, 'move 1 2, switch 3')`. Triples run on Showdown's `gen9triples` with its ladder rules (team preview, Species Clause, banlist) stripped, so they start rule-free like singles and doubles.
 - **Rotation:** `format: 'rotation'` uses the same `getRequest` / `submitAction` API as singles. Three Pokémon per side are out, but only the front one (the middle slot, `engine.frontSlot === 1`) acts and can be targeted. Add `rotate: 'left' | 'right'` to a `move` action and that back Pokémon rotates to the front at the very start of the turn (before switches and priority moves) and uses the move (`move_index` / `pokemon_id` refer to the incoming Pokémon; options are in `req.rotate`). A rotation is not a switch, so stat stages and volatiles stay and switch-in abilities don't re-fire. You can't rotate while the front Pokémon is locked into a move. A fainted front is refilled from the bench; with no bench left the request has `must_rotate: true`. Spread moves and Intimidate reach only the foe's front Pokémon and ally-targeting moves fail, but end-of-turn damage and field-wide effects still reach the back row. Rotations emit a `rotate` event. Raw choices work too (`'pass, move 1 2, pass'`, `'move 2 2, pass, pass'` = rotate left; the foe's front is always target 2).
@@ -226,9 +227,30 @@ calculateDamage(
 ## Testing
 
 ```bash
-npm test                                 # unit tests (mapping coverage, abilities, switching, calc parity …)
+npm test                                 # unit tests (mapping coverage, abilities, switching, calc parity …) + regression snapshots
+npm run regression -- --random 300       # every move, ability and item + random battles Gen 1–9 + doubles
 npm run fuzz -- --battles 100000 --workers 4
 ```
+
+### Regression sweep (`scripts/regression.ts`)
+
+The battle rules come from Showdown, so the sweep checks what the engine adds on top of them. It plays every Gen 9 move (and every older move in the latest gen that has it), every ability and every held item in its own battle, then Showdown random battles for Gens 1–9 and Gen 9 doubles. It reports:
+
+| Check | Meaning |
+|---|---|
+| `protocol` | a Showdown log line the engine doesn't handle |
+| `generic` | a log line that fell back to a catch-all sentence ("{pokemon}: {effect}") instead of a real one |
+| `untranslated` | English or raw slugs inside a Korean log line |
+| `silent` | an event with no sentence that Showdown does show |
+| `event-id` | an event missing its Pokémon id |
+| `replay` | HP, status or stat stages rebuilt from events alone differ from the real state (an event is missing data) |
+| `request` | an action the engine offers that Showdown rejects, or one Showdown accepts that the engine doesn't offer |
+| `preview` | real damage outside the damage preview range |
+| `crash` | an exception |
+
+`--strict` exits non-zero on any finding not listed as intended (CI runs it). `--case random:gen2#12` replays one battle and writes its log. Reports go to `.scratch/regression/findings.{md,json}`.
+
+`src/tests/engine/regression.test.ts` pins the full Korean and English log of a fixed-seed random battle for every generation plus doubles. A change in rules, events or wording shows up as a snapshot diff; update it on purpose with `npx vitest run -u`.
 
 ### Fuzz tests (`scripts/fuzz.ts`)
 

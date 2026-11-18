@@ -1,6 +1,7 @@
 // ─── 배틀 AI ──────────────────────────────────────────────────
 // 기술 정보: Showdown Dex / 데미지 예측: @smogon/calc
 import { Dex } from '@pkmn/sim'
+import type { Pokemon as PSPokemon, Side as PSSide } from '@pkmn/sim'
 import type { Action, BattleRequest, PlayerID } from '../types/battle'
 import type { BattleEngine } from '../engine/BattleEngine'
 import { PRNG } from '../utils/rng'
@@ -80,7 +81,7 @@ export class HeuristicAI implements BattleAI {
             const inDanger = threat >= user.hp / user.maxhp && !(outspeeds && best >= 100)
             for (const p of req.switches) {
                 const m = this.matchup(engine, p.id, player)
-                let score = m * 40 - 25
+                let score = m * 40 - 25 - entryCost(engine.getShowdownPokemon(p.id), engine.battle[player]) * 80
                 if (inDanger) score += 30
                 if (best < 25) score += 15
                 if ((user.boosts.atk ?? 0) <= -2 || (user.boosts.spa ?? 0) <= -2) score += 20
@@ -106,10 +107,16 @@ export class HeuristicAI implements BattleAI {
 
     private chooseSwitch(engine: BattleEngine, req: Extract<BattleRequest, { type: 'switch' }>, player: PlayerID): Action | null {
         if (req.switches.length === 0) return null
-        const scored = req.switches.map(p => ({
-            action: { type: 'switch' as const, player, pokemon_id: req.active.id, switch_to_id: p.id },
-            score: this.matchup(engine, p.id, player) * 50 + p.hp / p.max_hp * 20,
-        }))
+        const side = engine.battle[player]
+        const leaving = side.active[engine.frontSlot]
+        const scored = req.switches.map(p => {
+            const mon = engine.getShowdownPokemon(p.id)
+            let score = this.matchup(engine, p.id, player) * 50 + p.hp / p.max_hp * 20 - entryCost(mon, side) * 80
+            // 배턴터치: 넘겨받는 랭크를 가장 잘 쓰는 포켓몬 / 꼬리자르기: 대타 뒤에서 능력을 올릴 포켓몬
+            if (mon && leaving && req.source?.id === 'baton-pass') score += batonValue(leaving, mon) * 12
+            if (mon && req.source?.id === 'shed-tail' && mon.moveSlots.some(s => hasSelfBoost(s.id))) score += 15
+            return { action: { type: 'switch' as const, player, pokemon_id: req.active.id, switch_to_id: p.id }, score }
+        })
         return this.pick(scored)
     }
 
@@ -157,6 +164,10 @@ export class HeuristicAI implements BattleAI {
         const foeSide = engine.battle[engine.foeOf(player)]
         const mySide = engine.battle[player]
         const foeBench = foeSide.pokemon.filter(p => !p.fainted && !p.isActive).length
+        const myBench = mySide.pokemon.filter(p => !p.fainted && !p.isActive).length
+        // 끌어내기(날려버리기·드래곤테일 등)가 통하는지: 흡반·파수견·뿌리박기·다이맥스는 버틴다
+        const forceable = foeAlive && foeBench > 0 && canBeForcedOut(foe!)
+        const foeBoosted = foeAlive && Object.values(foe!.boosts).some(b => b >= 1)
 
         if (move.category !== 'Status') {
             if (!foeAlive) return 0
@@ -170,7 +181,8 @@ export class HeuristicAI implements BattleAI {
             else if (r.max >= foe!.hp) score = Math.max(score, 70 + (move.priority > 0 ? 20 : 0))
             if (move.recoil || move.mindBlownRecoil) score -= 10
             if (move.drain && hpRatio < 0.7) score += 10
-            if (move.selfSwitch) score += 8
+            if (move.selfSwitch && myBench > 0) score += 8
+            if (move.forceSwitch && forceable) score += (foeBoosted ? 20 : 0) + hazardValue(foeSide) * 10
             if (move.id === 'fakeout') score = user.activeTurns <= 1 ? score + 35 : 0
             if (move.id === 'firstimpression' && user.activeTurns > 1) score = 0
             if (move.self?.volatileStatus === 'mustrecharge' && r.min < foe!.hp) score -= 20
@@ -194,8 +206,19 @@ export class HeuristicAI implements BattleAI {
         if (move.heal || move.flags.heal || move.id === 'rest' || move.id === 'strengthsap') return hpRatio > 0.75 ? 0 : (1 - hpRatio) * 90
         if (move.id === 'wish') return (1 - hpRatio) * 60
         if (move.id === 'substitute') return hpRatio > 0.5 && !user.volatiles['substitute'] ? 20 : 0
-        if (move.selfSwitch) return 18
-        if (move.forceSwitch) return foeAlive && foeBench > 0 && Object.values(foe!.boosts).some(b => b >= 1) ? 45 : 5
+        if (move.selfSwitch) {
+            if (myBench === 0) return 0 // 교체할 포켓몬이 없으면 효과 없음 (꼬리자르기·배턴터치는 실패)
+            if (move.id === 'shedtail') return user.hp <= Math.ceil(user.maxhp / 2) || user.volatiles['substitute'] ? 0 : 30
+            if (move.id === 'batonpass') {
+                const net = Object.values(user.boosts).reduce((a, b) => a + b, 0)
+                return Math.max(0, 5 + net * 15 + (user.volatiles['substitute'] ? 15 : 0))
+            }
+            return 18
+        }
+        if (move.forceSwitch) {
+            if (!forceable) return 0
+            return Math.min(70, 5 + (foeBoosted ? 45 : 0) + hazardValue(foeSide) * 15)
+        }
         if (move.id === 'haze' || move.id === 'clearsmog') return foeAlive && Object.values(foe!.boosts).some(b => b >= 2) ? 50 : 0
         if (move.id === 'defog' || move.id === 'rapidspin' || move.id === 'tidyup' || move.id === 'mortalspin' || move.id === 'courtchange') {
             return ['stealthrock', 'spikes', 'toxicspikes', 'stickyweb'].filter(c => c in mySide.sideConditions).length * 25
@@ -223,6 +246,55 @@ export class HeuristicAI implements BattleAI {
         if (move.boosts && foeAlive) return foe!.volatiles['substitute'] ? 0 : 12
         return 3
     }
+}
+
+/** 강제 교체가 통하는지 (흡반·파수견·뿌리박기·다이맥스·거다이맥스는 버틴다) */
+function canBeForcedOut(p: PSPokemon): boolean {
+    if (p.volatiles['ingrain'] || p.volatiles['dynamax']) return false
+    return !p.hasAbility(['suctioncups', 'guarddog'])
+}
+
+/** 상대 진영 장판의 가치 (끌어내기와 같이 쓰면 교체될 때마다 피해) */
+function hazardValue(side: PSSide): number {
+    const c = side.sideConditions as Record<string, { layers?: number } | undefined>
+    return (c['stealthrock'] ? 1 : 0) + (c['spikes']?.layers ?? 0) * 0.6 + (c['toxicspikes']?.layers ?? 0) * 0.5 + (c['stickyweb'] ? 0.5 : 0)
+}
+
+/**
+ * 교체로 들어갈 때 장판에 잃는 HP 비율 (+ 독압정·끈적끈적네트는 대략적인 손해).
+ * 통굽부츠는 모든 장판, 매직가드는 피해만 막는다. 땅에 닿지 않으면(비행·부유·풍선) 압정·독압정·네트를 무시한다.
+ * 독압정은 땅에 닿은 독타입이 밟으면 사라진다 (오히려 이득).
+ */
+function entryCost(p: PSPokemon | undefined, side: PSSide): number {
+    if (!p) return 0
+    const c = side.sideConditions as Record<string, { layers?: number } | undefined>
+    if (p.hasItem('heavydutyboots')) return 0
+    const types = p.getTypes()
+    const grounded = !!p.isGrounded() // 부유 특성이면 null
+    const magicGuard = p.hasAbility('magicguard')
+    let cost = 0
+    if (c['stealthrock'] && !magicGuard) cost += typeFactor('Rock', types) / 8
+    const spikes = c['spikes']?.layers ?? 0
+    if (spikes && grounded && !magicGuard) cost += [0, 1 / 8, 1 / 6, 1 / 4][spikes]!
+    const tspikes = c['toxicspikes']?.layers ?? 0
+    if (tspikes && grounded) {
+        if (types.includes('Poison')) cost -= 0.1
+        else if (!types.includes('Steel') && !p.status) cost += tspikes >= 2 ? 0.15 : 0.08
+    }
+    if (c['stickyweb'] && grounded && !p.hasAbility(['contrary', 'defiant', 'competitive'])) cost += 0.05
+    return cost
+}
+
+/** 배턴터치로 넘어가는 랭크가 이 포켓몬에게 얼마나 쓸모 있는지 (공격 랭크는 주로 쓰는 쪽만) */
+function batonValue(from: PSPokemon, to: PSPokemon): number {
+    const b = from.boosts
+    const physical = to.storedStats.atk >= to.storedStats.spa
+    return (physical ? b.atk : b.spa) + b.spe * 0.7 + (b.def + b.spd) * 0.3
+}
+
+function hasSelfBoost(id: string): boolean {
+    const m = Dex.moves.get(id)
+    return m.category === 'Status' && m.target === 'self' && !!m.boosts && Object.values(m.boosts).some(v => (v ?? 0) > 0)
 }
 
 function typeFactor(moveType: string, defTypes: string[]): number {
