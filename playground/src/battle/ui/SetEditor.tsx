@@ -9,10 +9,9 @@ import {
 import { abilityName, itemName, moveName } from '../lib/names'
 import { itemIconUrl, TYPE_COLOR } from '../lib/sprites'
 import type { MessageKey } from '../lib/messages'
-import { TypeGlyph } from './bits'
+import { CategoryIcon, TypeBadge } from './bits'
 import { useBT } from './state'
 
-const CAT_KEY: Record<string, MessageKey> = { physical: 'catPhysical', special: 'catSpecial', status: 'catStatus' }
 const PRESET_KEY: Record<EvPreset, MessageKey> = {
   physical: 'evPhysical', special: 'evSpecial', bulkyPhys: 'evBulkyPhys', bulkySpec: 'evBulkySpec', none: 'evNone',
 }
@@ -75,14 +74,14 @@ function SearchSelect<T extends { slug: string; label: string; haystack: string 
   )
 }
 
-/** 기술 한 줄: 타입 문양 · 이름 · 분류 · 위력 */
+/** 기술 한 줄: 타입 배지 · 이름 · 분류 아이콘 · 위력 */
 function MoveInfo({ m }: { m: Pick<MoveOption, 'type' | 'category' | 'power'> & { label: string } }) {
-  const { t } = useBT()
+  const { t, lang } = useBT()
   return (
     <>
-      <TypeGlyph type={m.type} />
+      <TypeBadge type={m.type} lang={lang} size="sm" />
       <span className="bd-ed-move-name">{m.label}</span>
-      <span className={`bd-cat is-${m.category}`}>{t(CAT_KEY[m.category] ?? 'catStatus')}</span>
+      <CategoryIcon category={m.category} lang={lang} />
       <span className="bd-ed-power" aria-label={t('powerShort')}>{m.power ?? '—'}</span>
     </>
   )
@@ -220,7 +219,7 @@ export function SetEditor({ set, issues, onChange }: { set: PokemonSet; issues: 
           </select>
         </label>
         <label className="bd-field">
-          <span>{t('teraType')}</span>
+          <span className="bd-ed-tera-head">{t('teraType')}{set.teraType && <TypeBadge type={set.teraType} lang={lang} size="sm" tera />}</span>
           <select className="bd-input" value={set.teraType ?? ''} onChange={e => onChange({ ...set, teraType: e.target.value || undefined })}>
             {!set.teraType && <option value="">—</option>}
             {teras.map(ty => <option key={ty.slug} value={ty.slug}>{ty.label}</option>)}

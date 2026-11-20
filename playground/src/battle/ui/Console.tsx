@@ -1,14 +1,14 @@
 // ─── 화면 아래: 메시지 상자 + 커맨드 (싸운다 / 포켓몬 / 도망친다) + 기술 선택 + 교체 ─────
 // 5세대 블랙·화이트의 아래 화면 구성을 본떴다: 큰 "싸운다" + 포켓몬·도망친다(가방 없음).
-// 기술 버튼은 타입 색, 타입 문양, PP x/y 에 데미지 미리보기(상성·범위·확정 n타)를 더했다.
+// 기술 버튼: 이름 · PP x/y, 타입 배지 · 분류 아이콘 · 위력, 데미지 미리보기(상성·범위·확정 n타).
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import type { BattleRequest, MoveOption, PlayerID } from '../lib/engine'
 import type { PokeView } from '../lib/frame'
 import { effectivenessLabel, effectivenessTone, koLabel, pctOf } from '../lib/hud'
-import type { MessageKey } from '../lib/messages'
 import { itemName, moveName, pokemonLabel, typeName } from '../lib/names'
-import { iconCandidates, itemIconUrl, TYPE_COLOR, typeIconUrl } from '../lib/sprites'
-import { FallbackImg, HpBar, StatusBadge, TypeGlyph, Gender } from './bits'
+import { iconCandidates, itemIconUrl, TYPE_COLOR } from '../lib/sprites'
+import { CAT_KEY } from '../lib/typeStyle'
+import { CategoryIcon, FallbackImg, Gender, HpBar, StatusBadge, TypeBadge } from './bits'
 import type { BattleSession } from './useBattleSession'
 import { useBT } from './state'
 
@@ -24,8 +24,6 @@ export function MessageBox({ text, more, children }: { text: ReactNode; more?: b
 }
 
 interface MovePreview { text: string; eff: number; ko: string | null }
-
-const CAT_KEY: Record<string, MessageKey> = { physical: 'catPhysical', special: 'catSpecial', status: 'catStatus' }
 
 function MoveButton({ opt, preview, onPick, extra }: { opt: MoveOption; preview: MovePreview | null; onPick: () => void; extra?: ReactNode }) {
   const { t, lang } = useBT()
@@ -47,12 +45,15 @@ function MoveButton({ opt, preview, onPick, extra }: { opt: MoveOption; preview:
       onClick={onPick}
     >
       <span className="bd-move-top">
-        <TypeGlyph type={m.type} />
         <b className="bd-move-name">{name}</b>
-        <span className={`bd-move-pp${ppLow ? ' is-low' : ''}`}>PP {opt.pp}/{opt.max_pp}</span>
+        <span className={`bd-move-pp${ppLow ? ' is-low' : ''}`}><small>PP</small> {opt.pp}/{opt.max_pp}</span>
+      </span>
+      <span className="bd-move-info" aria-hidden>
+        <TypeBadge type={m.type} lang={lang} size="sm" />
+        <CategoryIcon category={m.category} lang={lang} />
+        {m.category !== 'status' && <span className="bd-move-pow">{m.power ?? '—'}</span>}
       </span>
       <span className="bd-move-meta">
-        <span>{typeName(m.type, lang)} · {meta}<span className={`bd-move-pp2${ppLow ? ' is-low' : ''}`}> · PP {opt.pp}/{opt.max_pp}</span></span>
         {preview && (
           <span className="bd-move-calc">
             {eff && <em className={`eff-${effectivenessTone(preview.eff)}`}>{eff}</em>}
@@ -195,9 +196,8 @@ export function ActionConsole({ session, player, message, more, team, lastCalled
               style={{ '--type': TYPE_COLOR[active.tera_type] ?? '#888' } as CSSProperties}
               onClick={() => setTera(v => !v)}
             >
-              {typeIconUrl(active.tera_type) && <span className="bd-type-glyph" style={{ backgroundImage: `url(${typeIconUrl(active.tera_type)})` }} aria-hidden />}
               {t('terastallize')}
-              <small>{typeName(active.tera_type, lang)}</small>
+              <TypeBadge type={active.tera_type} lang={lang} size="sm" tera />
             </button>
           )}
           {!req.forced && <button type="button" className="bd-back" onClick={() => setView('command')}>{t('back')}</button>}

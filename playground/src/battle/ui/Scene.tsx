@@ -15,7 +15,7 @@ import {
   spriteIdsOf, TYPE_COLOR, type FxSprite,
 } from '../lib/sprites'
 import { pokeRogueAtlas } from '../lib/pokerogue'
-import { Gender, HpBar, StatusBadge } from './bits'
+import { Gender, HpBar, StatusBadge, TypeBadge } from './bits'
 import { PokeRogueSprite } from './PokeRogueSprite'
 import { usePreloadPokeRogue } from './usePreloadPokeRogue'
 import { useBT, useSettings, type SpriteStyle } from './state'
@@ -156,6 +156,19 @@ function StageChips({ p, lang }: { p: PokeView; lang: Lang }) {
   )
 }
 
+/** 데이터박스 타입: 지금 타입 (테라스탈했으면 테라 타입 하나 + 테라 표시). 좁으면 문양만 */
+function BoxTypes({ p, lang }: { p: PokeView; lang: Lang }) {
+  const { t } = useBT()
+  const tera = p.terastallized && p.tera_type
+  const types = tera ? [p.tera_type!] : p.types
+  if (!types.length) return null
+  return (
+    <span className="bd-box-types" title={tera ? t('teraActive', { type: typeName(p.tera_type!, lang) }) : undefined}>
+      {types.map(ty => <TypeBadge key={ty} type={ty} lang={lang} size="xs" tera={!!tera} />)}
+    </span>
+  )
+}
+
 function Databox({ side, ours, showNumbers, showTera, lang }: { side: SideView; ours: boolean; showNumbers: boolean; showTera: boolean; lang: Lang }) {
   const { t } = useBT()
   const p = side.active
@@ -168,8 +181,8 @@ function Databox({ side, ours, showNumbers, showTera, lang }: { side: SideView; 
         <div className="bd-box-row">
           <span className="bd-box-name">{name}</span>
           <Gender g={p.gender} />
-          {p.terastallized && p.tera_type && <span className="bd-tera-mark" style={{ '--type': TYPE_COLOR[p.tera_type] } as CSSProperties} title={t('teraActive', { type: typeName(p.tera_type, lang) })} />}
           {!p.terastallized && showTera && p.tera_type && !side.usedTera && <span className="bd-tera-mark is-unused" style={{ '--type': TYPE_COLOR[p.tera_type] } as CSSProperties} />}
+          <BoxTypes p={p} lang={lang} />
           <span className="bd-box-lv">{t('level', { n: p.level })}</span>
         </div>
         <div className="bd-box-row">

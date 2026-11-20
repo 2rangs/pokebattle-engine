@@ -3,8 +3,10 @@ import { useState, type CSSProperties } from 'react'
 import { hpTone, pctOf, ratioOf } from '../lib/hud'
 import { statusShort, typeName } from '../lib/names'
 import { statusTip, toxicNext } from '../lib/status'
-import { TYPE_COLOR, typeIconUrl } from '../lib/sprites'
-import type { Lang } from '../lib/messages'
+import { TYPE_COLOR } from '../lib/sprites'
+import { CAT_KEY, CATEGORY_INDEX, CATEGORY_SHEET, typeInk } from '../lib/typeStyle'
+import { msg, type Lang } from '../lib/messages'
+import { useTypeGlyph } from './typeGlyphs'
 
 /** 후보 URL 을 앞에서부터 시도하는 이미지 (실패하면 다음, 다 실패하면 fallback) */
 export function FallbackImg({ sources, alt, className, style, fallback = null, pixel = true, onLoad }: {
@@ -36,21 +38,47 @@ export function FallbackImg({ sources, alt, className, style, fallback = null, p
   )
 }
 
-/** 타입 배지: SV 아이콘 문양 + 현재 언어 이름, 게임 타입 색 */
-export function TypeBadge({ type, lang, size = 'md' }: { type: string; lang: Lang; size?: 'sm' | 'md' }) {
-  const icon = typeIconUrl(type)
+/**
+ * 타입 배지 (게임 타입 라벨처럼): 공식 타입 색 알약 + 문양 + 현재 언어 이름, 굵은 글자.
+ * 글자·문양 색은 명도 대비로 (밝은 타입은 어두운 글자, 중간 밝기는 흰 글자 + 외곽선).
+ * tera = 테라스탈 표시 (마름모 문양 테두리), iconOnly = 문양 동그라미만 (이름은 title·aria-label).
+ */
+export function TypeBadge({ type, lang, size = 'md', tera = false, iconOnly = false, text }: {
+  type: string; lang: Lang; size?: 'xs' | 'sm' | 'md'; tera?: boolean; iconOnly?: boolean
+  /** 타입 이름 대신 쓸 글자 (팀 카드의 기술 칩: 기술 이름) */
+  text?: string
+}) {
+  const glyph = useTypeGlyph(type)
+  const { ink, outline } = typeInk(type)
+  const name = typeName(type, lang)
+  const label = text ? `${text} (${name})` : tera ? `${msg(lang, 'tera')} ${name}` : name
   return (
-    <span className={`bd-type is-${size}`} style={{ '--type': TYPE_COLOR[type] ?? '#888' } as CSSProperties}>
-      {icon && <span className="bd-type-icon" style={{ backgroundImage: `url(${icon})` }} aria-hidden />}
-      <span>{typeName(type, lang)}</span>
+    <span
+      className={`bd-type is-${size}${outline ? ' is-outline' : ''}${tera ? ' is-tera' : ''}${iconOnly ? ' is-icon' : ''}`}
+      style={{ '--type': TYPE_COLOR[type] ?? '#888', '--ink': ink } as CSSProperties}
+      title={label}
+      role={iconOnly ? 'img' : undefined}
+      aria-label={iconOnly ? label : undefined}
+    >
+      <span className="bd-type-glyph" style={glyph ? { maskImage: `url(${glyph})`, WebkitMaskImage: `url(${glyph})` } : undefined} aria-hidden />
+      {!iconOnly && <span className="bd-type-name">{tera && <span className="bd-sr">{msg(lang, 'tera')} </span>}{text ?? name}</span>}
     </span>
   )
 }
 
-/** 타입 문양만 (기술 버튼 모서리 등) */
-export function TypeGlyph({ type }: { type: string }) {
-  const icon = typeIconUrl(type)
-  return icon ? <span className="bd-type-glyph" style={{ backgroundImage: `url(${icon})` }} aria-hidden /> : null
+/** 기술 분류 아이콘 (물리·특수·변화, PokéRogue categories.png 도트) */
+export function CategoryIcon({ category, lang }: { category: string; lang: Lang }) {
+  const i = CATEGORY_INDEX[category] ?? 2
+  const label = msg(lang, CAT_KEY[category] ?? 'catStatus')
+  return (
+    <span
+      className="bd-cat-icon is-pixel"
+      role="img"
+      aria-label={label}
+      title={label}
+      style={{ backgroundImage: `url(${CATEGORY_SHEET})`, backgroundPosition: `${i * 50}% 0` }}
+    />
+  )
 }
 
 /** 게임식 상태이상 배지 (마비/화상/독/맹독/잠듦/얼음, 게임 색) + 맹독·잠듦 카운터 */

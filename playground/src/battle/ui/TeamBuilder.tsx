@@ -1,12 +1,12 @@
 // ─── 팀 빌더: 마릿수(1/3/6)만큼의 자리, 종 검색, 랜덤 팀, 세트 편집(기술·특성·도구·성격·테라·노력치), Showdown 가져오기/내보내기 ─────
-import { useId, useMemo, useState, type CSSProperties } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { Button } from '@astryxdesign/core/Button'
 import { exportShowdownTeam, getMove, getSpecies, type PokemonSet } from '../lib/engine'
 import { abilityName, itemName, moveName, natureName, pokemonLabel, speciesName } from '../lib/names'
-import { iconCandidates, itemIconUrl, TYPE_COLOR } from '../lib/sprites'
+import { iconCandidates, itemIconUrl } from '../lib/sprites'
 import { importTeam, moveUp, placeAt, searchSpecies, slotsFor, speciesOptions, suggestedSet } from '../lib/team'
 import { hasErrors, validateSet } from '../lib/editor'
-import { FallbackImg, TypeBadge, TypeGlyph } from './bits'
+import { FallbackImg, TypeBadge } from './bits'
 import { SetEditor } from './SetEditor'
 import { useBT } from './state'
 
@@ -83,7 +83,7 @@ function SlotCard({ n, set, open, onToggle, onChange, onReroll, onRemove, onUp }
         <span className="bd-slot-title">
           <b>{name}</b>
           <span className="bd-slot-lv">{t('level', { n: set.level ?? 50 })}</span>
-          <span className="bd-slot-types">{(sp?.types ?? []).map(ty => <TypeBadge key={ty} type={ty} lang={lang} size="sm" />)}</span>
+          <span className="bd-slot-types">{(sp?.types ?? []).map(ty => <TypeBadge key={ty} type={ty} lang={lang} />)}</span>
           {issues.length > 0 && !open && (
             <span className={`bd-slot-flag is-${hasErrors(issues) ? 'error' : 'warn'}`}>{t(hasErrors(issues) ? 'setErrorBadge' : 'setWarnBadge')}</span>
           )}
@@ -100,14 +100,14 @@ function SlotCard({ n, set, open, onToggle, onChange, onReroll, onRemove, onUp }
               <dd>{set.item ? <><img className="bd-item-icon is-pixel" src={itemIconUrl(set.item)} alt="" onError={e => { e.currentTarget.style.display = 'none' }} />{itemName(set.item, lang)}</> : t('noItem')}</dd>
             </div>
             <div><dt>{t('nature')}</dt><dd>{natureName(set.nature ?? 'hardy', lang)}</dd></div>
-            {set.teraType && <div><dt>{t('tera')}</dt><dd><TypeBadge type={set.teraType} lang={lang} size="sm" /></dd></div>}
+            {set.teraType && <div><dt>{t('tera')}</dt><dd><TypeBadge type={set.teraType} lang={lang} size="sm" tera /></dd></div>}
           </dl>
           <ul className="bd-slot-moves">
             {moves.map(m => {
               const md = getMove(m)
               return (
-                <li key={m} style={{ '--type': md ? TYPE_COLOR[md.type] : '#888' } as CSSProperties}>
-                  {md && <TypeGlyph type={md.type} />}{moveName(m, lang)}
+                <li key={m}>
+                  {md ? <TypeBadge type={md.type} lang={lang} size="sm" text={moveName(m, lang)} /> : <span className="bd-slot-move-plain">{moveName(m, lang)}</span>}
                 </li>
               )
             })}
