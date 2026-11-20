@@ -78,11 +78,30 @@ function BattleSprite({ p, back, frame, unit, lang, style, psMove }: { p: PokeVi
         </span>
       </span>
       {status === 'sleep' && <span className="bd-zzz" aria-hidden>Z<small>z</small></span>}
-      {stat && stat.stages !== 0 && (
-        <span key={frame.index} className={`bd-stat-arrows is-${stat.stages > 0 ? 'up' : 'down'}`} aria-hidden>
-          {Array.from({ length: 6 }, (_, i) => <i key={i}>{stat.stages > 0 ? '▲' : '▼'}</i>)}
-        </span>
-      )}
+      {stat && stat.stages !== 0 && <StatFx key={frame.index} stages={stat.stages} />}
+    </span>
+  )
+}
+
+/**
+ * 능력치 변화 연출 (게임처럼 상승 = 붉은색 위로, 하락 = 푸른색 아래로).
+ * 스프라이트 색조 + 빛줄기 + 화살표. 단계가 클수록(크게/매우 크게) 줄기가 많고 빠르며 고리가 퍼진다.
+ */
+const STREAKS = [8, 22, 36, 50, 64, 78, 92, 15, 43, 71, 29, 57, 85, 5]
+function StatFx({ stages }: { stages: number }) {
+  const up = stages > 0
+  const n = Math.min(3, Math.abs(stages))
+  const count = n === 1 ? 7 : n === 2 ? 10 : 14
+  return (
+    <span className={`bd-statfx is-${up ? 'up' : 'down'} lv-${n}`} aria-hidden>
+      <span className="bd-statfx-glow" />
+      {STREAKS.slice(0, count).map((x, i) => (
+        <i key={i} className="bd-statfx-streak" style={{ left: `${x}%`, '--d': `${(i % 7) * 0.06}s`, '--h': `${38 + ((i * 17) % 30)}%` } as CSSProperties} />
+      ))}
+      {[22, 50, 78].map((x, i) => (
+        <b key={i} className="bd-statfx-chevron" style={{ left: `${x}%`, '--d': `${i * 0.08}s` } as CSSProperties}>{up ? '︽' : '︾'}</b>
+      ))}
+      {n >= 2 && <span className="bd-statfx-ring" />}
     </span>
   )
 }
