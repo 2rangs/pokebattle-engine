@@ -250,11 +250,10 @@
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .07);
 }
 .bd-spot.is-ours .bd-shadow { width: calc(210px * var(--unit)); height: calc(46px * var(--unit)); }
-.bd-sprite {
-  position: absolute; left: 0; bottom: 0; transform: translateX(-50%); display: block;
-  /* 아래쪽만 잘라 기절할 때 땅으로 가라앉는다 */
-  clip-path: inset(-300% -300% 0 -300%);
-}
+.bd-sprite { position: absolute; left: 0; bottom: 0; transform: translateX(-50%); display: block; }
+/* 기절할 때만 아래쪽을 잘라 땅으로 가라앉힌다. 평소에 자르면 기술 애니메이션(돌진·몸통박치기)으로
+   스프라이트가 제자리 상자 밖(특히 아래)으로 나갈 때 직선으로 잘려 네모난 테두리가 드러난다 */
+.bd-sprite.is-fainted { clip-path: inset(-300% -300% 0 -300%); }
 .bd-sprite-anim { display: flex; align-items: flex-end; justify-content: center; transform-origin: 50% 100%; transition: transform .4s ease-in, opacity .4s ease-in; }
 .bd-sprite.is-fainted .bd-sprite-anim { transform: translateY(105%); opacity: 0; }
 .bd-sprite-img { display: block; max-width: none; user-select: none; transition: opacity .2s; }
