@@ -1,5 +1,5 @@
 import { beforeAll, expect, test } from 'vitest'
-import { battleSpriteCandidates, moveFx, spriteIdsOf } from './sprites'
+import { battleSprite3dCandidates, battleSpriteCandidates, moveFx, spriteIdsOf } from './sprites'
 import { ready } from './setup.test-util'
 
 beforeAll(ready)
@@ -16,11 +16,19 @@ test('폼 → PokeAPI 폼 id (curl 로 200 확인한 것들)', () => {
   expect(spriteIdsOf('ogerpon-wellspring')).toEqual({ form: 10273, num: 1017 })
 })
 
-test('스프라이트 후보: 애니메이션 gif 먼저, 정지 도트·일러스트로 내려간다', () => {
+test('2D 후보: 5세대 도트 애니메이션 → 정지 도트 → 일러스트', () => {
   const c = battleSpriteCandidates('rotom-wash', true)
-  expect(c[0]).toMatch(/other\/showdown\/back\/10009\.gif$/)
-  expect(c[1]).toMatch(/other\/showdown\/back\/479\.gif$/)
+  expect(c[0]).toMatch(/generation-v\/black-white\/animated\/back\/10009\.gif$/)
+  expect(c[1]).toMatch(/generation-v\/black-white\/animated\/back\/479\.gif$/)
+  expect(c[2]).toMatch(/pokemon\/back\/10009\.png$/)
   expect(c.at(-1)).toMatch(/official-artwork\/10009\.png$/)
+})
+
+test('3D 후보: 3D 모델 애니메이션 → HOME 렌더 → 2D', () => {
+  const c = battleSprite3dCandidates('rotom-wash', true)
+  expect(c[0]).toMatch(/other\/showdown\/back\/10009\.gif$/)
+  expect(c[2]).toMatch(/other\/home\/10009\.png$/)
+  expect(c).toContain(battleSpriteCandidates('rotom-wash', true)[0])
 })
 
 test('기술 연출: 접촉은 충격, 원거리는 타입 탄, 변화는 없음', () => {

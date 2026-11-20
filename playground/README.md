@@ -25,7 +25,7 @@ npm run build    # dist/ 정적 파일 (해시 라우팅이라 어떤 정적 호
 - 세트 편집: 자리 카드의 "편집"을 누르면 기술 4개(엔진 `getLearnset` 으로 배울 수 있는 기술만 검색, 타입·분류·위력 표시, 중복 불가), 특성(숨겨진 특성 포함), 도구(`listItems`, 검색·아이콘), 성격(↑/↓ 표시), 테라스탈 타입, 노력치(배분 프리셋 또는 6칸 직접 입력, 칸당 252·합계 510, 실제 능력치 표시)를 바꿀 수 있습니다. 문제는 칸 아래에 바로 표시하고(기술 없음·중복·노력치 초과는 시작 불가, 배울 수 없는 기술·다른 종의 특성은 경고만), "세트 다시 뽑기"와 Showdown 가져오기/내보내기도 그대로입니다. 손가락흔들기는 종만 고르는 간단한 편집기를 씁니다.
 - 이름: 폼은 엔진 이름 팩의 폼 이름(워시로토무, 나인테일 (알로라의 모습))을 검색·팀 빌더·데이터박스·로그 모두에서 씁니다. "로토무"로 검색하면 로토무 폼이 모두 나옵니다.
 - 화면: 5세대 BW·9세대 SV 배치를 본뜬 장면(상대 데이터박스 왼쪽 위·HP 숫자 없음, 우리 데이터박스 오른쪽 아래), 토큰 색 무대와 발판(어둡게 한 Showdown 배경 그림과 비교해 사이트와 더 잘 맞는 쪽을 골랐습니다), 파티 점, 상태이상 배지, 메시지 상자(한 번에 한 문장, 높이 고정), 커맨드(싸운다/포켓몬/도망친다=기권), 기술 버튼(타입 문양·왼쪽 선, PP, 상성, 예상 데미지, 확정 n타), 테라스탈 버튼.
-- 스프라이트 2D / 3D: 설정 화면과 배틀·리플레이 툴바에서 바꿉니다 (브라우저에 저장, 배틀 중에도 바로 적용). 2D = Showdown 애니메이션 도트(우리 쪽은 뒷모습), 3D = Pokémon HOME 렌더(`other/home/{id}.png`, 우리 쪽은 좌우 반전, 움직임 줄이기 설정이 아니면 살짝 숨 쉬는 움직임). 지금 두 팀의 3D 그림은 미리 받아 두고, 그림이 없으면 2D 로 내려갑니다.
+- 스프라이트 2D / 3D: 설정 화면과 배틀·리플레이 툴바에서 바꿉니다 (브라우저에 저장, 배틀 중에도 바로 적용). 2D = 4·5세대 도트 스타일(5세대 블랙·화이트 애니메이션 `versions/generation-v/black-white/animated`, 649번 이후는 정지 도트 `{id}.png`, 우리 쪽은 뒷모습), 3D = 6세대 이후 3D 모델 스타일(Pokémon Showdown 3D 애니메이션 `other/showdown/{id}.gif`, 앞·뒷모습. 없으면 Pokémon HOME 렌더 `other/home/{id}.png`, 우리 쪽은 좌우 반전·살짝 숨 쉬는 움직임). 지금 두 팀의 3D 애니메이션은 미리 받아 두고, 그림이 없으면 2D 로 내려갑니다.
 - 필드 효과: 지금 프레임 상태로 장면에 계속 그립니다 (실시간·리플레이 같음, 생기고 없어질 때 짧게 페이드, 움직임 줄이기 설정이면 멈춘 그림). 날씨(쾌청·아주 강한 햇살·비·강한 비·모래바람·눈·난기류), 필드(일렉트릭·그래스·미스트·사이코 — 땅 색과 무늬), 진영별 장판(스텔스록, 압정뿌리기 1~3겹, 독압정 1~2겹, 끈적끈적네트), 벽·베일(리플렉터·빛의장막·오로라베일 = 그 진영 앞의 반투명 막, 신비의부적 = 발판 고리, 흰안개 = 발밑 안개), 순풍(지나가는 바람 줄), 필드 전체(트릭룸 격자 바닥, 중력, 매직룸, 원더룸). 남은 턴은 옆 패널에 그대로 나옵니다. 데이터박스는 덮지 않습니다.
 - 기술 연출: Pokémon Showdown 클라이언트의 기술 애니메이션 표를 그대로 옮겨(`src/battle/showdown-anims/`, 원본 파일 헤더대로 `battle-animations.ts` MIT · `battle-animations-moves.ts` CC0-1.0, 같은 폴더 `LICENSE`), 우리 장면 좌표로 바꿔 Web Animations API 로 재생합니다(`scene.ts`, 이 저장소 코드). 처음 기술을 쓸 때 따로 받는 청크(약 51 kB gzip)이고, 기술을 쓰는 프레임은 재생 간격의 1.6배 동안 머물러 데미지가 애니메이션 뒤에 나옵니다. "매우 빠르게"·움직임 줄이기·되감기/건너뛰기에서는 돌리지 않습니다.
 - 옆 패널: 필드 줄(남은 턴) · 팀(상대 팀 HP %·상태이상·기절, 관전·리플레이는 두 팀) · 현황 · 턴별 로그. 데스크톱은 배틀 열 높이에 맞추고 로그가 남은 칸을 채워 안에서 스크롤(맨 아래를 보고 있을 때만 따라감), 휴대폰은 접어서 시작하고 펼치면 40vh 고정 높이 → 줄이 늘어도 장면·메뉴·페이지 스크롤이 움직이지 않습니다.
@@ -35,7 +35,7 @@ npm run build    # dist/ 정적 파일 (해시 라우팅이라 어떤 정적 호
 - 스크린샷: `docs/screenshots/battle/` — 설정·CPU 팀 미리보기 `setup-cpu-desktop.png` / `setup-cpu-mobile.png`, 세트 편집기 `editor-*.png`, 기술 메뉴 `battle-moves-*.png`, 3D 스프라이트 `sprites-3d-*.png`, 필드 효과 `effects-weather.png` / `effects-terrain.png` / `effects-hazards.png` / `effects-screens.png` / `effects-field.png`, 기술 연출 `move-anims.png`, 관전 `spectate-desktop.png`, 손가락흔들기 `metronome-*.png`, 리플레이 `replay-*.png`.
 
 에셋 (모두 GitHub 의 오픈소스 저장소 파일을 직접 불러옴, 저장소에는 넣지 않음):
-[PokeAPI/sprites](https://github.com/PokeAPI/sprites) (Showdown 애니메이션 배틀 스프라이트, Pokémon HOME 3D 렌더, BW 아이콘, 타입·도구·몬스터볼 아이콘),
+[PokeAPI/sprites](https://github.com/PokeAPI/sprites) (5세대 도트 애니메이션, Showdown 3D 애니메이션 배틀 스프라이트, Pokémon HOME 3D 렌더, BW 아이콘, 타입·도구·몬스터볼 아이콘),
 [PokeAPI/cries](https://github.com/PokeAPI/cries) (울음소리, 기본 꺼짐),
 [smogon/pokemon-showdown-client](https://github.com/smogon/pokemon-showdown-client) (`fx/*.png` 기술 연출 그림 + 기술 애니메이션 표, 위 라이선스).
 비공식 팬 데모이며 Pokémon 과 관련 그림은 © Nintendo / Creatures Inc. / GAME FREAK inc. 의 것입니다.

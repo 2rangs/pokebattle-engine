@@ -11,7 +11,7 @@ import type { Lang } from '../lib/messages'
 import { pokemonLabel, statLabel, statusLongName, typeName, volatileName } from '../lib/names'
 import { volatileDesc } from '../lib/status'
 import {
-  battleSprite3dCandidates, battleSpriteCandidates, fxUrl, homeSpriteUrl, isHomeSprite, moveFx, POKE_BALL,
+  battleSprite3dCandidates, battleSpriteCandidates, fxUrl, isHomeSprite, showdownAniUrl, moveFx, POKE_BALL,
   spriteIdsOf, TYPE_COLOR, type FxSprite,
 } from '../lib/sprites'
 import { FallbackImg, Gender, HpBar, StatusBadge } from './bits'
@@ -248,7 +248,7 @@ function useShowdownMoveAnim(frame: Frame, me: PlayerID, speed: number, scene: R
   return handles
 }
 
-/** 3D: 지금 두 팀의 HOME 렌더를 미리 받아 둔다 (교체 때 늦게 뜨지 않게) */
+/** 3D: 지금 두 팀의 3D 애니메이션(앞·뒤)을 미리 받아 둔다 (교체 때 늦게 뜨지 않게) */
 const preloaded = new Set<string>()
 function usePreloadHome(species: string[]) {
   const key = [...new Set(species)].sort().join('|')
@@ -257,12 +257,13 @@ function usePreloadHome(species: string[]) {
     for (const sp of key.split('|')) {
       const ids = spriteIdsOf(sp)
       if (!ids) continue
-      const url = homeSpriteUrl(ids.form)
-      if (preloaded.has(url)) continue
-      preloaded.add(url)
-      const img = new Image()
-      img.decoding = 'async'
-      img.src = url
+      for (const url of [showdownAniUrl(ids.form), showdownAniUrl(ids.form, true)]) {
+        if (preloaded.has(url)) continue
+        preloaded.add(url)
+        const img = new Image()
+        img.decoding = 'async'
+        img.src = url
+      }
     }
   }, [key])
 }

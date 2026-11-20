@@ -41,10 +41,11 @@ export function spriteIdsOf(slug: string): SpriteIds | null {
   return out
 }
 
+const BW_ANIM = `${POKEMON}/versions/generation-v/black-white/animated`
+
 /**
- * 배틀 스프라이트 후보 (앞에서부터 시도):
- * Showdown 애니메이션 gif(폼 → 기본) → 정지 도트 png(폼 → 기본) → 공식 일러스트.
- * 9세대 일부(오거폰 등)는 gif 가 없어 정지 도트로 내려간다.
+ * 2D 배틀 스프라이트 (4·5세대 도트 스타일), 앞에서부터 시도:
+ * 5세대 블랙·화이트 애니메이션 gif(649번까지, 폼 → 기본) → 정지 도트 png(전 세대, 폼 → 기본) → 공식 일러스트.
  */
 export function battleSpriteCandidates(slug: string, back: boolean): string[] {
   const ids = spriteIdsOf(slug)
@@ -52,24 +53,27 @@ export function battleSpriteCandidates(slug: string, back: boolean): string[] {
   const uniq = [...new Set([ids.form, ids.num])]
   const dir = back ? 'back/' : ''
   return [
-    ...uniq.map(id => `${POKEMON}/other/showdown/${dir}${id}.gif`),
+    ...uniq.map(id => `${BW_ANIM}/${dir}${id}.gif`),
     ...uniq.map(id => `${POKEMON}/${dir}${id}.png`),
     `${POKEMON}/other/official-artwork/${ids.form}.png`,
   ]
 }
 
-/** Pokémon HOME 3D 렌더 (512×512 정지 그림, 앞모습만) */
+/** Pokémon HOME 3D 렌더 (512×512 정지 그림, 앞모습만) — 3D 애니메이션이 없을 때의 대체 */
 export const homeSpriteUrl = (id: number) => `${POKEMON}/other/home/${id}.png`
 export const isHomeSprite = (url: string) => url.includes('/other/home/')
+/** 3D 애니메이션 (6세대 이후 3D 모델, Pokémon Showdown 'ani' 스프라이트를 PokeAPI 가 보관) */
+export const showdownAniUrl = (id: number, back = false) => `${POKEMON}/other/showdown/${back ? 'back/' : ''}${id}.gif`
 
 /**
- * 3D 후보: HOME 렌더(폼 → 기본) 다음에 2D 후보 (HOME 그림이 없으면 2D 로 내려간다).
- * 우리 쪽도 앞모습을 좌우로 뒤집어 쓴다 (HOME 은 뒷모습이 없다).
+ * 3D 배틀 스프라이트 (6세대 이후 3D 모델 스타일), 앞에서부터 시도:
+ * 3D 애니메이션 gif(앞·뒷모습, 폼 → 기본) → HOME 3D 렌더(앞모습, 우리 쪽은 좌우 반전) → 2D 후보.
  */
 export function battleSprite3dCandidates(slug: string, back: boolean): string[] {
   const ids = spriteIdsOf(slug)
   if (!ids) return []
-  return [...[...new Set([ids.form, ids.num])].map(homeSpriteUrl), ...battleSpriteCandidates(slug, back)]
+  const uniq = [...new Set([ids.form, ids.num])]
+  return [...uniq.map(id => showdownAniUrl(id, back)), ...uniq.map(homeSpriteUrl), ...battleSpriteCandidates(slug, back)]
 }
 
 /** 작은 아이콘 (팀 빌더·교체 화면): Gen 5 B/W 애니메이션 → 정지 도트 */
