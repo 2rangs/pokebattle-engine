@@ -29,11 +29,19 @@ function formatterFor(lang: Lang, named: boolean): Formatter {
 export const names = (lang: Lang) => formatterFor(lang, false).name
 
 /** 이벤트 → 로그 문장 (보여줄 필요 없으면 null). sideName: 관전 모드의 진영 이름 */
-export function formatBattleEvent(event: BattleEvent, ctx: FormatContext, lang: Lang): string | null {
+export function formatBattleEvent(event: BattleEvent, ctx: FormatContext, lang: Lang, part?: 0 | 1): string | null {
   const prev = current
   current = ctx
   try {
-    const text = formatterFor(lang, !!ctx.sideName).format(event)
+    const f = formatterFor(lang, !!ctx.sideName)
+    // part: 두 문장짜리 이벤트(메가진화 등)를 한 문장씩
+    let text: string | null
+    if (part === undefined) text = f.format(event)
+    else {
+      const msgs = f.describe(event)
+      const one = msgs?.[part]
+      text = one ? f.render([one]) : null
+    }
     // 진영 이름(CPU 1 등)을 넣으면 엔진 문장에 '은(는)' 이 남는다 → 조사 보정
     return text === null ? null : particles(text, lang)
   } finally {

@@ -184,9 +184,17 @@ export function messageFrameIndex(frames: readonly Pick<Frame, 'silent'>[], reve
 export const moveFrameDelay = (speed: number) => (speed >= 250 ? Math.round(speed * 1.6) : speed)
 
 /** 프레임이 화면에 머무는 시간 (ms): 로그에 안 보이는 프레임 0, 기술 사용 프레임은 조금 길게 */
+/** 모습이 바뀌거나 연출이 붙는 기믹 이벤트 */
+export const isGimmickEvent = (e: BattleEvent) =>
+  e.type === 'mega_evolve' || e.type === 'terastallize'
+  || (e.type === 'activate' && e.effect === 'z-power')
+  || ((e.type === 'volatile_apply' || e.type === 'volatile_remove') && e.volatile === 'dynamax')
+
 export function frameDelay(f: { silent: boolean; event: BattleEvent }, speed: number): number {
   if (f.silent) return 0
   if (f.event.type === 'move_use' && f.event.move.name !== METRONOME) return moveFrameDelay(speed)
+  // 기믹 연출(메가진화·Z파워·다이맥스)은 조금 더 길게 보여 준다
+  if (isGimmickEvent(f.event)) return Math.round(speed * 1.5)
   return speed
 }
 

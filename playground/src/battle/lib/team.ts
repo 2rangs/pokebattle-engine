@@ -1,8 +1,9 @@
 // ─── 팀 빌더 순수 로직: 마릿수만큼의 자리, 랜덤 팀, Showdown 가져오기 ─────
 import {
-  generateRandomSet, generateRandomTeam, getSpecies, listPokeApiSpecies, parseShowdownTeam, PRNG, toId,
+  generateRandomSet, generateRandomTeam, getLearnset, getSpecies, listPokeApiSpecies, parseShowdownTeam, PRNG, toId,
   type PokemonSet,
 } from './engine'
+import { DEFAULT_GEN, gimmickItemsFor, gimmicksOf, gmaxForm, itemInGen, randomFormat, speciesInGen, type Gen } from './gimmick'
 import { speciesName, stripAutoNickname } from './names'
 import type { Lang } from './messages'
 
@@ -44,14 +45,37 @@ export function moveUp<T>(team: readonly (T | null)[], i: number): (T | null)[] 
   return next
 }
 
-/** 랜덤 팀: 마릿수만큼 (Showdown 랜덤배틀 세트, 레벨 통일, 자동 닉네임 제거) */
-export function randomTeam(seed: number, size: number, level = DEFAULT_LEVEL): PokemonSet[] {
-  return generateRandomTeam({ seed, size, level }).map(stripAutoNickname)
+/** 9세대가 아니면 테라 타입은 세트에서 뺀다 (그 세대에 없는 칸) */
+export function forGen(set: PokemonSet, gen: Gen): PokemonSet {
+  const out = { ...set }
+  if (gen !== 9) delete out.teraType
+  if (!gimmicksOf(gen).dynamax) delete out.gigantamax
+  return out
 }
 
-/** 고른 종 → 추천 세트 (엔진 기술표 기반) */
-export function suggestedSet(species: string, seed: number, level = DEFAULT_LEVEL): PokemonSet {
-  return stripAutoNickname(generateRandomSet(species, { rng: new PRNG(seed), level }))
+/**
+ * 랜덤 팀: 마릿수만큼 (그 세대 Showdown 랜덤배틀 세트, 레벨 통일, 자동 닉네임 제거).
+ * 7세대 세트에는 메가스톤·Z크리스탈, 8세대 세트에는 거다이맥스가 그대로 들어 있다.
+ */
+export function randomTeam(seed: number, size: number, level = DEFAULT_LEVEL, gen: Gen = DEFAULT_GEN): PokemonSet[] {
+  return generateRandomTeam({ seed, size, level, format: randomFormat(gen) }).map(s => forGen(stripAutoNickname(s), gen))
+}
+
+/**
+ * 고른 종 → 추천 세트 (그 세대 기술표 기반). 그 세대에 없는 도구는 먹다남은음식으로,
+ * 메가진화할 수 있는 종(6·7세대)은 메가스톤, 거다이맥스할 수 있는 종(8세대)은 거다이맥스로.
+ */
+export function suggestedSet(species: string, seed: number, level = DEFAULT_LEVEL, gen: Gen = DEFAULT_GEN): PokemonSet {
+  const learnset = gen === 9 ? undefined : getLearnset(species, { gen })
+  let set = stripAutoNickname(generateRandomSet(species, { rng: new PRNG(seed), level, ...(learnset ? { learnset } : {}) }))
+  if (gen === 9) return set
+  if (set.item && !itemInGen(set.item, gen)) set = { ...set, item: 'leftovers' }
+  if (gimmicksOf(gen).mega) {
+    const stone = gimmickItemsFor(species, [], gen).find(i => /ite(-[xy])?$/.test(i) || /-orb$/.test(i))
+    if (stone) set = { ...set, item: stone }
+  }
+  if (gimmicksOf(gen).dynamax && gmaxForm(species)) set = { ...set, gigantamax: true }
+  return forGen(set, gen)
 }
 
 /** Showdown 텍스트 → 세트 (종 이름을 엔진 슬러그로, 6마리까지) */
@@ -73,18 +97,19 @@ export interface SpeciesOption {
   haystack: string
 }
 
-const optionCache = new Map<Lang, SpeciesOption[]>()
+const optionCache = new Map<string, SpeciesOption[]>()
 
-/** 배틀에 쓸 수 있는 종 (엔진 데이터에 있고 배틀 중에만 되는 폼은 제외) */
-export function speciesOptions(lang: Lang): SpeciesOption[] {
-  const hit = optionCache.get(lang)
+/** 배틀에 쓸 수 있는 종 (엔진 데이터에 있고 배틀 중에만 되는 폼은 제외, 그 세대에 없는 종 제외) */
+export function speciesOptions(lang: Lang, gen: Gen = DEFAULT_GEN): SpeciesOption[] {
+  const key = `${lang}:${gen}`
+  const hit = optionCache.get(key)
   if (hit) return hit
   const out: SpeciesOption[] = []
   const seen = new Set<string>()
   for (const s of listPokeApiSpecies()) {
     if (/-(mega|gmax|totem|primal)/.test(s.slug) || /-(mega|gmax)$/.test(s.slug)) continue
     const sp = getSpecies(s.slug)
-    if (!sp || seen.has(sp.name)) continue
+    if (!sp || seen.has(sp.name) || !speciesInGen(sp.name, gen)) continue
     seen.add(sp.name)
     out.push({
       slug: sp.name,
@@ -96,7 +121,7 @@ export function speciesOptions(lang: Lang): SpeciesOption[] {
     })
   }
   out.sort((a, b) => a.num - b.num || a.slug.localeCompare(b.slug))
-  optionCache.set(lang, out)
+  optionCache.set(key, out)
   return out
 }
 

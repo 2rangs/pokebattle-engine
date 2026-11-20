@@ -31,7 +31,6 @@ function isTypingTarget(el: EventTarget | null): boolean {
 export default function ReplayPage({ query }: { query: string }) {
   const { t } = useBT()
   const d = new URLSearchParams(query).get('d') ?? ''
-  const { ready, error: engineError } = useEngineReady()
   const [decoded, setDecoded] = useState<Decoded | null>(null)
 
   useEffect(() => {
@@ -45,6 +44,8 @@ export default function ReplayPage({ query }: { query: string }) {
 
   const current = decoded?.d === d ? decoded : null
   const data = current && 'data' in current ? current.data : null
+  // 그 세대 데이터를 받은 뒤 재현한다 (세대가 없는 옛 링크 = 9세대)
+  const { ready, error: engineError } = useEngineReady(data?.rule === 'normal' ? data.gen ?? 9 : 9)
   const sim = useMemo(() => (ready && data ? simulateReplay(data) : null), [ready, data])
 
   if (engineError) return <div className="bd-banner is-error" role="alert">{t('loadError')} {engineError.message}</div>
@@ -84,7 +85,7 @@ function ReplayViewer({ data, sim }: { data: ReplayData; sim: SimulatedReplay })
   const cpu2 = t('cpu2')
   const sideName = useMemo(() => (spectating ? (p: PlayerID) => (p === 'p1' ? cpu1 : cpu2) : undefined), [spectating, cpu1, cpu2])
   const nameOf = (p: PlayerID) => (data[p].ctrl === 'human' ? t('replayYou') : spectating ? sideName!(p) : 'CPU')
-  const players = `${t(data.rule === 'metronome' ? 'ruleMetronome' : 'ruleNormal')} · ${t('replayVs', { a: nameOf('p1'), b: nameOf('p2') })}`
+  const players = `${t(data.rule === 'metronome' ? 'ruleMetronome' : 'ruleNormal')}${data.rule === 'normal' ? ` · ${t('genShort', { n: data.gen ?? 9 })}` : ''} · ${t('replayVs', { a: nameOf('p1'), b: nameOf('p2') })}`
 
   const result = sim.winner === null ? null
     : sim.winner === 'draw' ? t('draw')

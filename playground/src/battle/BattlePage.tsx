@@ -17,7 +17,8 @@ import { Credits } from './ui/common'
 import { SpeciesSlots, TeamBuilder } from './ui/TeamBuilder'
 import { useBattleSession } from './ui/useBattleSession'
 import { useEngineReady } from './ui/useEngineReady'
-import { updateSettings, useBT, useSettings, type DemoSettings, type Difficulty, type MetronomeForm, type Mode, type Rule, type SpriteStyle } from './ui/state'
+import { GENS, type Gen } from './lib/gimmick'
+import { switchGen, updateSettings, useBT, useSettings, type DemoSettings, type Difficulty, type MetronomeForm, type Mode, type Rule, type SpriteStyle } from './ui/state'
 import './battle.css'
 
 const newSeed = () => Math.floor(Math.random() * 1e9)
@@ -162,8 +163,10 @@ const statName = (k: Exclude<typeof STAT_KEYS[number], 'hp'>, lang: 'ko' | 'en')
 
 export default function BattlePage() {
   const { t, lang } = useBT()
-  const { ready, error } = useEngineReady()
   const s = useSettings()
+  // 손가락흔들기는 9세대 규칙
+  const gen: Gen = s.rule === 'normal' ? s.gen : 9
+  const { ready, error } = useEngineReady(gen)
   const session = useBattleSession()
   const [inBattle, setInBattle] = useState(false)
   const [last, setLast] = useState<{ setup: BattleSetup; spectate: boolean } | null>(null)
@@ -175,7 +178,7 @@ export default function BattlePage() {
   useEffect(() => {
     if (!foeMissing) return
     updateSettings(st => {
-      const fresh = randomTeam(newSeed(), MAX_TEAM)
+      const fresh = randomTeam(newSeed(), MAX_TEAM, undefined, st.gen)
       return { foeTeam: slotsFor(st.foeTeam, Math.max(st.teamSize, st.foeTeam.length)).map((x, i) => x ?? fresh[i]!) }
     })
   }, [foeMissing])
@@ -188,7 +191,7 @@ export default function BattlePage() {
       </div>
     )
   }
-  if (!ready) return <div className="bd-loading" role="status">{t('loadingEngine')}</div>
+  if (!ready) return <div className="bd-loading" role="status">{gen === 9 ? t('loadingEngine') : t('genLoading', { n: gen })}</div>
 
   const size = s.teamSize
   const spectate = s.mode === 'spectate'
@@ -217,14 +220,14 @@ export default function BattlePage() {
   let blocked: string | null = null
   let makeSetup: (() => BattleSetup) | null = null
   if (s.rule === 'normal') {
-    const badOf = (team: (typeof s.myTeam)) => slotsFor(team, size).findIndex(x => x !== null && hasErrors(validateSet(x, lang)))
+    const badOf = (team: (typeof s.myTeam)) => slotsFor(team, size).findIndex(x => x !== null && hasErrors(validateSet(x, lang, gen)))
     const bad = badOf(s.myTeam)
     const foeBad = badOf(s.foeTeam)
     if (myActive.length < size) blocked = t('fillTeamFirst', { n: myActive.length, max: size })
     else if (bad >= 0) blocked = t('teamHasErrors', { n: bad + 1 })
     else if (foeTeam.length < size) blocked = t('foeFillFirst', { n: foeTeam.length, max: size })
     else if (foeBad >= 0) blocked = t('foeTeamHasErrors', { n: foeBad + 1 })
-    else makeSetup = () => ({ rule: 'normal', seed: newSeed(), p1Team: myActive, p2Team: foeTeam })
+    else makeSetup = () => ({ rule: 'normal', seed: newSeed(), p1Team: myActive, p2Team: foeTeam, ...(gen !== 9 ? { gen } : {}) })
   } else {
     const m = metronomeSetup(s.metronome, size)
     if (!m) {
@@ -254,6 +257,13 @@ export default function BattlePage() {
             <SegmentedControlItem value="metronome" label={t('ruleMetronome')} />
           </SegmentedControl>
         </Setting>
+        {s.rule === 'normal' && (
+          <Setting label={t('gen')} hint={t(`gen${s.gen}Desc`)}>
+            <SegmentedControl label={t('gen')} layout="fill" value={String(s.gen)} onChange={v => switchGen(Number(v) as Gen)}>
+              {GENS.map(g => <SegmentedControlItem key={g} value={String(g)} label={t(`gen${g}`)} />)}
+            </SegmentedControl>
+          </Setting>
+        )}
         <Setting label={t('mode')}>
           <SegmentedControl label={t('mode')} layout="fill" value={s.mode} onChange={v => updateSettings({ mode: v as Mode })}>
             <SegmentedControlItem value="vs-cpu" label={t('modeVsCpu')} />
@@ -287,12 +297,13 @@ export default function BattlePage() {
               <Heading level={3}>{spectate ? t('cpuTeam', { name: t('cpu1') }) : t('myTeam')}</Heading>
             </div>
             <TeamBuilder
+              gen={gen}
               team={s.myTeam}
               size={size}
               onChange={team => updateSettings({ myTeam: team.slice(0, 6) })}
               onRandom={() => updateSettings(st => {
                 // 마릿수만큼 새로 뽑고, 그 뒤에 보관하던 포켓몬은 그대로 둔다
-                const fresh = randomTeam(newSeed(), size)
+                const fresh = randomTeam(newSeed(), size, undefined, st.gen)
                 return { myTeam: [...fresh, ...st.myTeam.slice(size)].slice(0, 6) }
               })}
             />
@@ -303,13 +314,14 @@ export default function BattlePage() {
             </div>
             <p className="bd-section-hint">{t('foeHint')}</p>
             <TeamBuilder
+              gen={gen}
               team={s.foeTeam}
               size={size}
               randomLabel={t('rerollFoe')}
               canClear={false}
               canRemove={false}
               onChange={team => updateSettings({ foeTeam: team.slice(0, 6) })}
-              onRandom={() => updateSettings(st => ({ foeTeam: [...randomTeam(newSeed(), size), ...st.foeTeam.slice(size)].slice(0, 6) }))}
+              onRandom={() => updateSettings(st => ({ foeTeam: [...randomTeam(newSeed(), size, undefined, st.gen), ...st.foeTeam.slice(size)].slice(0, 6) }))}
             />
           </section>
         </>

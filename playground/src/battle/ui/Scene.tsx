@@ -11,10 +11,11 @@ import type { Lang } from '../lib/messages'
 import { pokemonLabel, statLabel, statusLongName, typeName, volatileName } from '../lib/names'
 import { volatileDesc } from '../lib/status'
 import {
-  battleSprite3dCandidates, battleSpriteCandidates, fxUrl, isHomeSprite, showdownAniUrl, moveFx, POKE_BALL,
+  battleSprite3dCandidates, battleSpriteCandidates, fxUrl, gimmickFxUrl, isHomeSprite, showdownAniUrl, moveFx, POKE_BALL,
   spriteIdsOf, TYPE_COLOR, type FxSprite,
 } from '../lib/sprites'
 import { pokeRogueAtlas } from '../lib/pokerogue'
+import { spriteSpeciesOf } from '../lib/gimmick'
 import { Gender, HpBar, StatusBadge, TypeBadge } from './bits'
 import { PokeRogueSprite } from './PokeRogueSprite'
 import { usePreloadPokeRogue } from './usePreloadPokeRogue'
@@ -41,6 +42,29 @@ function spriteAnimFor(f: Frame, p: PokeView): SpriteAnim | null {
   }
 }
 
+/**
+ * 기믹 연출 (그 포켓몬, 이 프레임):
+ *  react  = 키스톤 반응 / 울트라버스트 직전 (무지개빛)   burst = 메가진화·원시회귀·울트라버스트 순간 (빛이 터짐)
+ *  zpower = Z파워를 두름 (Z 문양)                          dmax  = 다이맥스 (붉은 빛)   undmax = 원래 크기로
+ */
+type GimmickFx = 'react' | 'burst' | 'zpower' | 'dmax' | 'undmax'
+function gimmickFxFor(f: Frame, p: PokeView): GimmickFx | null {
+  const e = f.event
+  if (!('pokemon_id' in e) || e.pokemon_id !== p.id) return null
+  if (e.type === 'mega_evolve') return f.part === 0 ? 'react' : 'burst'
+  if (e.type === 'activate' && e.effect === 'z-power') return 'zpower'
+  if (e.type === 'volatile_apply' && e.volatile === 'dynamax') return 'dmax'
+  if (e.type === 'volatile_remove' && e.volatile === 'dynamax') return 'undmax'
+  return null
+}
+
+/** 다이맥스 크기: 1.75배까지, 발판에서 위로 장면 안에 들어오게 (우리 쪽은 상대 데이터박스 높이만큼 덜) */
+function dynamaxScale(back: boolean, spriteH: number, sceneH: number, unit: number): number {
+  if (!spriteH || !sceneH) return 1.6
+  const room = back ? sceneH * 0.92 - 70 * unit : sceneH * 0.54 - 6
+  return Math.max(1.25, Math.min(1.75, room / spriteH))
+}
+
 /** 능력치 변화 (그 포켓몬, 0 이 아닌 단계). 같은 기술로 여러 능력치가 같은 쪽으로 바뀌면(앞뒤 프레임) 무늬는 mix */
 interface StatEv { key: number; stages: number; tile: StatTile }
 function statEventOf(frames: readonly Frame[], frame: Frame, id: string): StatEv | null {
@@ -64,9 +88,11 @@ function useStatFx(stat: StatEv | null): StatEv | null {
   return shown
 }
 
-function BattleSprite({ p, back, frame, stat, unit, lang, style, psMove }: { p: PokeView; back: boolean; frame: Frame; stat: StatEv | null; unit: number; lang: Lang; style: SpriteStyle; psMove: boolean }) {
+function BattleSprite({ p, back, frame, stat, unit, sceneH, lang, style, psMove }: { p: PokeView; back: boolean; frame: Frame; stat: StatEv | null; unit: number; sceneH: number; lang: Lang; style: SpriteStyle; psMove: boolean }) {
   const [size, setSize] = useState<{ src: string; w: number; h: number } | null>(null)
-  const sources = style === '3d' ? battleSprite3dCandidates(p.species, back) : battleSpriteCandidates(p.species, back)
+  const species = spriteSpeciesOf(p)
+  const sources = style === '3d' ? battleSprite3dCandidates(species, back) : battleSpriteCandidates(species, back)
+  const gfx = gimmickFxFor(frame, p)
   const own = spriteAnimFor(frame, p)
   // Showdown 애니메이션이 공격자를 직접 움직일 때는 우리 돌진 연출을 끈다
   const anim = psMove && own === 'lunge' ? null : own
@@ -90,14 +116,20 @@ function BattleSprite({ p, back, frame, stat, unit, lang, style, psMove }: { p: 
   const scale = !size ? 0 : home ? ((back ? 215 : 155) * unit) / size.h : Math.min(k, max / size.h)
   const statFx = useStatFx(stat)
   const status = p.fainted ? null : p.status
+  const shownH = size ? Math.round(size.h * scale) : 0
+  const dmax = p.dynamax && !p.fainted
 
   return (
-    <span className={`bd-sprite${p.fainted ? ' is-fainted' : ''}`}>
+    <span
+      className={`bd-sprite${p.fainted ? ' is-fainted' : ''}${dmax ? ` is-dmax${p.gmax ? ' is-gmax' : ''}` : ''}`}
+      style={dmax ? { '--dmax': dynamaxScale(back, shownH, sceneH, unit) } as CSSProperties : undefined}
+    >
+      {gfx && <GimmickFxLayer key={frame.index} fx={gfx} height={shownH} />}
       {anim === 'enter' && <img key={frame.index} className="bd-ball" src={POKE_BALL} alt="" aria-hidden />}
       <span ref={ref} className={`bd-sprite-anim${anim ? ` anim-${anim}${anim === 'lunge' && !back ? '-foe' : ''}` : ''}`}>
         <span className="bd-sprite-ps">
         <PokeRogueSprite
-          atlas={style === '2d' ? pokeRogueAtlas(p.species, back, p.gender) : null}
+          atlas={style === '2d' ? pokeRogueAtlas(species, back, p.gender) : null}
           sources={sources}
           alt={pokemonLabel(p, lang)}
           className={`bd-sprite-img${home ? ` is-home${back ? ' is-mirrored' : ''}` : ''}${status ? ` tint-${status}` : ''}`}
@@ -117,6 +149,16 @@ function BattleSprite({ p, back, frame, stat, unit, lang, style, psMove }: { p: 
         </span>
       </span>
       {status === 'sleep' && <span className="bd-zzz" aria-hidden>Z<small>z</small></span>}
+    </span>
+  )
+}
+
+/** 기믹 연출 그림 (Showdown fx: shine·rainbow·z-symbol) — 스프라이트 몸통 가운데에 */
+function GimmickFxLayer({ fx, height }: { fx: GimmickFx; height: number }) {
+  const img = fx === 'zpower' ? 'z-symbol' : fx === 'react' ? 'rainbow' : fx === 'burst' ? 'shine' : null
+  return (
+    <span className={`bd-gfx is-${fx}`} style={{ '--h': `${Math.max(48, height)}px` } as CSSProperties} aria-hidden>
+      {img && <img src={gimmickFxUrl(img)} alt="" />}
     </span>
   )
 }
@@ -184,6 +226,11 @@ function Databox({ side, ours, showNumbers, lang }: { side: SideView; ours: bool
           <BoxTypes p={p} lang={lang} />
           <span className="bd-box-lv">{t('level', { n: p.level })}</span>
         </div>
+        {p.dynamax && !p.fainted && p.dynamaxTurns !== null && (
+          <div className="bd-box-row">
+            <span className="bd-box-dmax" title={t('dynamaxTip', { n: p.dynamaxTurns })}>{t(p.gmax ? 'gigantamaxBadge' : 'dynamaxBadge', { n: p.dynamaxTurns })}</span>
+          </div>
+        )}
         <div className="bd-box-row">
           {p.status && !p.fainted ? <StatusBadge status={p.status} turns={p.statusTurns} lang={lang} /> : <span className="bd-status-gap" />}
           <HpBar p={p} label={hpLabel} />
@@ -334,11 +381,13 @@ export function Scene({ frames, frame, me = 'p1', revealFoe, speed = 650, childr
   const { t, lang } = useBT()
   const ref = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(640)
+  const [height, setHeight] = useState(360)
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
     setWidth(el.clientWidth)
-    const ro = new ResizeObserver(() => setWidth(el.clientWidth))
+    setHeight(el.clientHeight)
+    const ro = new ResizeObserver(() => { setWidth(el.clientWidth); setHeight(el.clientHeight) })
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
@@ -350,7 +399,7 @@ export function Scene({ frames, frame, me = 'p1', revealFoe, speed = 650, childr
   const psBgRef = useRef<HTMLDivElement>(null)
   const psMove = useShowdownMoveAnim(frame, me, speed, ref, psFxRef, psBgRef)
   useEffect(() => { void loadStatTiles() }, [])
-  usePreloadHome(sprites === '3d' ? [...frame.p1.team, ...frame.p2.team].map(x => x.species) : [])
+  usePreloadHome(sprites === '3d' ? [...frame.p1.team, ...frame.p2.team].map(spriteSpeciesOf) : [])
   usePreloadPokeRogue(sprites === '2d', mine.team, foe.team)
 
   return (
@@ -365,11 +414,11 @@ export function Scene({ frames, frame, me = 'p1', revealFoe, speed = 650, childr
       <div className="bd-psfx-bg" ref={psBgRef} aria-hidden />
       <span className="bd-spot is-foe" style={{ left: `${SPOT.foe.x}%`, top: `${SPOT.foe.y}%` }}>
         <span className="bd-shadow" />
-        <BattleSprite key={`${foe.active.id}-${sprites}`} p={foe.active} back={false} frame={frame} stat={statEventOf(frames, frame, foe.active.id)} unit={unit} lang={lang} style={sprites} psMove={psMove} />
+        <BattleSprite key={`${foe.active.id}-${sprites}`} p={foe.active} back={false} frame={frame} stat={statEventOf(frames, frame, foe.active.id)} unit={unit} sceneH={height} lang={lang} style={sprites} psMove={psMove} />
       </span>
       <span className="bd-spot is-ours" style={{ left: `${SPOT.ours.x}%`, top: `${SPOT.ours.y}%` }}>
         <span className="bd-shadow" />
-        <BattleSprite key={`${mine.active.id}-${sprites}`} p={mine.active} back frame={frame} stat={statEventOf(frames, frame, mine.active.id)} unit={unit} lang={lang} style={sprites} psMove={psMove} />
+        <BattleSprite key={`${mine.active.id}-${sprites}`} p={mine.active} back frame={frame} stat={statEventOf(frames, frame, mine.active.id)} unit={unit} sceneH={height} lang={lang} style={sprites} psMove={psMove} />
       </span>
       <FxLayer frames={frames} frame={frame} me={me} psMove={psMove} />
       <div className="bd-psfx" ref={psFxRef} aria-hidden />

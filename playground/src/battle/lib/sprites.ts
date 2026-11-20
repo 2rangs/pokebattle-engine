@@ -127,6 +127,10 @@ const TYPE_FX: Record<string, FxSprite> = {
 
 export const fxUrl = (s: FxSprite) => `${FX}/${s}.png`
 
+/** 기믹 연출 그림 (Showdown 클라이언트 fx): 메가진화·원시회귀 빛(shine), 키스톤 반응(rainbow), Z파워(z-symbol) */
+export type GimmickFxSprite = 'shine' | 'rainbow' | 'z-symbol'
+export const gimmickFxUrl = (s: GimmickFxSprite) => `${FX}/${s}.png`
+
 /**
  * 공격 기술의 연출: 접촉 기술은 몸통 돌진 + 충격, 그 밖은 타입 색 탄이 날아간다.
  * 변화 기술은 null.

@@ -7,6 +7,7 @@ import { particles } from '../lib/names'
 import type { PokemonSet } from '../lib/engine'
 import type { MetronomeSetup } from '../lib/replay'
 import { normalizeSize, type TeamSize } from '../lib/team'
+import { DEFAULT_GEN, GENS, normalizeGen, type Gen } from '../lib/gimmick'
 
 export type Rule = 'normal' | 'metronome'
 export type Mode = 'vs-cpu' | 'spectate'
@@ -24,8 +25,15 @@ export interface MetronomeForm {
   stats: Partial<Record<keyof NonNullable<MetronomeSetup['stats']>, string>>
 }
 
+/** 세대마다 따로 보관하는 팀 (세대를 바꿔도 그 세대의 팀이 돌아온다) */
+export interface GenTeams { myTeam: (PokemonSet | null)[]; foeTeam: (PokemonSet | null)[] }
+
 export interface DemoSettings {
   rule: Rule
+  /** 일반 배틀의 세대 (규칙·기믹·도감) */
+  gen: Gen
+  /** 지금 세대가 아닌 세대의 팀 */
+  otherTeams: Partial<Record<Gen, GenTeams>>
   mode: Mode
   difficulty: Difficulty
   teamSize: TeamSize
@@ -46,6 +54,8 @@ const KEY = 'pokebattle-demo-v1'
 
 const DEFAULTS: DemoSettings = {
   rule: 'normal',
+  gen: DEFAULT_GEN,
+  otherTeams: {},
   mode: 'vs-cpu',
   difficulty: 'normal',
   teamSize: 3,
@@ -72,10 +82,38 @@ function load(): DemoSettings {
       metronome: { ...DEFAULTS.metronome, ...(v.metronome ?? {}) },
       metroSeed: Number.isInteger(v.metroSeed) && v.metroSeed! >= 0 ? v.metroSeed! : DEFAULTS.metroSeed,
       sprites: v.sprites === '3d' ? '3d' : '2d',
+      gen: normalizeGen(v.gen),
+      otherTeams: otherTeams(v.otherTeams),
     }
   } catch {
     return DEFAULTS
   }
+}
+
+function otherTeams(v: unknown): DemoSettings['otherTeams'] {
+  const out: DemoSettings['otherTeams'] = {}
+  if (!v || typeof v !== 'object') return out
+  for (const g of GENS) {
+    const t = (v as Record<string, Partial<GenTeams> | undefined>)[g]
+    if (t && typeof t === 'object') {
+      out[g] = {
+        myTeam: Array.isArray(t.myTeam) ? t.myTeam.slice(0, 6) : [],
+        foeTeam: Array.isArray(t.foeTeam) ? t.foeTeam.slice(0, 6) : [],
+      }
+    }
+  }
+  return out
+}
+
+/** 세대 바꾸기: 지금 팀은 그 세대 칸에 넣어 두고, 새 세대의 팀을 꺼낸다 (처음이면 빈 팀 → CPU 팀은 새로 뽑힌다) */
+export function switchGen(gen: Gen) {
+  updateSettings(s => {
+    if (s.gen === gen) return {}
+    const stash = { ...s.otherTeams, [s.gen]: { myTeam: s.myTeam, foeTeam: s.foeTeam } }
+    const next = stash[gen] ?? { myTeam: [], foeTeam: [] }
+    delete stash[gen]
+    return { gen, myTeam: next.myTeam, foeTeam: next.foeTeam, otherTeams: stash }
+  })
 }
 
 let state: DemoSettings | null = null

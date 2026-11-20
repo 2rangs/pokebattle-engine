@@ -4,20 +4,21 @@ import { Button } from '@astryxdesign/core/Button'
 import { exportShowdownTeam, getMove, getSpecies, type PokemonSet } from '../lib/engine'
 import { abilityName, itemName, moveName, natureName, pokemonLabel, speciesName } from '../lib/names'
 import { iconCandidates, itemIconUrl } from '../lib/sprites'
-import { importTeam, moveUp, placeAt, searchSpecies, slotsFor, speciesOptions, suggestedSet } from '../lib/team'
+import { forGen, importTeam, moveUp, placeAt, searchSpecies, slotsFor, speciesOptions, suggestedSet } from '../lib/team'
 import { hasErrors, validateSet } from '../lib/editor'
 import { FallbackImg, TypeBadge } from './bits'
 import { SetEditor } from './SetEditor'
 import { useBT } from './state'
+import { DEFAULT_GEN, gimmickItemKind, gimmicksOf, type Gen } from '../lib/gimmick'
 
 const newSeed = () => Math.floor(Math.random() * 1e9)
 
 /** 종 검색 상자: 한국어·영어 이름, 도감 번호 */
-export function SpeciesPicker({ onPick, label }: { onPick: (slug: string) => void; label: string }) {
+export function SpeciesPicker({ onPick, label, gen = DEFAULT_GEN }: { onPick: (slug: string) => void; label: string; gen?: Gen }) {
   const { t, lang } = useBT()
   const [q, setQ] = useState('')
   const [hi, setHi] = useState(0)
-  const options = useMemo(() => speciesOptions(lang), [lang])
+  const options = useMemo(() => speciesOptions(lang, gen), [lang, gen])
   const results = useMemo(() => searchSpecies(options, q), [options, q])
   const listId = useId()
   const pick = (slug: string) => { onPick(slug); setQ('') }
@@ -59,8 +60,9 @@ export function SpeciesPicker({ onPick, label }: { onPick: (slug: string) => voi
   )
 }
 
-function SlotCard({ n, set, open, onToggle, onChange, onReroll, onRemove, onUp }: {
+function SlotCard({ n, set, gen, open, onToggle, onChange, onReroll, onRemove, onUp }: {
   n: number
+  gen: Gen
   set: PokemonSet
   open: boolean
   onToggle: () => void
@@ -73,7 +75,8 @@ function SlotCard({ n, set, open, onToggle, onChange, onReroll, onRemove, onUp }
   const sp = getSpecies(set.species)
   const name = pokemonLabel(set, lang)
   const moves = set.moves.filter(Boolean) as string[]
-  const issues = useMemo(() => validateSet(set, lang), [set, lang])
+  const issues = useMemo(() => validateSet(set, lang, gen), [set, lang, gen])
+  const kind = set.item ? gimmickItemKind(set.item) : null
   const editorId = useId()
   return (
     <div className={`bd-slot${open ? ' is-open' : ''}`} aria-label={`${t('slotN', { n })} ${name}`}>
@@ -90,17 +93,18 @@ function SlotCard({ n, set, open, onToggle, onChange, onReroll, onRemove, onUp }
         </span>
       </div>
       {open ? (
-        <div id={editorId}><SetEditor set={set} issues={issues} onChange={onChange} /></div>
+        <div id={editorId}><SetEditor set={set} issues={issues} gen={gen} onChange={onChange} /></div>
       ) : (
         <>
           <dl className="bd-slot-meta">
             <div><dt>{t('ability')}</dt><dd>{abilityName(set.ability, lang)}</dd></div>
             <div>
               <dt>{t('item')}</dt>
-              <dd>{set.item ? <><img className="bd-item-icon is-pixel" src={itemIconUrl(set.item)} alt="" onError={e => { e.currentTarget.style.display = 'none' }} />{itemName(set.item, lang)}</> : t('noItem')}</dd>
+              <dd>{set.item ? <><img className="bd-item-icon is-pixel" src={itemIconUrl(set.item)} alt="" onError={e => { e.currentTarget.style.display = 'none' }} />{itemName(set.item, lang)}{kind && gimmicksOf(gen)[kind === 'z' ? 'zmove' : 'mega'] && <small className="bd-item-tag">{t(kind === 'mega' ? 'itemTagMega' : kind === 'z' ? 'itemTagZ' : 'itemTagPrimal')}</small>}</> : t('noItem')}</dd>
             </div>
+            {set.gigantamax && gimmicksOf(gen).dynamax && <div><dt>{t('gigantamax')}</dt><dd>✓</dd></div>}
             <div><dt>{t('nature')}</dt><dd>{natureName(set.nature ?? 'hardy', lang)}</dd></div>
-            {set.teraType && <div><dt>{t('tera')}</dt><dd><TypeBadge type={set.teraType} lang={lang} size="sm" tera /></dd></div>}
+            {set.teraType && gen === 9 && <div><dt>{t('tera')}</dt><dd><TypeBadge type={set.teraType} lang={lang} size="sm" tera /></dd></div>}
           </dl>
           <ul className="bd-slot-moves">
             {moves.map(m => {
@@ -133,8 +137,10 @@ function SlotCard({ n, set, open, onToggle, onChange, onReroll, onRemove, onUp }
   )
 }
 
-export function TeamBuilder({ team, size, level = 50, onChange, onRandom, randomLabel, canClear = true, canRemove = true }: {
+export function TeamBuilder({ team, size, gen = DEFAULT_GEN, level = 50, onChange, onRandom, randomLabel, canClear = true, canRemove = true }: {
   team: (PokemonSet | null)[]
+  /** 규칙 세대: 고를 수 있는 종·기술·도구, 랜덤 세트 */
+  gen?: Gen
   size: number
   level?: number
   onChange: (team: (PokemonSet | null)[]) => void
@@ -157,7 +163,7 @@ export function TeamBuilder({ team, size, level = 50, onChange, onRandom, random
     try {
       const parsed = importTeam(text, name => t('unknownPokemon', { name }))
       if (parsed.length === 0) throw new Error(t('nothingToImport'))
-      onChange(parsed)
+      onChange(parsed.map(p => forGen(p, gen)))
       setIoError(null)
       setIoOpen(false)
     } catch (err) {
@@ -202,10 +208,11 @@ export function TeamBuilder({ team, size, level = 50, onChange, onRandom, random
               <SlotCard
                 n={i + 1}
                 set={s}
+                gen={gen}
                 open={editing === i}
                 onToggle={() => setEditing(e => (e === i ? null : i))}
                 onChange={next => onChange(placeAt(team, i, next))}
-                onReroll={() => onChange(placeAt(team, i, suggestedSet(s.species, newSeed(), s.level ?? level)))}
+                onReroll={() => onChange(placeAt(team, i, suggestedSet(s.species, newSeed(), s.level ?? level, gen)))}
                 onRemove={canRemove ? () => { setEditing(null); onChange(placeAt(team, i, null)) } : undefined}
                 onUp={i > 0 ? () => { setEditing(e => (e === i ? i - 1 : e === i - 1 ? i : e)); onChange(moveUp(team, i)) } : undefined}
               />
@@ -216,7 +223,7 @@ export function TeamBuilder({ team, size, level = 50, onChange, onRandom, random
                   <span className="bd-slot-icon is-empty" aria-hidden />
                   <span className="bd-slot-title"><b>{t('emptySlot')}</b></span>
                 </div>
-                <SpeciesPicker label={t('addToSlot', { n: i + 1 })} onPick={slug => onChange(placeAt(team, i, suggestedSet(slug, newSeed(), level)))} />
+                <SpeciesPicker gen={gen} label={t('addToSlot', { n: i + 1 })} onPick={slug => onChange(placeAt(team, i, suggestedSet(slug, newSeed(), level, gen)))} />
               </div>
             )}
           </li>

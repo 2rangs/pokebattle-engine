@@ -2,7 +2,8 @@
 // 5세대 블랙·화이트의 아래 화면 구성을 본떴다: 큰 "싸운다" + 포켓몬·도망친다(가방 없음).
 // 기술 버튼: 이름 · PP x/y, 타입 배지 · 분류 아이콘 · 위력, 데미지 미리보기(상성·범위·확정 n타).
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
-import type { BattleRequest, MoveOption, PlayerID } from '../lib/engine'
+import { getMove, moveSlug, type Action, type BattleRequest, type MoveOption, type PlayerID } from '../lib/engine'
+import { gmaxForm } from '../lib/gimmick'
 import type { PokeView } from '../lib/frame'
 import { effectivenessLabel, effectivenessTone, koLabel, pctOf } from '../lib/hud'
 import { itemName, moveName, pokemonLabel, typeName } from '../lib/names'
@@ -25,9 +26,18 @@ export function MessageBox({ text, more, children }: { text: ReactNode; more?: b
 
 interface MovePreview { text: string; eff: number; ko: string | null }
 
-function MoveButton({ opt, preview, onPick, extra }: { opt: MoveOption; preview: MovePreview | null; onPick: () => void; extra?: ReactNode }) {
+/** Z기술·다이맥스 기술로 바뀐 기술 버튼 (이름·위력·타입) */
+interface AltMove { name: string; type: string; power: number | null }
+
+/** 기믹 토글: 모습이 바뀌는 것(테라스탈·메가진화·울트라버스트·다이맥스)은 하나만, Z기술은 따로 (울트라버스트 + Z기술은 같은 턴에 된다) */
+type FormGimmick = 'terastallize' | 'mega' | 'ultra_burst' | 'dynamax'
+
+/** PokeAPI 는 Z기술을 물리·특수로 나눈다 → 원래 기술의 분류로 */
+const zSlug = (slug: string, category: string) => slug.replace(/--(physical|special)$/, `--${category}`)
+
+function MoveButton({ opt, preview, onPick, extra, alt, disabled }: { opt: MoveOption; preview: MovePreview | null; onPick: () => void; extra?: ReactNode; alt?: AltMove | null; disabled?: boolean }) {
   const { t, lang } = useBT()
-  const m = opt.move
+  const m = alt ? { ...opt.move, name: alt.name, type: alt.type, power: alt.power } : opt.move
   const name = moveName(opt.index === -1 ? 'struggle' : m.name, lang)
   const cat = t(CAT_KEY[m.category] ?? 'catStatus')
   const meta = m.category === 'status' ? cat : `${cat} ${m.power ?? '—'}`
@@ -37,9 +47,9 @@ function MoveButton({ opt, preview, onPick, extra }: { opt: MoveOption; preview:
   return (
     <button
       type="button"
-      className="bd-move"
+      className={`bd-move${alt ? ' is-alt' : ''}`}
       style={{ '--type': TYPE_COLOR[m.type] ?? '#888' } as CSSProperties}
-      disabled={opt.disabled}
+      disabled={opt.disabled || disabled}
       title={opt.disabled_reason}
       aria-label={a11y}
       onClick={onPick}
@@ -64,6 +74,15 @@ function MoveButton({ opt, preview, onPick, extra }: { opt: MoveOption; preview:
         {extra}
         {opt.disabled_reason && <span className="bd-move-err">{opt.disabled_reason}</span>}
       </span>
+    </button>
+  )
+}
+
+/** 메가진화·Z기술·다이맥스 토글 (테라스탈 버튼과 같은 모양, 글자만) */
+function GimmickButton({ label, on, onClick, tone }: { label: string; on: boolean; onClick: () => void; tone?: 'dmax' }) {
+  return (
+    <button type="button" className={`bd-tera is-gimmick${tone ? ` is-${tone}` : ''}${on ? ' is-on' : ''}`} aria-pressed={on} onClick={onClick}>
+      {label}
     </button>
   )
 }
@@ -117,21 +136,47 @@ export function ActionConsole({ session, player, message, more, team, lastCalled
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const req = useMemo(() => request(player), [request, player, version])
   const [view, setView] = useState<View>('command')
-  const [tera, setTera] = useState(false)
+  // 고른 기믹 (요청이 바뀌면 = 다음 선택이면 초기화)
+  const [picked, setPicked] = useState<{ req: BattleRequest | null; form: FormGimmick | null; z: boolean }>({ req: null, form: null, z: false })
+  const form = picked.req === req ? picked.form : null
+  const zOn = picked.req === req ? picked.z : false
+  const setForm = (f: FormGimmick | null) => setPicked({ req, form: f, z: f === 'ultra_burst' ? zOn : false })
+  const setZ = (z: boolean) => setPicked({ req, form: z && form !== 'ultra_burst' ? null : form, z })
+  const tera = form === 'terastallize'
 
-  const previews = useMemo(() => {
-    if (!engine || !req || req.type !== 'move') return {}
-    const out: Record<number, MovePreview> = {}
-    for (const opt of req.moves) {
-      if (opt.move.category === 'status' || opt.index < 0) continue
-      const r = engine.previewDamage(player, opt.index, { terastallize: tera })
+  // 다이맥스 중이거나 다이맥스를 골랐으면 다이맥스 기술 (Showdown 요청의 maxMoves)
+  const moveReq = req?.type === 'move' ? req : null
+  const raw = (moveReq?.raw as { active?: { maxMoves?: { maxMoves?: { move: string }[] } }[] } | undefined)?.active?.[0]
+  const dynamaxed = !!moveReq && !moveReq.can_dynamax && !!raw?.maxMoves
+  const maxing = form === 'dynamax' || dynamaxed
+
+  const { previews, alts } = useMemo(() => {
+    const previews: Record<number, MovePreview> = {}
+    const alts: Record<number, AltMove> = {}
+    if (!engine || !moveReq) return { previews, alts }
+    const flags = { terastallize: tera, mega: form === 'mega', ultra_burst: form === 'ultra_burst', dynamax: form === 'dynamax', zmove: zOn }
+    for (const opt of moveReq.moves) {
+      if (opt.index < 0) continue
+      const status = opt.move.category === 'status'
+      const zAlt = zOn && opt.zmove
+      const maxSlug = maxing ? raw?.maxMoves?.maxMoves?.[opt.index]?.move : undefined
+      const r = status ? null : engine.previewDamage(player, opt.index, { ...flags, zmove: !!zAlt })
+      // 기술 이름·위력: Z기술 / 다이맥스 기술 (변화 기술은 Z + 원래 기술, 다이맥스면 다이월)
+      if (zAlt) {
+        const slug = status ? opt.zmove! : r?.moveName ?? zSlug(opt.zmove!, opt.move.category)
+        alts[opt.index] = { name: slug, type: opt.move.type, power: status ? null : r?.basePower ?? null }
+      } else if (maxSlug) {
+        const slug = moveSlug(maxSlug)
+        const md = getMove(slug)
+        alts[opt.index] = { name: r?.moveName ?? slug, type: status ? md?.type ?? 'normal' : opt.move.type, power: status ? null : r?.basePower ?? null }
+      }
       if (!r) continue
-      if (r.max === 0) { out[opt.index] = { text: '0%', eff: r.effectiveness, ko: null }; continue }
+      if (r.max === 0) { previews[opt.index] = { text: '0%', eff: r.effectiveness, ko: null }; continue }
       const pct = (n: number) => Math.min(100, Math.round(n))
-      out[opt.index] = { text: `${pct(r.minPercent)}–${pct(r.maxPercent)}%`, eff: r.effectiveness, ko: koLabel(r, lang) }
+      previews[opt.index] = { text: `${pct(r.minPercent)}–${pct(r.maxPercent)}%`, eff: r.effectiveness, ko: koLabel(r, lang) }
     }
-    return out
-  }, [engine, req, player, tera, lang])
+    return { previews, alts }
+  }, [engine, moveReq, raw, player, form, tera, zOn, maxing, lang])
 
   if (!req) {
     return (
@@ -182,24 +227,45 @@ export function ActionConsole({ session, player, message, more, team, lastCalled
               key={opt.index}
               opt={opt}
               preview={previews[opt.index] ?? null}
+              alt={alts[opt.index] ?? null}
+              // Z기술을 고르면 Z기술이 되는 기술만
+              disabled={zOn && !opt.zmove}
               extra={metronome && lastCalled ? <span className="bd-move-last">{t('metroLast', { move: moveName(lastCalled.move, lang) })}</span> : undefined}
-              onPick={() => session.submit({ type: 'move', player, pokemon_id: active.id, move_index: opt.index, terastallize: tera || undefined })}
+              onPick={() => {
+                const a: Extract<Action, { type: 'move' }> = { type: 'move', player, pokemon_id: active.id, move_index: opt.index }
+                if (form) a[form] = true
+                if (zOn && opt.zmove) a.zmove = true
+                session.submit(a)
+              }}
             />
           ))}
         </div>
         <div className="bd-fight-foot">
-          {req.can_terastallize && active.tera_type && (
-            <button
-              type="button"
-              className={`bd-tera${tera ? ' is-on' : ''}`}
-              aria-pressed={tera}
-              style={{ '--type': TYPE_COLOR[active.tera_type] ?? '#888' } as CSSProperties}
-              onClick={() => setTera(v => !v)}
-            >
-              {t('terastallize')}
-              <TypeBadge type={active.tera_type} lang={lang} size="sm" tera />
-            </button>
-          )}
+          <span className="bd-gimmicks">
+            {req.can_terastallize && active.tera_type && (
+              <button
+                type="button"
+                className={`bd-tera${tera ? ' is-on' : ''}`}
+                aria-pressed={tera}
+                style={{ '--type': TYPE_COLOR[active.tera_type] ?? '#888' } as CSSProperties}
+                onClick={() => setForm(tera ? null : 'terastallize')}
+              >
+                {t('terastallize')}
+                <TypeBadge type={active.tera_type} lang={lang} size="sm" tera />
+              </button>
+            )}
+            {req.can_mega_evolve && <GimmickButton label={t('megaEvolve')} on={form === 'mega'} onClick={() => setForm(form === 'mega' ? null : 'mega')} />}
+            {req.can_ultra_burst && <GimmickButton label={t('ultraBurst')} on={form === 'ultra_burst'} onClick={() => setForm(form === 'ultra_burst' ? null : 'ultra_burst')} />}
+            {req.can_zmove && <GimmickButton label={t('zMove')} on={zOn} onClick={() => setZ(!zOn)} />}
+            {req.can_dynamax && (
+              <GimmickButton
+                label={t(active.set.gigantamax && gmaxForm(active.species) ? 'gigantamaxBtn' : 'dynamaxBtn')}
+                on={form === 'dynamax'}
+                tone="dmax"
+                onClick={() => setForm(form === 'dynamax' ? null : 'dynamax')}
+              />
+            )}
+          </span>
           {!req.forced && <button type="button" className="bd-back" onClick={() => setView('command')}>{t('back')}</button>}
         </div>
       </div>

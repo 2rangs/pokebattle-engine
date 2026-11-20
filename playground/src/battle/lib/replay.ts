@@ -24,10 +24,16 @@ export interface MetronomeSetup {
     p2Team:   'random' | string[]
 }
 
+/** 일반 배틀의 세대 (없으면 9세대 — 세대를 저장하기 전의 링크) */
+export type ReplayGen = 6 | 7 | 8 | 9
+const GENS: readonly ReplayGen[] = [6, 7, 8, 9]
+
 export interface ReplayData {
     v:       1
     rule:    BattleRule
     seed:    number
+    /** 세대 (기본 9). 9세대가 아니면 링크에 g 로 싣는다 */
+    gen?:    ReplayGen
     format:  'singles' | 'doubles'
     p1:      ReplaySide
     p2:      ReplaySide
@@ -207,6 +213,7 @@ interface Wire {
     v:  number
     r?: BattleRule
     s:  number
+    g?: ReplayGen
     f:  'singles' | 'doubles'
     p1: ReplaySide
     p2: ReplaySide
@@ -218,6 +225,7 @@ interface Wire {
 export async function encodeReplay(data: ReplayData): Promise<string> {
     const wire: Wire = { v: data.v, s: data.seed, f: data.format, p1: data.p1, p2: data.p2, a: data.actions.map(encodeAction) }
     if (data.rule !== 'normal') wire.r = data.rule
+    if (data.gen && data.gen !== 9) wire.g = data.gen
     if (data.metronome) wire.m = data.metronome
     if (data.forfeit) wire.x = data.forfeit
     const bytes = new TextEncoder().encode(JSON.stringify(wire))
@@ -251,6 +259,7 @@ export async function decodeReplay(s: string): Promise<ReplayData> {
     const rule = wire.r ?? 'normal'
     if (rule !== 'normal' && rule !== 'metronome') throw new ReplayError('corrupt', 'bad rule')
     if (wire.x !== undefined && wire.x !== 'p1' && wire.x !== 'p2') throw new ReplayError('corrupt', 'bad forfeit')
+    if (wire.g !== undefined && !GENS.includes(wire.g)) throw new ReplayError('corrupt', 'bad gen')
     const out: ReplayData = {
         v: REPLAY_VERSION,
         rule,
@@ -260,6 +269,7 @@ export async function decodeReplay(s: string): Promise<ReplayData> {
         p2: side(wire.p2),
         actions: wire.a.map(decodeAction),
     }
+    if (wire.g && wire.g !== 9) out.gen = wire.g
     if (rule === 'metronome') out.metronome = metronomeSetup(wire.m)
     if (wire.x) out.forfeit = wire.x
     return out

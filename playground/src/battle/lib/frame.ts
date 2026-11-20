@@ -25,6 +25,12 @@ export interface PokeView {
   volatiles: string[]
   /** 휘발성 상태의 남은 턴 (엔진이 알려 주는 것만) */
   volatileTurns: Record<string, number>
+  /** 다이맥스 중 (이벤트 기준: 다이맥스 문장부터 원래 크기로 돌아오는 문장까지) */
+  dynamax: boolean
+  /** 거다이맥스 중 (다이맥스 + 세트의 거다이맥스 + 거다이맥스 모습이 있는 종) */
+  gmax: boolean
+  /** 다이맥스 남은 턴 (3 → 1) */
+  dynamaxTurns: number | null
   /** 기술 슬러그 + PP (교체 화면·현황용) */
   moves: { id: string; type: string; pp: number; max_pp: number }[]
 }
@@ -42,6 +48,11 @@ export interface SideView {
 export interface Frame {
   index: number
   event: BattleEvent
+  /**
+   * 한 이벤트가 두 장면이 될 때 몇 번째 문장인지 (메가진화·울트라버스트: 0 = 반응, 1 = 변신).
+   * 0 인 프레임은 아직 변하기 전의 모습이다.
+   */
+  part?: 0 | 1
   /** 로그에 보이지 않는 이벤트 (재생 시 대기 없이 넘김) */
   silent: boolean
   turn: number
