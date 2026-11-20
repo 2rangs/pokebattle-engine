@@ -120,6 +120,16 @@ describe('기믹 프레임', () => {
     expect(sw.p1.active.species).toBe('kyogre')
     expect(primal.part).toBeUndefined()
     expect(primal.p1.active.species).toBe('kyogre-primal')
+    // 강한 비도 원시회귀 뒤에 내린다
+    const rain = sim.frames.findIndex(f => f.event.type === 'weather_change')
+    expect(sim.frames[rain - 1]!.weather).toBeNull()
+    expect(sim.frames[rain]!.weather).toBe('heavy_rain')
+  })
+
+  test('Lv.100 포켓몬은 리플레이에서도 Lv.100 (Showdown 내보내기는 Level 줄을 뺀다)', () => {
+    const { sim } = play(7, 'Pikachu\nAbility: Static\n- Thunderbolt', {})
+    expect(sim.frames[0]!.p2.active.level).toBe(100)
+    expect(sim.frames[0]!.p1.active.level).toBe(50)
   })
 
   test('다이맥스: 문장부터 커지고, 거다이맥스 세트는 거다이맥스 모습, 3턴 뒤 원래 크기로', () => {

@@ -90,15 +90,24 @@ function canGmax(engine: BattleEngine, id: string): boolean {
   return !!p?.set.gigantamax && !!gmaxForm(p.species)
 }
 
-/** 엔진의 모든 이벤트를 프레임으로 만들어 push 한다. 엔진 start() 전에 붙인다 */
-export function attachFrameCapture(engine: BattleEngine, push: (frame: Omit<Frame, 'index'>) => void): () => void {
+/**
+ * 엔진의 모든 이벤트를 프레임으로 만들어 push 한다 (index 는 0 부터 차례로). 엔진 start() 전에 붙인다.
+ * 받은 프레임 객체는 그대로 보관한다: 시작할 때 한꺼번에 읽은 로그는 뒤 이벤트(원시회귀·날씨 등)를 보고 앞 프레임을 고친다.
+ */
+export function attachFrameCapture(engine: BattleEngine, push: (frame: Frame) => void): () => void {
   // 잠든 턴 수: 엔진은 남은 턴만 세므로 '잠들어 움직이지 못함'을 직접 센다
   const slept = new Map<string, number>()
   const dmax = new Map<string, { gmax: boolean; turns: number }>()
   // 폼 변화: 마지막으로 바뀐 프레임 위치와 그때의 모습 (그 뒤로만 되돌려 고친다)
-  const pushed: Omit<Frame, 'index'>[] = []
+  const pushed: Frame[] = []
+  const emit = (f: Omit<Frame, 'index'>) => {
+    const frame = { ...f, index: pushed.length }
+    pushed.push(frame)
+    push(frame)
+  }
   const lastChange = new Map<string, number>()
   const formBefore = new Map<string, string>()
+  const lastField = new Map<'weather' | 'terrain', number>()
   return engine.on('*', (ev: BattleEvent) => {
     if (ev.type === 'status_apply' && ev.status === 'sleep') slept.set(ev.pokemon_id, 0)
     else if (ev.type === 'cant_move' && ev.reason === 'sleep') slept.set(ev.pokemon_id, (slept.get(ev.pokemon_id) ?? 0) + 1)
@@ -130,6 +139,21 @@ export function attachFrameCapture(engine: BattleEngine, push: (frame: Omit<Fram
       lastChange.set(id, pushed.length)
       if (prev) formBefore.set(id, prev)
     }
+    // 날씨·필드도 같은 이유로 (원시회귀 → 강한 비, 첫 등장의 잔비·일렉트릭메이커 등): 바뀌기 전 프레임은 이전 상태로
+    if (ev.type === 'weather_change' || ev.type === 'terrain_change') {
+      const key = ev.type === 'weather_change' ? 'weather' : 'terrain'
+      const now = ev.type === 'weather_change' ? ev.weather : ev.terrain
+      const from = lastField.get(key) ?? -1
+      let prev: string | null = null
+      for (let i = pushed.length - 1; i > from; i--) if (pushed[i]![key] !== now) { prev = pushed[i]![key]; break }
+      for (let i = pushed.length - 1; i > from; i--) {
+        const f = pushed[i]!
+        if (f[key] !== now) break
+        f[key] = prev as never
+        f[key === 'weather' ? 'weatherTurns' : 'terrainTurns'] = null
+      }
+      lastField.set(key, pushed.length)
+    }
     const base = { p1, p2 }
     // 메가진화·울트라버스트: 폼 변화 프레임과 "반응" 문장까지는 이전 모습, "변신" 문장에서 바뀐다
     const twoPart = ev.type === 'mega_evolve' && ev.kind !== 'primal'
@@ -139,17 +163,11 @@ export function attachFrameCapture(engine: BattleEngine, push: (frame: Omit<Fram
       if (fc?.event.type === 'forme_change' && fc.event.pokemon_id === ev.pokemon_id) setForm(fc, ev.pokemon_id, before)
       const pre = structuredClone(base)
       setForm(pre, ev.pokemon_id, before)
-      const f0 = frameOf(ev, pre, st, 0)
-      pushed.push(f0)
-      push(f0)
-      const f1 = frameOf(ev, base, st, 1)
-      pushed.push(f1)
-      push(f1)
+      emit(frameOf(ev, pre, st, 0))
+      emit(frameOf(ev, base, st, 1))
       return
     }
-    const f = frameOf(ev, base, st)
-    pushed.push(f)
-    push(f)
+    emit(frameOf(ev, base, st))
   })
 }
 
@@ -260,8 +278,9 @@ export function buildReplayData(setup: BattleSetup, ctrl: Controllers, actions: 
 /** 리플레이 데이터 → 설정 */
 export function replaySetup(data: ReplayData): BattleSetup {
   if (data.rule === 'metronome' && data.metronome) return { rule: 'metronome', seed: data.seed, metronome: data.metronome }
+  // Showdown 내보내기는 Lv.100 이면 Level 줄을 뺀다 → 줄이 없으면 100 (Lv.50 등은 늘 줄이 있다)
   return {
-    rule: 'normal', seed: data.seed, p1Team: parseShowdownTeam(data.p1.team), p2Team: parseShowdownTeam(data.p2.team),
+    rule: 'normal', seed: data.seed, p1Team: parseShowdownTeam(data.p1.team, 100), p2Team: parseShowdownTeam(data.p2.team, 100),
     ...(data.gen && data.gen !== 9 ? { gen: data.gen } : {}),
   }
 }
@@ -283,7 +302,7 @@ export function simulateReplay(data: ReplayData): SimulatedReplay {
   let engine: BattleEngine
   try {
     engine = createEngine(replaySetup(data), { p1: data.p1.ctrl, p2: data.p2.ctrl })
-    attachFrameCapture(engine, f => frames.push({ ...f, index: frames.length }))
+    attachFrameCapture(engine, f => frames.push(f))
     engine.start()
   } catch {
     return { frames, winner: null, turns: 0, error: 'mismatch', applied: 0 }

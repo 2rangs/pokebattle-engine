@@ -37,7 +37,7 @@ export function useBattleSession() {
     actionsRef.current = []
     forfeitRef.current = undefined
     setupRef.current = { setup: s, ctrl }
-    attachFrameCapture(e, f => framesRef.current.push({ ...f, index: framesRef.current.length }))
+    attachFrameCapture(e, f => framesRef.current.push(f))
     const nextAis: Partial<Record<PlayerID, BattleAI>> = {}
     for (const p of ['p1', 'p2'] as PlayerID[]) {
       const c = opts[p]

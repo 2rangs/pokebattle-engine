@@ -40,7 +40,7 @@ describe('메가진화', () => {
         expect(b.req().can_mega_evolve).toBe(true)
         b.turn({ mega: true })
         expect(b.text('en')).toContain("Charizard's Charizardite Y is reacting to the Key Stone! Charizard has Mega Evolved into Mega Charizard!")
-        expect(b.text('ko')).toContain('리자몽의 리자몽나이트Y와(과) 키스톤이 반응했다! 리자몽은 메가리자몽Y로 메가진화했다!')
+        expect(b.text('ko')).toContain('리자몽의 리자몽나이트Y와 키스톤이 반응했다! 리자몽은 메가리자몽Y로 메가진화했다!')
         // 폼 변화(forme_change)는 메가진화 이벤트 바로 앞, 특성도 메가 폼의 것
         const i = b.events.findIndex(ev => ev.type === 'mega_evolve')
         expect(b.events[i - 1]).toMatchObject({ type: 'forme_change', species: 'charizard-mega-y' })

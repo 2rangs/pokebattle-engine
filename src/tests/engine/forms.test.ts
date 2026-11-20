@@ -60,7 +60,7 @@ describe('폼 이름 (ko / ja / en)', () => {
         e.submitAction({ type: 'move', player: 'p1', pokemon_id: 'p1_0', move_index: 0, mega: true })
         e.submitAction({ type: 'move', player: 'p2', pokemon_id: 'p2_0', move_index: 0 })
         const lines = (locale: string) => events.map(ev => createFormatter({ locale, getPokemon: id => e.getPokemon(id) }).format(ev))
-        expect(lines('ko')).toContain('리자몽의 리자몽나이트X와(과) 키스톤이 반응했다! 리자몽은 메가리자몽X로 메가진화했다!')
+        expect(lines('ko')).toContain('리자몽의 리자몽나이트X와 키스톤이 반응했다! 리자몽은 메가리자몽X로 메가진화했다!')
         expect(lines('ko')).toContain('상대 워시로토무의 하이드로펌프!')
         expect(lines('ja')).toContain('リザードンの リザードナイトＸと キーストーンが 反応した！ リザードンは メガリザードンXに メガシンカした！')
         expect(lines('en')).toContain("Charizard's Charizardite X is reacting to the Key Stone! Charizard has Mega Evolved into Mega Charizard!")

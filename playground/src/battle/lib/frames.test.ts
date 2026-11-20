@@ -15,7 +15,7 @@ type Cpu = Exclude<ReplayController, 'human'>
 function liveBattle(setup: BattleSetup, ctrl: { p1: Cpu; p2: Cpu }, forfeitAfterTurn?: { turn: number; player: PlayerID }) {
   const e = createEngine(setup, ctrl)
   const frames: Frame[] = []
-  attachFrameCapture(e, f => frames.push({ ...f, index: frames.length }))
+  attachFrameCapture(e, f => frames.push(f))
   e.start()
   const ais = { p1: controllerAI(setup.rule, ctrl.p1, setup.seed, 'p1'), p2: controllerAI(setup.rule, ctrl.p2, setup.seed, 'p2') }
   const actions: Action[] = []

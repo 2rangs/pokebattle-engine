@@ -264,7 +264,7 @@
 }
 /* 기믹 연출 (Showdown fx 그림) */
 .bd-gfx { position: absolute; left: 50%; bottom: calc(var(--h) * .5); width: 0; height: 0; z-index: 2; pointer-events: none; }
-.bd-gfx img { position: absolute; left: 0; top: 0; width: calc(var(--h) * 1.1); height: auto; translate: -50% -50%; opacity: 0; }
+.bd-gfx img { position: absolute; left: 0; top: 0; width: calc(var(--h) * 1.1); max-width: none; height: auto; translate: -50% -50%; opacity: 0; }
 .bd-gfx.is-zpower img { width: calc(var(--h) * .8); }
 .bd-box-dmax { padding: 1px 8px; border-radius: 999px; font-size: .8em; font-weight: 600; color: #ffd0dc; background: rgba(255, 60, 110, .22); border: 1px solid rgba(255, 90, 134, .7); }
 .bd-sprite-anim { display: flex; align-items: flex-end; justify-content: center; transform-origin: 50% 100%; transition: transform .4s ease-in, opacity .4s ease-in; }

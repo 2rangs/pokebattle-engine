@@ -89,7 +89,7 @@ describe('세대별 기믹', () => {
         expect(e.getAvailableActions('p1').some(a => a.type === 'move' && a.mega)).toBe(true)
         e.submitAction({ type: 'move', player: 'p1', pokemon_id: 'p1_0', move_index: 0, mega: true })
         e.submitAction({ type: 'move', player: 'p2', pokemon_id: 'p2_0', move_index: 0 })
-        expect(events).toContain('리자몽의 리자몽나이트X와(과) 키스톤이 반응했다! 리자몽은 메가리자몽X로 메가진화했다!')
+        expect(events).toContain('리자몽의 리자몽나이트X와 키스톤이 반응했다! 리자몽은 메가리자몽X로 메가진화했다!')
         expect(events).not.toContain('리자몽의 모습이 바뀌었다!')
         expect(e.getPokemon('p1_0')!.species).toBe('charizard-mega-x')
     })

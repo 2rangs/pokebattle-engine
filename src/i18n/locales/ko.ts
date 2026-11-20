@@ -385,7 +385,7 @@ export const ko: Locale = {
         'ability': '[{ability}] {pokemon}',
         'item.consume': '{pokemon}은(는) {item}을(를) 사용했다!',
         'item.activate': '{pokemon}의 {item}이(가) 효과를 발휘했다!',
-        'mega.react': '{pokemon}의 {item}와(과) 키스톤이 반응했다!',
+        'mega.react': '{pokemon}의 {item}과(와) 키스톤이 반응했다!',
         'mega.react.noitem': '{pokemon}이(가) {side}의 키스톤에 반응했다!',
         'mega.react.rayquaza': '{side}의 간절한 바람이 {pokemon}에게 닿았다!',
         'mega.react.ultra': '{pokemon}에게서 눈부신 빛이 터져 나오려 한다!',
