@@ -15,17 +15,8 @@ import {
 } from '../lib/sprites'
 import { FallbackImg, Gender, HpBar, StatusBadge } from './bits'
 import { useBT } from './state'
-
-// ─── 위치 (장면 대비 %) ───────────────────────────────────────
-const SPOT = {
-  foe: { x: 72, y: 54 },
-  ours: { x: 27, y: 92 },
-}
-/** 기술 연출의 목표점 (스프라이트 몸통 가운데쯤) */
-const AIM = {
-  foe: { x: 72, y: 40 },
-  ours: { x: 27, y: 68 },
-}
+import { AIM, SPOT } from './layout'
+import { SceneEffects } from './SceneEffects'
 
 type SpriteAnim = 'lunge' | 'hit' | 'crit' | 'enter' | 'heal' | 'shimmer' | 'status'
 
@@ -244,14 +235,12 @@ export function Scene({ frames, frame, seed, me = 'p1', revealFoe, called, child
     <div
       ref={ref}
       className={`bd-scene${bgFailed ? ' is-fallback' : ''}`}
-      data-weather={frame.weather ?? undefined}
-      data-terrain={frame.terrain ?? undefined}
       role="img"
       aria-label={`${t('battleScene')}: ${pokemonLabel(foe.active, lang)} vs ${pokemonLabel(mine.active, lang)}`}
       style={{ '--unit': unit } as CSSProperties}
     >
       {!bgFailed && <img className="bd-bg" src={backgroundUrl(bg)} alt="" aria-hidden onError={() => setBgFailed(true)} />}
-      <span className="bd-weather" aria-hidden />
+      <SceneEffects frame={frame} me={me} />
       <span className="bd-spot is-foe" style={{ left: `${SPOT.foe.x}%`, top: `${SPOT.foe.y}%` }}>
         <span className="bd-shadow" />
         <BattleSprite key={foe.active.id} p={foe.active} back={false} frame={frame} unit={unit} lang={lang} />

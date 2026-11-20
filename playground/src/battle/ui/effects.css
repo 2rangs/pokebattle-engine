@@ -1,0 +1,263 @@
+/*
+ * 장면에 남는 효과 (SceneEffects.tsx). 데이터박스(z10)를 덮지 않고, 레이아웃을 바꾸지 않는다 (모두 absolute).
+ * 움직임은 ::before/::after·자식에만 두고, 등장·퇴장 페이드는 .bd-efx 자체에 둔다.
+ * prefers-reduced-motion: reduce → 같은 그림을 멈춘 채로.
+ */
+.bd-efx-layer, .bd-efx-slot { display: contents; }
+.bd-efx { position: absolute; pointer-events: none; }
+.bd-efx::before, .bd-efx::after { content: ''; position: absolute; pointer-events: none; }
+
+/* ─── 날씨 (장면 전체, z5) ──────────────────────────────── */
+.bd-weather { inset: 0; z-index: 5; overflow: hidden; }
+.bd-weather::before, .bd-weather::after { inset: 0; }
+
+.bd-weather.is-sun { background: radial-gradient(circle at 88% -8%, rgba(255, 226, 160, .34), rgba(255, 205, 120, .10) 34%, transparent 62%); }
+.bd-weather.is-sun::before,
+.bd-weather.is-harsh_sun::before {
+  background: repeating-conic-gradient(from 180deg at 88% -8%, rgba(255, 236, 190, .09) 0 2.5deg, transparent 2.5deg 11deg);
+  -webkit-mask-image: radial-gradient(circle at 88% -8%, #000, transparent 72%);
+  mask-image: radial-gradient(circle at 88% -8%, #000, transparent 72%);
+}
+.bd-weather.is-harsh_sun {
+  background:
+    radial-gradient(circle at 88% -8%, rgba(255, 200, 120, .5), rgba(255, 140, 60, .16) 40%, transparent 70%),
+    linear-gradient(rgba(255, 120, 40, .07), rgba(255, 120, 40, .07));
+}
+.bd-weather.is-harsh_sun::after { background: linear-gradient(to top, rgba(255, 110, 40, .16), transparent 45%); }
+
+/* 비: 세로줄(배경) × 끊긴 구간(마스크) = 빗줄기, 비스듬히 */
+.bd-weather.is-rain, .bd-weather.is-heavy_rain { background: linear-gradient(rgba(28, 52, 96, .16), rgba(28, 52, 96, .16)); }
+.bd-weather.is-heavy_rain { background: linear-gradient(rgba(20, 38, 76, .28), rgba(20, 38, 76, .28)); }
+.bd-weather.is-rain::before, .bd-weather.is-rain::after,
+.bd-weather.is-heavy_rain::before, .bd-weather.is-heavy_rain::after { inset: -120px -20%; rotate: 12deg; }
+.bd-weather.is-rain::before {
+  background: repeating-linear-gradient(90deg, transparent 0 29px, rgba(205, 225, 255, .34) 29px 30px);
+  -webkit-mask: repeating-linear-gradient(180deg, transparent 0 22px, #000 22px 34px);
+  mask: repeating-linear-gradient(180deg, transparent 0 22px, #000 22px 34px);
+}
+.bd-weather.is-rain::after {
+  background: repeating-linear-gradient(90deg, transparent 0 46px, rgba(205, 225, 255, .24) 46px 47px);
+  -webkit-mask: repeating-linear-gradient(180deg, transparent 0 36px, #000 36px 52px);
+  mask: repeating-linear-gradient(180deg, transparent 0 36px, #000 36px 52px);
+}
+.bd-weather.is-heavy_rain::before {
+  background: repeating-linear-gradient(90deg, transparent 0 15px, rgba(205, 225, 255, .40) 15px 16px);
+  -webkit-mask: repeating-linear-gradient(180deg, transparent 0 14px, #000 14px 34px);
+  mask: repeating-linear-gradient(180deg, transparent 0 14px, #000 14px 34px);
+}
+.bd-weather.is-heavy_rain::after {
+  background: repeating-linear-gradient(90deg, transparent 0 22px, rgba(205, 225, 255, .30) 22px 23px);
+  -webkit-mask: repeating-linear-gradient(180deg, transparent 0 26px, #000 26px 52px);
+  mask: repeating-linear-gradient(180deg, transparent 0 26px, #000 26px 52px);
+}
+
+/* 모래바람: 모래빛 + 옆으로 날리는 알갱이 */
+.bd-weather.is-sandstorm { background: linear-gradient(rgba(180, 135, 75, .20), rgba(150, 105, 55, .16)); }
+.bd-weather.is-sandstorm::before { background: radial-gradient(circle, rgba(240, 210, 160, .55) 0 1px, transparent 1.6px) 0 0 / 22px 15px; }
+.bd-weather.is-sandstorm::after { background: radial-gradient(ellipse 3px 1.2px, rgba(230, 190, 130, .45) 0 60%, transparent 100%) 0 0 / 37px 29px; }
+
+/* 눈 */
+.bd-weather.is-snow { background: linear-gradient(rgba(215, 232, 255, .08), rgba(215, 232, 255, .12)); }
+.bd-weather.is-snow::before { background: radial-gradient(circle, rgba(255, 255, 255, .85) 0 1.6px, transparent 2.2px) 0 0 / 46px 46px; }
+.bd-weather.is-snow::after { background: radial-gradient(circle, rgba(255, 255, 255, .6) 0 1px, transparent 1.5px) 13px 7px / 29px 31px; }
+
+/* 난기류: 가로로 지나가는 바람 줄 */
+.bd-weather.is-strong_winds { background: linear-gradient(rgba(190, 215, 240, .06), rgba(190, 215, 240, .06)); }
+.bd-weather.is-strong_winds::before, .bd-weather.is-strong_winds::after { inset: 0 -380px; }
+.bd-weather.is-strong_winds::before {
+  background: repeating-linear-gradient(180deg, transparent 0 37px, rgba(230, 240, 255, .26) 37px 38px);
+  -webkit-mask: repeating-linear-gradient(90deg, transparent 0 120px, #000 120px 190px);
+  mask: repeating-linear-gradient(90deg, transparent 0 120px, #000 120px 190px);
+}
+.bd-weather.is-strong_winds::after {
+  background: repeating-linear-gradient(180deg, transparent 0 56px, rgba(230, 240, 255, .18) 56px 57px);
+  -webkit-mask: repeating-linear-gradient(90deg, transparent 0 200px, #000 200px 290px);
+  mask: repeating-linear-gradient(90deg, transparent 0 200px, #000 200px 290px);
+}
+
+/* ─── 필드 (땅, z0: 포켓몬 아래) ───────────────────────── */
+.bd-terrain {
+  left: 0; right: 0; top: 40%; bottom: 0; z-index: 0;
+  -webkit-mask-image: linear-gradient(transparent, #000 40%);
+  mask-image: linear-gradient(transparent, #000 40%);
+  background: linear-gradient(transparent, color-mix(in srgb, var(--c) 24%, transparent));
+}
+.bd-terrain::before { inset: 0; opacity: .9; }
+.bd-terrain.is-electric { --c: #ffd84a; }
+.bd-terrain.is-electric::before { background: repeating-linear-gradient(118deg, transparent 0 26px, rgba(255, 228, 110, .22) 26px 27px, transparent 27px 34px, rgba(255, 228, 110, .12) 34px 35px); }
+.bd-terrain.is-grassy { --c: #5fd06a; }
+.bd-terrain.is-grassy::before { background: radial-gradient(ellipse 2px 3.5px at 50% 100%, rgba(150, 235, 130, .42) 0 70%, transparent 100%) 0 0 / 19px 13px; }
+.bd-terrain.is-misty { --c: #ff9be0; }
+.bd-terrain.is-misty::before {
+  background:
+    radial-gradient(ellipse 22% 30% at 20% 60%, rgba(255, 200, 240, .20), transparent),
+    radial-gradient(ellipse 26% 28% at 70% 40%, rgba(255, 200, 240, .16), transparent),
+    radial-gradient(ellipse 20% 30% at 48% 85%, rgba(255, 200, 240, .18), transparent);
+}
+.bd-terrain.is-psychic { --c: #c27bff; }
+.bd-terrain.is-psychic::before { background: repeating-radial-gradient(ellipse 120% 70% at 50% 110%, transparent 0 22px, rgba(220, 175, 255, .2) 22px 23px); }
+
+/* ─── 장판 (발판 둘레) ─────────────────────────────────── */
+.bd-hazard { width: 0; height: 0; z-index: 0; --s: 1; }
+.bd-hazard.is-ours { --s: 1.45; }
+.bd-hazard.is-stealth_rock { z-index: 3; }
+.bd-hazard > i {
+  position: absolute; display: block;
+  left: calc(var(--x) * 1px * var(--unit) * var(--s)); top: calc(var(--y) * 1px * var(--unit) * var(--s));
+  transform: translate(-50%, -50%);
+}
+.bd-rock {
+  width: calc(14px * var(--unit) * var(--s)); height: calc(12px * var(--unit) * var(--s));
+  background: linear-gradient(150deg, #d6d0c4, #938c80 50%, #5c574f);
+  clip-path: polygon(32% 0, 86% 14%, 100% 58%, 72% 100%, 16% 92%, 0 42%);
+}
+.bd-spike {
+  width: calc(8px * var(--unit) * var(--s)); height: calc(10px * var(--unit) * var(--s));
+  background: linear-gradient(#e2e6ec, #7a808b);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+.bd-spike.is-toxic { background: linear-gradient(#efc8ff, #8e4cc4); }
+.bd-web {
+  position: absolute; left: 0; top: 0; transform: translate(-50%, -50%);
+  width: calc(150px * var(--unit) * var(--s)); height: calc(50px * var(--unit) * var(--s)); overflow: visible;
+  fill: none; stroke: rgba(236, 238, 245, .5); stroke-width: .7;
+}
+
+/* ─── 벽·베일 (그 진영 포켓몬 앞의 반투명 막, z3) ───────────── */
+.bd-barrier {
+  --c: #8cc8ff; --s: 1; z-index: 3;
+  width: calc(116px * var(--unit) * var(--s)); height: calc(120px * var(--unit) * var(--s));
+  transform: translate(calc(-50% + var(--i) * 8px * var(--unit)), calc(-100% + 8px * var(--unit) - var(--i) * 6px * var(--unit)));
+  border-radius: 48% 48% 12% 12% / 36% 36% 8% 8%;
+  border: 1px solid color-mix(in srgb, var(--c) 55%, transparent);
+  background: linear-gradient(to top, color-mix(in srgb, var(--c) 22%, transparent), color-mix(in srgb, var(--c) 7%, transparent) 70%, transparent);
+  box-shadow: inset 0 0 calc(14px * var(--unit)) color-mix(in srgb, var(--c) 22%, transparent);
+  overflow: hidden;
+}
+.bd-barrier.is-ours { --s: 1.45; }
+.bd-barrier::after { inset: -20% auto -20% -60%; width: 30%; rotate: 18deg; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--c) 22%, transparent), transparent); }
+.bd-barrier.is-reflect { --c: #8cc8ff; }
+.bd-barrier.is-light_screen { --c: #ffd27a; }
+.bd-barrier.is-aurora_veil {
+  --c: #8ff0d2;
+  border-color: transparent;
+  background:
+    linear-gradient(to top, rgba(143, 240, 210, .2), rgba(205, 160, 255, .08) 70%, transparent) padding-box,
+    linear-gradient(160deg, rgba(143, 240, 210, .7), rgba(205, 160, 255, .6)) border-box;
+}
+.bd-barrier.is-safeguard { --c: #9cf0a4; border-radius: 50% 50% 14% 14% / 62% 62% 10% 10%; }
+/* 흰안개: 발밑에 깔린 안개 */
+.bd-barrier.is-mist {
+  --c: #e2eaf6; border: 0; border-radius: 50%; box-shadow: none;
+  width: calc(190px * var(--unit) * var(--s)); height: calc(46px * var(--unit) * var(--s));
+  transform: translate(-50%, -50%);
+  background: radial-gradient(closest-side, rgba(226, 234, 246, .32), rgba(226, 234, 246, .12) 60%, transparent);
+}
+.bd-barrier.is-mist::after { display: none; }
+
+/* 순풍: 그 진영 쪽으로 지나가는 바람 줄 */
+.bd-tailwind {
+  --s: 1; z-index: 3; overflow: hidden;
+  width: calc(240px * var(--unit) * var(--s)); height: calc(110px * var(--unit) * var(--s));
+  transform: translate(-50%, -100%);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 20%, #000 80%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 20%, #000 80%, transparent);
+}
+.bd-tailwind.is-ours { --s: 1.45; }
+.bd-tailwind.is-foe { scale: -1 1; }
+.bd-tailwind > i {
+  position: absolute; left: 12%; width: 38%; height: max(1.5px, calc(2px * var(--unit)));
+  border-radius: 2px; background: linear-gradient(90deg, transparent, rgba(225, 242, 255, .6), transparent);
+}
+.bd-tailwind > i:nth-child(1) { top: 22%; }
+.bd-tailwind > i:nth-child(2) { top: 50%; left: 46%; }
+.bd-tailwind > i:nth-child(3) { top: 78%; left: 26%; }
+
+/* ─── 필드 전체 ─────────────────────────────────────────── */
+.bd-fieldfx { inset: 0; z-index: 5; overflow: hidden; }
+/* 트릭룸: 원근 격자 바닥 + 보랏빛 (포켓몬 아래) */
+.bd-fieldfx.is-trick_room { z-index: 0; background: rgba(150, 95, 230, .07); }
+.bd-fieldfx.is-trick_room::before {
+  left: -40%; right: -40%; bottom: 0; height: 62%;
+  background-image: linear-gradient(rgba(206, 150, 255, .34) 1px, transparent 1px), linear-gradient(90deg, rgba(206, 150, 255, .34) 1px, transparent 1px);
+  background-size: 46px 46px;
+  transform: perspective(260px) rotateX(58deg); transform-origin: 50% 100%;
+  -webkit-mask-image: linear-gradient(to top, #000, transparent 92%);
+  mask-image: linear-gradient(to top, #000, transparent 92%);
+}
+.bd-fieldfx.is-trick_room::after {
+  left: -40%; right: -40%; top: 0; height: 30%;
+  background-image: linear-gradient(90deg, rgba(206, 150, 255, .16) 1px, transparent 1px);
+  background-size: 46px 46px;
+  transform: perspective(260px) rotateX(-58deg); transform-origin: 50% 0;
+  -webkit-mask-image: linear-gradient(#000, transparent);
+  mask-image: linear-gradient(#000, transparent);
+}
+/* 중력: 위에서 누르는 어둠 + 내려오는 줄 */
+.bd-fieldfx.is-gravity { background: linear-gradient(rgba(16, 12, 36, .42), transparent 46%); }
+.bd-fieldfx.is-gravity::before {
+  inset: -40px 0 0;
+  background: repeating-linear-gradient(180deg, transparent 0 19px, rgba(190, 180, 255, .12) 19px 20px);
+  -webkit-mask-image: linear-gradient(#000, transparent 48%);
+  mask-image: linear-gradient(#000, transparent 48%);
+}
+/* 매직룸 / 원더룸: 네 모서리의 빛 + 마름모 무늬 */
+.bd-fieldfx.is-magic_room, .bd-fieldfx.is-wonder_room {
+  background:
+    radial-gradient(circle at 0 100%, color-mix(in srgb, var(--c) 18%, transparent), transparent 38%),
+    radial-gradient(circle at 100% 0, color-mix(in srgb, var(--c) 14%, transparent), transparent 38%);
+}
+.bd-fieldfx.is-magic_room { --c: #ff7ad6; }
+.bd-fieldfx.is-wonder_room { --c: #6fd8ff; }
+.bd-fieldfx.is-magic_room::before, .bd-fieldfx.is-wonder_room::before {
+  inset: 0;
+  background:
+    repeating-linear-gradient(45deg, color-mix(in srgb, var(--c) 10%, transparent) 0 1px, transparent 1px 34px),
+    repeating-linear-gradient(-45deg, color-mix(in srgb, var(--c) 10%, transparent) 0 1px, transparent 1px 34px);
+  -webkit-mask-image: radial-gradient(ellipse at 50% 55%, transparent 30%, #000 85%);
+  mask-image: radial-gradient(ellipse at 50% 55%, transparent 30%, #000 85%);
+}
+
+/* ─── 움직임 ───────────────────────────────────────────── */
+@media (prefers-reduced-motion: no-preference) {
+  .bd-efx { animation: bd-efx-in .36s ease-out both; }
+  .is-leaving > .bd-efx { animation: bd-efx-out .36s ease-in forwards; }
+  .bd-weather.is-sun::before, .bd-weather.is-harsh_sun::before { animation: bd-pulse 6s ease-in-out infinite; }
+  .bd-weather.is-rain::before { animation: bd-fall-68 .55s linear infinite; }
+  .bd-weather.is-rain::after { animation: bd-fall-52 .5s linear infinite; }
+  .bd-weather.is-heavy_rain::before { animation: bd-fall-68 .38s linear infinite; }
+  .bd-weather.is-heavy_rain::after { animation: bd-fall-52 .34s linear infinite; }
+  .bd-weather.is-sandstorm::before { animation: bd-sand-a 1.4s linear infinite; }
+  .bd-weather.is-sandstorm::after { animation: bd-sand-b 1.9s linear infinite; }
+  .bd-weather.is-snow::before { animation: bd-snow-a 7s linear infinite; }
+  .bd-weather.is-snow::after { animation: bd-snow-b 5s linear infinite; }
+  .bd-weather.is-strong_winds::before { animation: bd-wind-380 .9s linear infinite; }
+  .bd-weather.is-strong_winds::after { animation: bd-wind-380 1.4s linear infinite; }
+  .bd-terrain::before { animation: bd-pulse 4.5s ease-in-out infinite; }
+  .bd-rock { animation: bd-bob 3.2s ease-in-out var(--d, 0s) infinite; }
+  .bd-barrier::after { animation: bd-sheen 5.5s ease-in-out infinite; }
+  .bd-barrier.is-light_screen::after { animation-delay: -1.8s; }
+  .bd-barrier.is-aurora_veil::after { animation-delay: -3.6s; }
+  .bd-tailwind > i { animation: bd-gust 1.6s linear infinite; }
+  .bd-tailwind > i:nth-child(2) { animation-delay: -.6s; }
+  .bd-tailwind > i:nth-child(3) { animation-delay: -1.1s; }
+  .bd-fieldfx.is-trick_room { animation: bd-pulse 5s ease-in-out infinite; }
+  .bd-fieldfx.is-gravity::before { animation: bd-fall-40 1.6s linear infinite; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .is-leaving > .bd-efx { display: none; }
+}
+@keyframes bd-efx-in { from { opacity: 0; } }
+@keyframes bd-efx-out { to { opacity: 0; } }
+@keyframes bd-pulse { 50% { opacity: .6; } }
+@keyframes bd-fall-68 { to { transform: translateY(68px); } }
+@keyframes bd-fall-52 { to { transform: translateY(52px); } }
+@keyframes bd-fall-40 { to { transform: translateY(40px); } }
+@keyframes bd-sand-a { to { background-position: -220px 30px; } }
+@keyframes bd-sand-b { to { background-position: -370px 58px; } }
+@keyframes bd-snow-a { to { background-position: 46px 184px; } }
+@keyframes bd-snow-b { to { background-position: -16px 131px; } }
+@keyframes bd-wind-380 { to { transform: translateX(-380px); } }
+@keyframes bd-bob { 50% { translate: 0 calc(-3px * var(--unit)); } }
+@keyframes bd-sheen { 0%, 55% { left: -60%; } 100% { left: 130%; } }
+@keyframes bd-gust { from { translate: -140% 0; opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } to { translate: 160% 0; opacity: 0; } }
