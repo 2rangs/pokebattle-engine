@@ -14,7 +14,10 @@ import {
   battleSprite3dCandidates, battleSpriteCandidates, fxUrl, isHomeSprite, showdownAniUrl, moveFx, POKE_BALL,
   spriteIdsOf, TYPE_COLOR, type FxSprite,
 } from '../lib/sprites'
-import { FallbackImg, Gender, HpBar, StatusBadge } from './bits'
+import { pokeRogueAtlas } from '../lib/pokerogue'
+import { Gender, HpBar, StatusBadge } from './bits'
+import { PokeRogueSprite } from './PokeRogueSprite'
+import { usePreloadPokeRogue } from './usePreloadPokeRogue'
 import { useBT, useSettings, type SpriteStyle } from './state'
 import { AIM, SPOT } from './layout'
 import { SceneEffects } from './SceneEffects'
@@ -93,7 +96,8 @@ function BattleSprite({ p, back, frame, stat, unit, lang, style, psMove }: { p: 
       {anim === 'enter' && <img key={frame.index} className="bd-ball" src={POKE_BALL} alt="" aria-hidden />}
       <span ref={ref} className={`bd-sprite-anim${anim ? ` anim-${anim}${anim === 'lunge' && !back ? '-foe' : ''}` : ''}`}>
         <span className="bd-sprite-ps">
-        <FallbackImg
+        <PokeRogueSprite
+          atlas={style === '2d' ? pokeRogueAtlas(p.species, back, p.gender) : null}
           sources={sources}
           alt={pokemonLabel(p, lang)}
           className={`bd-sprite-img${home ? ` is-home${back ? ' is-mirrored' : ''}` : ''}${status ? ` tint-${status}` : ''}`}
@@ -335,6 +339,7 @@ export function Scene({ frames, frame, me = 'p1', revealFoe, speed = 650, childr
   const psMove = useShowdownMoveAnim(frame, me, speed, ref, psFxRef, psBgRef)
   useEffect(() => { void loadStatTiles() }, [])
   usePreloadHome(sprites === '3d' ? [...frame.p1.team, ...frame.p2.team].map(x => x.species) : [])
+  usePreloadPokeRogue(sprites === '2d', mine.team, foe.team)
 
   return (
     <div
