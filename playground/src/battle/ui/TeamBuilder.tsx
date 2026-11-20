@@ -1,5 +1,6 @@
 // ─── 팀 빌더: 마릿수(1/3/6)만큼의 자리, 종 검색, 랜덤 팀, 세트 편집(기술·특성·도구·성격·테라·노력치), Showdown 가져오기/내보내기 ─────
 import { useId, useMemo, useState, type CSSProperties } from 'react'
+import { Button } from '@astryxdesign/core/Button'
 import { exportShowdownTeam, getMove, getSpecies, type PokemonSet } from '../lib/engine'
 import { abilityName, itemName, moveName, natureName, pokemonLabel, speciesName } from '../lib/names'
 import { iconCandidates, itemIconUrl, TYPE_COLOR } from '../lib/sprites'
@@ -65,7 +66,7 @@ function SlotCard({ n, set, open, onToggle, onChange, onReroll, onRemove, onUp }
   onToggle: () => void
   onChange: (s: PokemonSet) => void
   onReroll: () => void
-  onRemove: () => void
+  onRemove?: () => void
   onUp?: () => void
 }) {
   const { t, lang } = useBT()
@@ -126,18 +127,23 @@ function SlotCard({ n, set, open, onToggle, onChange, onReroll, onRemove, onUp }
         </button>
         <button type="button" className="bd-btn is-small" onClick={onReroll}>{t('rerollSet')}</button>
         {onUp && <button type="button" className="bd-btn is-small is-ghost" onClick={onUp}>↑ {t('moveUp')}</button>}
-        <button type="button" className="bd-btn is-small is-ghost" onClick={onRemove} aria-label={t('removeNamed', { name })}>{t('remove')}</button>
+        {onRemove && <button type="button" className="bd-btn is-small is-ghost" onClick={onRemove} aria-label={t('removeNamed', { name })}>{t('remove')}</button>}
       </div>
     </div>
   )
 }
 
-export function TeamBuilder({ team, size, level = 50, onChange, onRandom }: {
+export function TeamBuilder({ team, size, level = 50, onChange, onRandom, randomLabel, canClear = true, canRemove = true }: {
   team: (PokemonSet | null)[]
   size: number
   level?: number
   onChange: (team: (PokemonSet | null)[]) => void
   onRandom: () => void
+  /** "랜덤 팀" 대신 (상대 팀: "상대 팀 다시 뽑기") */
+  randomLabel?: string
+  /** 비우기·빼기 (상대 팀은 늘 다 차 있게 숨긴다) */
+  canClear?: boolean
+  canRemove?: boolean
 }) {
   const { t } = useBT()
   const [editing, setEditing] = useState<number | null>(null)
@@ -162,16 +168,14 @@ export function TeamBuilder({ team, size, level = 50, onChange, onRandom }: {
   return (
     <div className="bd-builder">
       <div className="bd-builder-actions">
-        <button type="button" className="bd-btn" onClick={onRandom}>{t('randomTeam')}</button>
-        <button
-          type="button"
-          className="bd-btn is-ghost"
+        <Button label={randomLabel ?? t('randomTeam')} onClick={onRandom} />
+        <Button
+          label={t('showdownIO')}
+          variant="ghost"
           aria-expanded={ioOpen}
           onClick={() => { setText(exportShowdownTeam(filled)); setIoOpen(o => !o); setIoError(null) }}
-        >
-          {t('showdownIO')}
-        </button>
-        {filled.length > 0 && <button type="button" className="bd-btn is-ghost" onClick={() => onChange([])}>{t('clearTeam')}</button>}
+        />
+        {filled.length > 0 && canClear && <Button label={t('clearTeam')} variant="ghost" onClick={() => onChange([])} />}
       </div>
       {ioOpen && (
         <div className="bd-io">
@@ -186,8 +190,8 @@ export function TeamBuilder({ team, size, level = 50, onChange, onRandom }: {
           />
           {ioError && <p className="bd-error" role="alert">{ioError}</p>}
           <div className="bd-builder-actions">
-            <button type="button" className="bd-btn is-primary" onClick={importNow}>{t('importTeam')}</button>
-            <button type="button" className="bd-btn" onClick={() => navigator.clipboard?.writeText(text).catch(() => {})}>{t('copy')}</button>
+            <Button label={t('importTeam')} variant="primary" onClick={importNow} />
+            <Button label={t('copy')} onClick={() => { navigator.clipboard?.writeText(text).catch(() => {}) }} />
           </div>
         </div>
       )}
@@ -202,7 +206,7 @@ export function TeamBuilder({ team, size, level = 50, onChange, onRandom }: {
                 onToggle={() => setEditing(e => (e === i ? null : i))}
                 onChange={next => onChange(placeAt(team, i, next))}
                 onReroll={() => onChange(placeAt(team, i, suggestedSet(s.species, newSeed(), s.level ?? level)))}
-                onRemove={() => { setEditing(null); onChange(placeAt(team, i, null)) }}
+                onRemove={canRemove ? () => { setEditing(null); onChange(placeAt(team, i, null)) } : undefined}
                 onUp={i > 0 ? () => { setEditing(e => (e === i ? i - 1 : e === i - 1 ? i : e)); onChange(moveUp(team, i)) } : undefined}
               />
             ) : (

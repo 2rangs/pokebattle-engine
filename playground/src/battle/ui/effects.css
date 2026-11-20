@@ -58,8 +58,20 @@
 
 /* 눈 */
 .bd-weather.is-snow { background: linear-gradient(rgba(215, 232, 255, .08), rgba(215, 232, 255, .12)); }
-.bd-weather.is-snow::before { background: radial-gradient(circle, rgba(255, 255, 255, .85) 0 1.6px, transparent 2.2px) 0 0 / 46px 46px; }
-.bd-weather.is-snow::after { background: radial-gradient(circle, rgba(255, 255, 255, .6) 0 1px, transparent 1.5px) 13px 7px / 29px 31px; }
+.bd-weather.is-snow::before {
+  background:
+    radial-gradient(circle at 18% 26%, rgba(255, 255, 255, .75) 0 1.4px, transparent 2px),
+    radial-gradient(circle at 66% 58%, rgba(255, 255, 255, .55) 0 1.1px, transparent 1.7px),
+    radial-gradient(circle at 42% 88%, rgba(255, 255, 255, .65) 0 1.6px, transparent 2.2px);
+  background-size: 97px 89px;
+}
+.bd-weather.is-snow::after {
+  background:
+    radial-gradient(circle at 12% 70%, rgba(255, 255, 255, .45) 0 .9px, transparent 1.4px),
+    radial-gradient(circle at 58% 18%, rgba(255, 255, 255, .4) 0 .8px, transparent 1.3px),
+    radial-gradient(circle at 86% 52%, rgba(255, 255, 255, .5) 0 1px, transparent 1.5px);
+  background-size: 61px 67px;
+}
 
 /* 난기류: 가로로 지나가는 바람 줄 */
 .bd-weather.is-strong_winds { background: linear-gradient(rgba(190, 215, 240, .06), rgba(190, 215, 240, .06)); }
@@ -127,11 +139,11 @@
 .bd-barrier {
   --c: #8cc8ff; --s: 1; z-index: 3;
   width: calc(116px * var(--unit) * var(--s)); height: calc(120px * var(--unit) * var(--s));
-  transform: translate(calc(-50% + var(--i) * 8px * var(--unit)), calc(-100% + 8px * var(--unit) - var(--i) * 6px * var(--unit)));
+  transform: translate(calc(-50% + var(--i) * 12px * var(--unit)), calc(-100% + 8px * var(--unit) - var(--i) * 8px * var(--unit)));
   border-radius: 48% 48% 12% 12% / 36% 36% 8% 8%;
-  border: 1px solid color-mix(in srgb, var(--c) 55%, transparent);
-  background: linear-gradient(to top, color-mix(in srgb, var(--c) 22%, transparent), color-mix(in srgb, var(--c) 7%, transparent) 70%, transparent);
-  box-shadow: inset 0 0 calc(14px * var(--unit)) color-mix(in srgb, var(--c) 22%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c) 50%, transparent);
+  background: linear-gradient(to top, color-mix(in srgb, var(--c) 12%, transparent), color-mix(in srgb, var(--c) 3%, transparent) 60%, transparent);
+  box-shadow: inset 0 0 calc(10px * var(--unit)) color-mix(in srgb, var(--c) 14%, transparent);
   overflow: hidden;
 }
 .bd-barrier.is-ours { --s: 1.45; }
@@ -142,10 +154,17 @@
   --c: #8ff0d2;
   border-color: transparent;
   background:
-    linear-gradient(to top, rgba(143, 240, 210, .2), rgba(205, 160, 255, .08) 70%, transparent) padding-box,
+    linear-gradient(to top, rgba(143, 240, 210, .12), rgba(205, 160, 255, .04) 60%, transparent) padding-box,
     linear-gradient(160deg, rgba(143, 240, 210, .7), rgba(205, 160, 255, .6)) border-box;
 }
-.bd-barrier.is-safeguard { --c: #9cf0a4; border-radius: 50% 50% 14% 14% / 62% 62% 10% 10%; }
+/* 신비의부적: 발판을 두르는 고리 (벽이 겹쳐 보이지 않게 땅에) */
+.bd-barrier.is-safeguard {
+  --c: #9cf0a4; border-radius: 50%; z-index: 0;
+  width: calc(178px * var(--unit) * var(--s)); height: calc(44px * var(--unit) * var(--s)); transform: translate(-50%, -50%);
+  background: radial-gradient(closest-side, transparent 62%, color-mix(in srgb, var(--c) 14%, transparent));
+  box-shadow: none;
+}
+.bd-barrier.is-safeguard::after { display: none; }
 /* 흰안개: 발밑에 깔린 안개 */
 .bd-barrier.is-mist {
   --c: #e2eaf6; border: 0; border-radius: 50%; box-shadow: none;
@@ -255,8 +274,8 @@
 @keyframes bd-fall-40 { to { transform: translateY(40px); } }
 @keyframes bd-sand-a { to { background-position: -220px 30px; } }
 @keyframes bd-sand-b { to { background-position: -370px 58px; } }
-@keyframes bd-snow-a { to { background-position: 46px 184px; } }
-@keyframes bd-snow-b { to { background-position: -16px 131px; } }
+@keyframes bd-snow-a { to { background-position: 97px 356px; } }
+@keyframes bd-snow-b { to { background-position: -61px 268px; } }
 @keyframes bd-wind-380 { to { transform: translateX(-380px); } }
 @keyframes bd-bob { 50% { translate: 0 calc(-3px * var(--unit)); } }
 @keyframes bd-sheen { 0%, 55% { left: -60%; } 100% { left: 130%; } }

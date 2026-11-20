@@ -30,7 +30,7 @@ const ko = {
   myTeam: '내 팀',
   foeTeam: '상대 팀',
   cpuTeam: '{name} 팀',
-  rerollFoe: '상대 팀 바꾸기',
+  rerollFoe: '상대 팀 다시 뽑기',
   foeRandomHint: '시작하면 랜덤 팀이 정해집니다.',
   startBattle: '배틀 시작',
   startSpectate: '관전 시작',
@@ -99,6 +99,17 @@ const ko = {
   issueEvStat: '노력치는 능력치당 {max}까지입니다',
   issueEvTotal: '노력치 합계가 {n}입니다 (최대 {max})',
   teamHasErrors: '세트를 고쳐 주세요 ({n}번 자리)',
+  teamsTitle: '양 팀',
+  foeHint: '시드로 뽑은 CPU 팀입니다. 자리마다 다시 뽑거나 편집할 수 있어요.',
+  foeFillFirst: '상대 팀 빈 자리를 채우세요 ({n}/{max})',
+  foeTeamHasErrors: '상대 팀 세트를 고쳐 주세요 ({n}번 자리)',
+  metroReroll: '다시 뽑기',
+  metroPreviewHint: '이번 배틀에 나올 포켓몬입니다 (시드로 정해짐).',
+  sprites: '스프라이트',
+  sprites2d: '2D',
+  sprites3d: '3D',
+  spritesDesc2d: '움직이는 도트 스프라이트',
+  spritesDesc3d: 'Pokémon HOME 3D 렌더',
   setWarnBadge: '확인 필요',
   setErrorBadge: '고칠 곳 있음',
 
@@ -237,7 +248,7 @@ const ko = {
   replayForfeit: '{name}이(가) 기권했다!',
 
   // 크레딧
-  credits: '비공식 팬 데모입니다. 스프라이트·아이콘·울음소리: PokeAPI (sprites·cries), 배경·기술 효과: Pokémon Showdown 클라이언트. Pokémon © Nintendo / Creatures Inc. / GAME FREAK inc.',
+  credits: '비공식 팬 데모입니다. 스프라이트·아이콘·울음소리: PokeAPI (sprites·cries), 3D 렌더: Pokémon HOME (PokeAPI/sprites 경유), 배경·기술 효과: Pokémon Showdown 클라이언트. Pokémon © Nintendo / Creatures Inc. / GAME FREAK inc.',
 }
 
 type Key = keyof typeof ko
@@ -268,7 +279,7 @@ const en: Record<Key, string> = {
   myTeam: 'Your team',
   foeTeam: 'Opposing team',
   cpuTeam: '{name} team',
-  rerollFoe: 'New opposing team',
+  rerollFoe: 'Reroll opposing team',
   foeRandomHint: 'A random team is drawn when the battle starts.',
   startBattle: 'Start battle',
   startSpectate: 'Start watching',
@@ -335,6 +346,17 @@ const en: Record<Key, string> = {
   issueEvStat: 'EVs go up to {max} per stat',
   issueEvTotal: 'EVs add up to {n} (max {max})',
   teamHasErrors: 'Fix the set in slot {n}',
+  teamsTitle: 'Teams',
+  foeHint: 'The CPU team, drawn from a seed. Reroll or edit any slot.',
+  foeFillFirst: 'Fill the opposing team ({n}/{max})',
+  foeTeamHasErrors: 'Fix the opposing set in slot {n}',
+  metroReroll: 'Reroll',
+  metroPreviewHint: 'These Pokémon will battle (picked by the seed).',
+  sprites: 'Sprites',
+  sprites2d: '2D',
+  sprites3d: '3D',
+  spritesDesc2d: 'Animated pixel sprites',
+  spritesDesc3d: 'Pokémon HOME 3D renders',
   setWarnBadge: 'Check',
   setErrorBadge: 'Needs fixing',
 
@@ -467,7 +489,7 @@ const en: Record<Key, string> = {
   replayMismatchDesc: 'You can watch up to where it stopped (turn {n}).',
   replayForfeit: '{name} forfeited!',
 
-  credits: 'Unofficial fan demo. Sprites, icons and cries: PokeAPI (sprites, cries); backgrounds and move effects: Pokémon Showdown client. Pokémon © Nintendo / Creatures Inc. / GAME FREAK inc.',
+  credits: 'Unofficial fan demo. Sprites, icons and cries: PokeAPI (sprites, cries); 3D renders: Pokémon HOME (via PokeAPI/sprites); backgrounds and move effects: Pokémon Showdown client. Pokémon © Nintendo / Creatures Inc. / GAME FREAK inc.',
 }
 
 export const MESSAGES: Record<Lang, Record<Key, string>> = { ko, en }

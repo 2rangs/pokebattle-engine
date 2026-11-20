@@ -7,6 +7,9 @@ import { encodeReplay, type ReplayData } from '../lib/replay'
 import { cryUrl } from '../lib/sprites'
 import { formatBattleSummary, summarizeBattle } from '../lib/summary'
 
+/** 휴대폰처럼 좁으면 (게임 아래로 쌓이는 배치) 옆 패널을 접어서 시작 */
+export const isNarrow = () => typeof window !== 'undefined' && !!window.matchMedia?.('(max-width: 960px)').matches
+
 export const REPLAY_PATH = '/battle/replay'
 export const replayHref = (encoded: string) => `#${REPLAY_PATH}?d=${encoded}`
 export const replayUrl = (encoded: string) => `${window.location.origin}${window.location.pathname}${replayHref(encoded)}`

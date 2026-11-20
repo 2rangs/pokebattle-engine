@@ -6,9 +6,9 @@ import { calledMoveIndexes, lastCalledMoves, messageFrameIndex } from '../lib/hu
 import type { ReplayData } from '../lib/replay'
 import { Scene, SceneOverlay } from './Scene'
 import { ActionConsole, MessageBox } from './Console'
-import { BattleLog, FieldBar, SummaryPanel } from './SidePanel'
-import { Credits, SpeedSelect, ToolButton } from './common'
-import { replayHref, replayUrl, useBattleCries, useDebugHook, useEncodedReplay } from './hooks'
+import { BattleLog, FieldBar, SummaryPanel, TeamsPanel } from './SidePanel'
+import { Credits, SpeedSelect, SpriteToggle, ToolButton } from './common'
+import { isNarrow, replayHref, replayUrl, useBattleCries, useDebugHook, useEncodedReplay } from './hooks'
 import type { BattleSession } from './useBattleSession'
 import { updateSettings, useBT, useSettings } from './state'
 
@@ -45,9 +45,6 @@ function scrollBelowHeader(el: HTMLElement | null) {
   window.scrollTo({ top: Math.max(0, el.getBoundingClientRect().top + window.scrollY - Math.max(0, off) - 8) })
 }
 
-/** 휴대폰처럼 좁으면 로그를 접어서 시작 */
-const narrow = () => typeof window !== 'undefined' && window.matchMedia?.('(max-width: 720px)').matches
-
 export function BattleView({ session, onExit, onRematch }: { session: BattleSession; onExit: () => void; onRematch: () => void }) {
   const { t, lang } = useBT()
   const { sound } = useSettings()
@@ -55,7 +52,7 @@ export function BattleView({ session, onExit, onRematch }: { session: BattleSess
   const spectating = session.isAI('p1') && session.isAI('p2')
   const ended = session.phase === 'ended' && session.allRevealed
   const rootRef = useRef<HTMLDivElement>(null)
-  const [logOpen] = useState(() => !narrow())
+  const [logOpen] = useState(() => !isNarrow())
 
   // 시작하면 배틀 화면을 맨 위로 (휴대폰에서 장면 + 커맨드가 한 화면에 들어온다)
   useEffect(() => { scrollBelowHeader(rootRef.current) }, [session.setup])
@@ -87,6 +84,7 @@ export function BattleView({ session, onExit, onRematch }: { session: BattleSess
     <div className="bd-battle" ref={rootRef}>
       <div className="bd-main">
         <div className="bd-toolbar">
+          <SpriteToggle />
           <SpeedSelect value={session.speed} onChange={v => { session.setSpeed(v); updateSettings({ speed: v }) }} />
           {spectating && <ToolButton pressed={session.paused} onClick={() => session.setPaused(!session.paused)}>{session.paused ? t('play') : t('pause')}</ToolButton>}
           {!session.allRevealed && <ToolButton onClick={session.skip} label={t('skip')}>{t('skip')} »</ToolButton>}
@@ -115,10 +113,13 @@ export function BattleView({ session, onExit, onRematch }: { session: BattleSess
         </div>
       </div>
       <aside className="bd-side">
-        <FieldBar frame={f} sideName={sideName} />
-        <SummaryPanel frame={f} hideFoe={!spectating} sideName={sideName} />
-        <BattleLog frames={session.frames} revealed={session.revealed} sideName={sideName} defaultOpen={logOpen} />
-        <Credits />
+        <div className="bd-side-inner">
+          <FieldBar frame={f} sideName={sideName} />
+          <TeamsPanel frame={f} both={spectating} revealFoe={spectating} sideName={sideName} />
+          <SummaryPanel frame={f} hideFoe={!spectating} sideName={sideName} />
+          <BattleLog frames={session.frames} revealed={session.revealed} sideName={sideName} defaultOpen={logOpen} />
+          <Credits />
+        </div>
       </aside>
     </div>
   )

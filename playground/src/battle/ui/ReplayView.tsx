@@ -8,9 +8,9 @@ import { calledMoveIndexes, messageFrameIndex } from '../lib/hud'
 import { decodeReplay, ReplayError, type ReplayData, type ReplayErrorCode } from '../lib/replay'
 import { Scene, SceneOverlay } from './Scene'
 import { MessageBox } from './Console'
-import { BattleLog, FieldBar, SummaryPanel } from './SidePanel'
-import { Credits, SpeedSelect, ToolButton } from './common'
-import { useBattleCries, useDebugHook } from './hooks'
+import { BattleLog, FieldBar, SummaryPanel, TeamsPanel } from './SidePanel'
+import { Credits, SpeedSelect, SpriteToggle, ToolButton } from './common'
+import { isNarrow, useBattleCries, useDebugHook } from './hooks'
 import { useEngineReady } from './useEngineReady'
 import '../battle.css'
 import { updateSettings, useBT, useSettings } from './state'
@@ -151,6 +151,7 @@ function ReplayViewer({ data, sim }: { data: ReplayData; sim: SimulatedReplay })
         <div className="bd-toolbar">
           <span className="bd-replay-title">{players}</span>
           <span className="bd-toolbar-gap" />
+          <SpriteToggle />
           <SpeedSelect value={speed} onChange={v => { setSpeed(v); updateSettings({ speed: v }) }} />
           <ToolButton pressed={settings.sound} onClick={() => updateSettings({ sound: !settings.sound })} label={t('soundTip')}>{t('sound')}</ToolButton>
           <ToolButton href="#/battle">{t('exit')}</ToolButton>
@@ -196,10 +197,13 @@ function ReplayViewer({ data, sim }: { data: ReplayData; sim: SimulatedReplay })
         </div>
       </div>
       <aside className="bd-side">
-        <FieldBar frame={f} sideName={sideName} />
-        <SummaryPanel frame={f} hideFoe={!spectating} sideName={sideName} />
-        <BattleLog frames={sim.frames} revealed={cursor} sideName={sideName} defaultOpen={!window.matchMedia?.('(max-width: 720px)').matches} />
-        <Credits />
+        <div className="bd-side-inner">
+          <FieldBar frame={f} sideName={sideName} />
+          <TeamsPanel frame={f} both revealFoe={spectating} sideName={sideName} />
+          <SummaryPanel frame={f} hideFoe={!spectating} sideName={sideName} />
+          <BattleLog frames={sim.frames} revealed={cursor} sideName={sideName} defaultOpen={!isNarrow()} />
+          <Credits />
+        </div>
       </aside>
     </div>
   )
