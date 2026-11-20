@@ -1,5 +1,5 @@
 import { beforeAll, expect, test } from 'vitest'
-import { backgroundFor, battleSpriteCandidates, moveFx, spriteIdsOf, BACKGROUNDS } from './sprites'
+import { battleSpriteCandidates, moveFx, spriteIdsOf } from './sprites'
 import { ready } from './setup.test-util'
 
 beforeAll(ready)
@@ -21,12 +21,6 @@ test('스프라이트 후보: 애니메이션 gif 먼저, 정지 도트·일러�
   expect(c[0]).toMatch(/other\/showdown\/back\/10009\.gif$/)
   expect(c[1]).toMatch(/other\/showdown\/back\/479\.gif$/)
   expect(c.at(-1)).toMatch(/official-artwork\/10009\.png$/)
-})
-
-test('배경은 시드로 정해진다', () => {
-  expect(backgroundFor(123)).toBe(backgroundFor(123))
-  const seen = new Set(Array.from({ length: 200 }, (_, i) => backgroundFor(i * 7919)))
-  expect(seen.size).toBeGreaterThan(BACKGROUNDS.length / 2)
 })
 
 test('기술 연출: 접촉은 충격, 원거리는 타입 탄, 변화는 없음', () => {

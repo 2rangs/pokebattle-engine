@@ -78,7 +78,6 @@ export function BattleView({ session, onExit, onRematch }: { session: BattleSess
   const calledInfo = msgFrame && called.has(msgFrame.index) && msgFrame.event.type === 'move_use'
     ? { move: msgFrame.event.move.name, type: msgFrame.event.move.type, key: msgFrame.index } : null
   const lastCalled = lastCalledMoves(session.frames, session.revealed).get(f.p1.active.id) ?? null
-  const seed = session.setup?.seed ?? 0
 
   return (
     <div className="bd-battle" ref={rootRef}>
@@ -93,7 +92,7 @@ export function BattleView({ session, onExit, onRematch }: { session: BattleSess
           <ToolButton onClick={onExit}>{t('exit')}</ToolButton>
         </div>
         <div className="bd-game">
-          <Scene frames={session.frames} frame={f} seed={seed} revealFoe={spectating} called={calledInfo}>
+          <Scene frames={session.frames} frame={f} revealFoe={spectating} called={calledInfo} speed={session.speed}>
             {ended && <ResultOverlay result={result} replay={session.replayData} onRematch={onRematch} onExit={onExit} />}
           </Scene>
           {spectating || ended

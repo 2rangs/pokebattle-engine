@@ -180,6 +180,16 @@ export function messageFrameIndex(frames: readonly Pick<Frame, 'silent'>[], reve
   return null
 }
 
+/** 기술을 쓰는 프레임은 애니메이션이 보이도록 조금 더 머문다 (아주 빠르게면 그대로) */
+export const moveFrameDelay = (speed: number) => (speed >= 250 ? Math.round(speed * 1.6) : speed)
+
+/** 프레임이 화면에 머무는 시간 (ms): 로그에 안 보이는 프레임 0, 기술 사용 프레임은 조금 길게 */
+export function frameDelay(f: { silent: boolean; event: BattleEvent }, speed: number): number {
+  if (f.silent) return 0
+  if (f.event.type === 'move_use' && f.event.move.name !== METRONOME) return moveFrameDelay(speed)
+  return speed
+}
+
 /** 재생 속도 (프레임 간격 ms) */
 export const SPEEDS = [
   { value: 1100, label: 'speedSlow' },

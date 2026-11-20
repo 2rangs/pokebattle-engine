@@ -110,23 +110,6 @@ export const TYPE_COLOR: Record<string, string> = {
 export const itemIconUrl = (item: string) => `${SPRITES}/items/${item}.png`
 export const POKE_BALL = `${SPRITES}/items/poke-ball.png`
 
-// ─── 배경 (Showdown 클라이언트 fx/bg-*.png) ─────────────────────
-export const BACKGROUNDS = [
-  'meadow', 'route', 'forest', 'beach', 'beachshore', 'city', 'desert', 'mountain', 'river',
-  'thunderplains', 'dampcave', 'earthycave', 'icecave', 'volcanocave', 'deepsea',
-] as const
-export type Background = typeof BACKGROUNDS[number]
-
-export const backgroundUrl = (bg: Background) => `${FX}/bg-${bg}.png`
-
-/** 같은 시드 → 같은 배경 (리플레이도 같은 그림) */
-export function backgroundFor(seed: number): Background {
-  let h = (seed ^ 0x9e3779b9) >>> 0
-  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b) >>> 0
-  h = (h ^ (h >>> 16)) >>> 0
-  return BACKGROUNDS[h % BACKGROUNDS.length]!
-}
-
 // ─── 기술 연출 (Showdown 클라이언트 fx 스프라이트) ───────────────
 export type FxSprite =
   | 'fireball' | 'waterwisp' | 'lightning' | 'iceball' | 'poisonwisp' | 'shadowball'

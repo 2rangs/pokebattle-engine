@@ -1,0 +1,46 @@
+Third-party code in this folder
+================================
+
+battle-animations.ts and battle-animations-moves.ts are ported from the
+Pokémon Showdown client, commit 1cf9b385a97ad5c77a25b91a1c799078827ec306:
+https://github.com/smogon/pokemon-showdown-client/tree/1cf9b385a97ad5c77a25b91a1c799078827ec306/play.pokemonshowdown.com/src
+
+The Showdown client as a whole is AGPL-3.0, but these source files carry their
+own licences in their headers ("the battle replay/animation engine
+(battle-*.ts) by itself is MIT"):
+
+  - battle-animations.ts        @license MIT
+  - battle-animations-moves.ts  @license CC0-1.0
+
+Only the animation tables were kept; the scene adapter (scene.ts) and the
+types (types.ts) are original code of this repository (MIT, see the root
+LICENSE). The fx images are loaded by URL from the client repository and are
+not redistributed here.
+
+--------------------------------------------------------------------------
+battle-animations.ts — MIT License
+
+Copyright (c) Guangcong Luo and other contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+--------------------------------------------------------------------------
+battle-animations-moves.ts — CC0 1.0 Universal (public domain dedication)
+https://creativecommons.org/publicdomain/zero/1.0/legalcode
+Author: Guangcong Luo and other contributors.

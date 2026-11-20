@@ -6,12 +6,12 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { MoveData, PlayerID } from '../lib/engine'
 import { foeOf, sideOfId, type Frame, type PokeView, type SideView } from '../lib/frame'
-import { pctOf, stageMultiplier } from '../lib/hud'
+import { moveFrameDelay, pctOf, stageMultiplier } from '../lib/hud'
 import type { Lang } from '../lib/messages'
 import { moveName, pokemonLabel, statLabel, statusLongName, typeName, volatileName } from '../lib/names'
 import { volatileDesc } from '../lib/status'
 import {
-  backgroundFor, backgroundUrl, battleSprite3dCandidates, battleSpriteCandidates, fxUrl, homeSpriteUrl, isHomeSprite, moveFx, POKE_BALL,
+  battleSprite3dCandidates, battleSpriteCandidates, fxUrl, homeSpriteUrl, isHomeSprite, moveFx, POKE_BALL,
   spriteIdsOf, TYPE_COLOR, type FxSprite,
 } from '../lib/sprites'
 import { FallbackImg, Gender, HpBar, StatusBadge } from './bits'
@@ -36,15 +36,19 @@ function spriteAnimFor(f: Frame, p: PokeView): SpriteAnim | null {
   }
 }
 
-function BattleSprite({ p, back, frame, unit, lang, style }: { p: PokeView; back: boolean; frame: Frame; unit: number; lang: Lang; style: SpriteStyle }) {
+function BattleSprite({ p, back, frame, unit, lang, style, psMove }: { p: PokeView; back: boolean; frame: Frame; unit: number; lang: Lang; style: SpriteStyle; psMove: boolean }) {
   const [size, setSize] = useState<{ src: string; w: number; h: number } | null>(null)
   const sources = style === '3d' ? battleSprite3dCandidates(p.species, back) : battleSpriteCandidates(p.species, back)
-  const anim = spriteAnimFor(frame, p)
+  const own = spriteAnimFor(frame, p)
+  // Showdown 애니메이션이 공격자를 직접 움직일 때는 우리 돌진 연출을 끈다
+  const anim = psMove && own === 'lunge' ? null : own
   const ref = useRef<HTMLSpanElement>(null)
   // 같은 연출이 연달아 와도 (연속기 등) 프레임마다 처음부터
   useLayoutEffect(() => {
     if (!anim) return
     for (const a of ref.current?.getAnimations?.({ subtree: true }) ?? []) {
+      // Showdown 기술 애니메이션(WAAPI)은 건드리지 않는다
+      if (typeof CSSAnimation !== 'undefined' && !(a instanceof CSSAnimation)) continue
       a.cancel()
       a.play()
     }
@@ -63,6 +67,7 @@ function BattleSprite({ p, back, frame, unit, lang, style }: { p: PokeView; back
     <span className={`bd-sprite${p.fainted ? ' is-fainted' : ''}`}>
       {anim === 'enter' && <img key={frame.index} className="bd-ball" src={POKE_BALL} alt="" aria-hidden />}
       <span ref={ref} className={`bd-sprite-anim${anim ? ` anim-${anim}${anim === 'lunge' && !back ? '-foe' : ''}` : ''}`}>
+        <span className="bd-sprite-ps">
         <FallbackImg
           sources={sources}
           alt={pokemonLabel(p, lang)}
@@ -70,6 +75,7 @@ function BattleSprite({ p, back, frame, unit, lang, style }: { p: PokeView; back
           style={size ? { width: Math.round(size.w * scale), height: Math.round(size.h * scale) } : { opacity: 0 }}
           onLoad={img => setSize(s => (s?.src === img.src ? s : { src: img.src, w: img.naturalWidth, h: img.naturalHeight }))}
         />
+        </span>
       </span>
       {status === 'sleep' && <span className="bd-zzz" aria-hidden>Z<small>z</small></span>}
       {stat && stat.stages !== 0 && (
@@ -158,11 +164,11 @@ function lastMoveBefore(frames: readonly Frame[], index: number): { move: MoveDa
   return null
 }
 
-function FxLayer({ frames, frame, me }: { frames: readonly Frame[]; frame: Frame; me: PlayerID }) {
+function FxLayer({ frames, frame, me, psMove }: { frames: readonly Frame[]; frame: Frame; me: PlayerID; psMove: boolean }) {
   const e = frame.event
   const where = (id: string) => (sideOfId(id) === me ? AIM.ours : AIM.foe)
   let node: ReactNode = null
-  if (e.type === 'move_use' && e.move.name !== 'metronome') {
+  if (e.type === 'move_use' && e.move.name !== 'metronome' && !psMove) {
     const fx = moveFx({ ...e.move, flags: e.move.flags })
     const target = e.target_id && e.target_id !== e.pokemon_id ? e.target_id : `${foeOf(sideOfId(e.pokemon_id))}_x`
     if (fx?.projectile) {
@@ -197,6 +203,51 @@ function Shot({ sprite, from, to }: { sprite: FxSprite; from: { x: number; y: nu
   )
 }
 
+// ─── Showdown 기술 애니메이션 (../showdown-anims, 처음 쓸 때 따로 받는다) ─────
+type PsModule = typeof import('../showdown-anims/scene')
+let psModule: PsModule | null = null
+let psLoading: Promise<PsModule | null> | null = null
+const loadPs = () => (psLoading ??= import('../showdown-anims/scene').then(m => (psModule = m), () => null))
+const reducedMotion = () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+/** 기술 애니메이션이 이 재생 속도에서 돌아가는지 (아주 빠르게면 간단한 연출만) */
+const PS_MIN_SPEED = 250
+const SELF_TARGETS = new Set(['user', 'users-field', 'user-and-allies', 'all-allies', 'entire-field', 'user-or-ally', 'ally'])
+
+/**
+ * 기술을 쓰는 프레임(move_use)이 차례대로 드러날 때 Showdown 애니메이션을 한 번 돌린다.
+ * 반환: 이 프레임을 Showdown 애니메이션이 맡는지 (그러면 우리 간단한 연출·돌진을 끈다).
+ * 되감기·건너뛰기(프레임이 하나씩 나아가지 않을 때)와 움직임 줄이기 설정에서는 돌리지 않는다.
+ */
+function useShowdownMoveAnim(frame: Frame, me: PlayerID, speed: number, scene: React.RefObject<HTMLDivElement | null>, fx: React.RefObject<HTMLDivElement | null>, bg: React.RefObject<HTMLDivElement | null>): boolean {
+  const [ready, setReady] = useState(!!psModule)
+  const last = useRef(frame.index)
+  const stop = useRef<(() => void) | null>(null)
+  useEffect(() => {
+    if (ready || reducedMotion()) return
+    let alive = true
+    loadPs().then(m => { if (alive && m) setReady(true) })
+    return () => { alive = false }
+  }, [ready])
+  const e = frame.event
+  const handles = ready && !reducedMotion() && speed >= PS_MIN_SPEED && e.type === 'move_use' && e.move.name !== 'metronome'
+  useEffect(() => {
+    const prev = last.current
+    last.current = frame.index
+    if (!handles || !psModule || frame.index !== prev + 1 || e.type !== 'move_use') return
+    const root = scene.current
+    if (!root || !fx.current || !bg.current) return
+    stop.current?.()
+    stop.current = psModule.playMoveAnim(e.move.name, sideOfId(e.pokemon_id) !== me, SELF_TARGETS.has(e.move.target), {
+      fx: fx.current,
+      bg: bg.current,
+      front: root.querySelector<HTMLElement>('.bd-spot.is-foe .bd-sprite-ps'),
+      back: root.querySelector<HTMLElement>('.bd-spot.is-ours .bd-sprite-ps'),
+    }, { budget: moveFrameDelay(speed) * 0.95 })
+  }, [frame.index, handles, e, me, speed, scene, fx, bg])
+  useEffect(() => () => stop.current?.(), [])
+  return handles
+}
+
 /** 3D: 지금 두 팀의 HOME 렌더를 미리 받아 둔다 (교체 때 늦게 뜨지 않게) */
 const preloaded = new Set<string>()
 function usePreloadHome(species: string[]) {
@@ -216,28 +267,26 @@ function usePreloadHome(species: string[]) {
   }, [key])
 }
 
-/** 배경: flat = 토큰 색 무대 + 발판 / photo = Showdown 배경을 어둡게 (비교용, 빌드 때 VITE_BD_STAGE=photo) */
-const STAGE: 'flat' | 'photo' = import.meta.env.VITE_BD_STAGE === 'photo' ? 'photo' : 'flat'
 
 // ─── 장면 ────────────────────────────────────────────────────
 export interface SceneProps {
   frames: readonly Frame[]
   frame: Frame
-  seed: number
   /** 아래(우리) 쪽 진영 */
   me?: PlayerID
   /** 상대 HP 숫자·테라 타입까지 보여줄지 (관전·리플레이 관전) */
   revealFoe: boolean
   /** 손가락흔들기로 불려 나온 기술 (메시지 프레임이 그 기술일 때) */
   called?: { move: string; type: string; key: number } | null
+  /** 재생 간격 (ms): 기술 애니메이션을 이 속도에 맞춰 줄인다 */
+  speed?: number
   children?: ReactNode
 }
 
-export function Scene({ frames, frame, seed, me = 'p1', revealFoe, called, children }: SceneProps) {
+export function Scene({ frames, frame, me = 'p1', revealFoe, called, speed = 650, children }: SceneProps) {
   const { t, lang } = useBT()
   const ref = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(640)
-  const [bgFailed, setBgFailed] = useState(false)
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
@@ -247,31 +296,34 @@ export function Scene({ frames, frame, seed, me = 'p1', revealFoe, called, child
     return () => ro.disconnect()
   }, [])
   const unit = Math.max(0.55, Math.min(1.4, width / 640))
-  const bg = backgroundFor(seed)
   const mine = frame[me]
   const foe = frame[foeOf(me)]
   const { sprites } = useSettings()
+  const psFxRef = useRef<HTMLDivElement>(null)
+  const psBgRef = useRef<HTMLDivElement>(null)
+  const psMove = useShowdownMoveAnim(frame, me, speed, ref, psFxRef, psBgRef)
   usePreloadHome(sprites === '3d' ? [...frame.p1.team, ...frame.p2.team].map(x => x.species) : [])
 
   return (
     <div
       ref={ref}
-      className={`bd-scene is-${STAGE}${bgFailed ? ' is-fallback' : ''}`}
+      className="bd-scene"
       role="img"
       aria-label={`${t('battleScene')}: ${pokemonLabel(foe.active, lang)} vs ${pokemonLabel(mine.active, lang)}`}
       style={{ '--unit': unit } as CSSProperties}
     >
-      {STAGE === 'photo' && !bgFailed && <img className="bd-bg" src={backgroundUrl(bg)} alt="" aria-hidden onError={() => setBgFailed(true)} />}
+      <div className="bd-psfx-bg" ref={psBgRef} aria-hidden />
       <SceneEffects frame={frame} me={me} />
       <span className="bd-spot is-foe" style={{ left: `${SPOT.foe.x}%`, top: `${SPOT.foe.y}%` }}>
         <span className="bd-shadow" />
-        <BattleSprite key={`${foe.active.id}-${sprites}`} p={foe.active} back={false} frame={frame} unit={unit} lang={lang} style={sprites} />
+        <BattleSprite key={`${foe.active.id}-${sprites}`} p={foe.active} back={false} frame={frame} unit={unit} lang={lang} style={sprites} psMove={psMove} />
       </span>
       <span className="bd-spot is-ours" style={{ left: `${SPOT.ours.x}%`, top: `${SPOT.ours.y}%` }}>
         <span className="bd-shadow" />
-        <BattleSprite key={`${mine.active.id}-${sprites}`} p={mine.active} back frame={frame} unit={unit} lang={lang} style={sprites} />
+        <BattleSprite key={`${mine.active.id}-${sprites}`} p={mine.active} back frame={frame} unit={unit} lang={lang} style={sprites} psMove={psMove} />
       </span>
-      <FxLayer frames={frames} frame={frame} me={me} />
+      <FxLayer frames={frames} frame={frame} me={me} psMove={psMove} />
+      <div className="bd-psfx" ref={psFxRef} aria-hidden />
       <Databox side={foe} ours={false} showNumbers={revealFoe} showTera={revealFoe} lang={lang} />
       <Databox side={mine} ours showNumbers showTera lang={lang} />
       {called && (

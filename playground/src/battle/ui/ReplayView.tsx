@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PlayerID } from '../lib/engine'
 import { frameText, simulateReplay, type SimulatedReplay } from '../lib/frames'
-import { calledMoveIndexes, messageFrameIndex } from '../lib/hud'
+import { calledMoveIndexes, frameDelay, messageFrameIndex } from '../lib/hud'
 import { decodeReplay, ReplayError, type ReplayData, type ReplayErrorCode } from '../lib/replay'
 import { Scene, SceneOverlay } from './Scene'
 import { MessageBox } from './Console'
@@ -117,7 +117,7 @@ function ReplayViewer({ data, sim }: { data: ReplayData; sim: SimulatedReplay })
     const timer = setTimeout(() => {
       setCursor(cursor + 1)
       if (cursor + 1 >= total) setPlaying(false)
-    }, next.silent ? 0 : speed)
+    }, frameDelay(next, speed))
     return () => clearTimeout(timer)
   }, [playing, cursor, total, sim, speed])
 
@@ -157,7 +157,7 @@ function ReplayViewer({ data, sim }: { data: ReplayData; sim: SimulatedReplay })
           <ToolButton href="#/battle">{t('exit')}</ToolButton>
         </div>
         <div className="bd-game">
-          <Scene frames={sim.frames} frame={f} seed={data.seed} revealFoe={spectating} called={calledInfo}>
+          <Scene frames={sim.frames} frame={f} revealFoe={spectating} called={calledInfo} speed={speed}>
             {atEnd && !playing && result && (
               <SceneOverlay title={result}>
                 <button type="button" className="bd-btn is-primary" onClick={() => { setCursor(1); setPlaying(true) }}>{t('replayRestart')}</button>

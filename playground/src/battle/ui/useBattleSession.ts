@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Action, BattleAI, BattleEngine, BattleRequest, PlayerID } from '../lib/engine'
 import type { Frame } from '../lib/frame'
 import type { ReplayController, ReplayData } from '../lib/replay'
+import { frameDelay } from '../lib/hud'
 import { attachFrameCapture, buildReplayData, controllerAI, createEngine, type BattleSetup, type Controllers } from '../lib/frames'
 
 export interface SessionOptions extends Controllers {
@@ -107,7 +108,7 @@ export function useBattleSession() {
   useEffect(() => {
     if (revealed >= frames.length || paused) return
     const next = frames[revealed]!
-    const t = setTimeout(() => setRevealed(r => r + 1), next.silent ? 0 : speed)
+    const t = setTimeout(() => setRevealed(r => r + 1), frameDelay(next, speed))
     return () => clearTimeout(t)
   }, [revealed, frames, paused, speed])
 
