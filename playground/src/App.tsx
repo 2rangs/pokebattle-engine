@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { AppShell } from '@astryxdesign/core/AppShell'
 import { SideNav, SideNavItem, SideNavSection } from '@astryxdesign/core/SideNav'
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl'
@@ -12,9 +13,15 @@ import { LANGS, useLang, type Lang } from './i18n'
 
 const REPO = 'https://github.com/2rangs/pokebattle-engine'
 
+// 배틀 데모는 따로 받는다 (#/battle, #/battle/replay?d=…)
+const BattlePage = lazy(() => import('./battle/BattlePage'))
+const ReplayPage = lazy(() => import('./battle/ui/ReplayView'))
+
 export default function App() {
   const route = useRoute()
   const { lang, setLang, t } = useLang()
+  const [path, query = ''] = route.split('?')
+  const battle = path === '/battle' || path === '/battle/replay' ? path : null
   const slug = route.startsWith('/docs/') ? route.slice(6) : null
   const doc = slug ? DOCS.find(d => d.slug === slug) ?? DOCS[0]! : null
   const idx = doc ? DOCS.indexOf(doc) : -1
@@ -24,6 +31,7 @@ export default function App() {
     { label: 'API', href: '#/docs/engine', on: doc?.group === 'battle' },
     { label: t('도구', 'Tools'), href: '#/docs/damage', on: doc?.group === 'tools' },
     { label: t('연동', 'Integration'), href: '#/docs/react', on: doc?.group === 'integrate' },
+    { label: t('배틀 데모', 'Battle demo'), href: '#/battle', on: !!battle },
   ]
 
   const header = (
@@ -65,7 +73,13 @@ export default function App() {
 
   return (
     <AppShell height="auto" variant="section" topNav={header} sideNav={sideNav} mobileNav={false}>
-      {doc ? (
+      {battle ? (
+        <main className="bd-page wrap">
+          <Suspense fallback={<div className="bd-loading" role="status">{t('불러오는 중…', 'Loading…')}</div>}>
+            {battle === '/battle' ? <BattlePage /> : <ReplayPage query={query} />}
+          </Suspense>
+        </main>
+      ) : doc ? (
         <article className="doc" key={`${doc.slug}-${lang}`}>
           <Text type="supporting">{groupLabel(doc.group, lang)}</Text>
           <Heading level={1} className="doc-title">{docTitle(doc, lang)}</Heading>

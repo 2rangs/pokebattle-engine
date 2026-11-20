@@ -104,7 +104,8 @@ export function Landing() {
           </Text>
           <div className="actions">
             <Button label={t('문서 읽기', 'Read the docs')} variant="primary" href="#/docs/introduction" />
-            <Button label={t('소스 보기', 'View the source')} variant="secondary" href={REPO} target="_blank" />
+            <Button label={t('배틀 데모 해 보기', 'Try the battle demo')} variant="secondary" href="#/battle" />
+            <Button label={t('소스 보기', 'View the source')} variant="ghost" href={REPO} target="_blank" />
           </div>
           <div className="install-line">
             <CodeBlock code={INSTALL} language="bash" hasLanguageLabel={false} width="100%" />
@@ -230,6 +231,7 @@ export function Landing() {
           </Text>
           <div className="actions is-center">
             <Button label={t('문서 읽기', 'Read the docs')} variant="primary" href="#/docs/introduction" />
+            <Button label={t('배틀 데모', 'Battle demo')} variant="secondary" href="#/battle" />
             <Button label={t('소스 보기', 'View the source')} variant="secondary" href={REPO} target="_blank" />
           </div>
         </div>
