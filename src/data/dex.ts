@@ -278,6 +278,10 @@ export interface ItemData {
     megaStone?: string
     /** Z크리스탈 */
     zCrystal?: boolean
+    /** 타입 Z크리스탈: 이 타입의 기술을 Z기술로 (전용 Z크리스탈은 없음) */
+    zMoveType?: string
+    /** 이 도구를 써야 하는 종 (메가스톤·전용 Z크리스탈·원시회귀 구슬 등, PokeAPI 슬러그) */
+    itemUser?: string[]
     /** 던지기(fling) 위력 */
     flingPower?: number
 }
@@ -292,6 +296,8 @@ function toItemData(it: ReturnType<typeof Dex.items.get>): ItemData {
         berry: !!it.isBerry,
         ...(mega ? { megaStone: speciesSlug(mega) } : {}),
         ...(it.zMove ? { zCrystal: true } : {}),
+        ...(it.zMove && it.zMoveType ? { zMoveType: it.zMoveType.toLowerCase() } : {}),
+        ...(it.itemUser?.length ? { itemUser: it.itemUser.map(u => speciesSlug(toID(u))) } : {}),
         ...(it.fling?.basePower ? { flingPower: it.fling.basePower } : {}),
     }
 }

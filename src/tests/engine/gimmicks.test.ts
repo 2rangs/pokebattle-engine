@@ -216,3 +216,13 @@ describe('데미지 미리보기: 기믹을 고른 경우', () => {
         expect(mega.max).toBeGreaterThan(base.max)
     })
 })
+
+describe('도구 데이터: 메가스톤·Z크리스탈의 대상', () => {
+    it('zMoveType / itemUser', async () => {
+        const { getItem } = await import('../../index')
+        expect(getItem('firium-z')).toMatchObject({ zCrystal: true, zMoveType: 'fire' })
+        expect(getItem('pikanium-z')).toMatchObject({ zCrystal: true, itemUser: ['pikachu'] })
+        expect(getItem('charizardite-x')).toMatchObject({ megaStone: 'charizard-mega-x', itemUser: ['charizard'] })
+        expect(getItem('blue-orb')?.itemUser).toEqual(['kyogre'])
+    })
+})

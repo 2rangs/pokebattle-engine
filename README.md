@@ -229,7 +229,7 @@ formatKO(r, 'en')   // 'guaranteed OHKO' (koText is Korean; formatKO takes 'ko' 
 
 - `getSpecies(slug)`, `getMove(slug)`: Showdown data in engine format, including Korean names.
 - `getLearnset(species, { gen? })`: PokeAPI move slugs the species can learn in that gen (default 9), using Showdown's validator rules (`Dex.species.getMovePool`): its own learnset plus prevos, base forme for formes without their own learnset (megas, Rotom/Necrozma formes add the base forme), Gen 9 = moves with a Gen 9 source, Gen 1–8 = sources up to that gen; moves missing from that gen are dropped. Event-only move combinations are not checked. Needs `await preloadData()` (plus `{ gens: [n] }` for Gen 1–8) and throws otherwise; throws for an unknown species.
-- `listItems({ gen? })`, `getItem(slug)`: holdable items for that gen (no Poké Balls, no items missing from that gen): `{ name, showdown, num, effect, nameKo, berry, megaStone?, zCrystal?, flingPower? }`. Item icons: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/{name}.png`.
+- `listItems({ gen? })`, `getItem(slug)`: holdable items for that gen (no Poké Balls, no items missing from that gen): `{ name, showdown, num, effect, nameKo, berry, megaStone?, zCrystal?, zMoveType?, itemUser?, flingPower? }` (`itemUser`: the species a Mega Stone, signature Z-Crystal or Primal orb is for). Item icons: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/{name}.png`.
 - `getSpecies(slug).abilities`: `{ name, hidden, slot }[]` including the hidden ability. `NATURE_TABLE`: boosted / hindered stat per nature.
 - `koName.species | move | ability | item | type | nature`: Korean names from PokeAPI.
 - `speciesSlug(showdownId)`, `speciesToShowdown(slug)` …: convert names in both directions.
