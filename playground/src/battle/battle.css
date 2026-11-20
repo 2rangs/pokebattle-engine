@@ -100,6 +100,55 @@
 .bd-slot-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: auto; }
 .bd-item-icon { width: 24px; height: 24px; flex: none; }
 
+/* ─── 세트 편집기 (펼친 자리 카드는 한 줄 전체) ───────────────── */
+.bd-slots > li.is-open { grid-column: 1 / -1; }
+.bd-slots.is-1:has(> li.is-open) { grid-template-columns: minmax(0, 1fr); }
+.bd-slot.is-open { border-color: #4a5566; }
+.bd-slot-flag { padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.bd-slot-flag.is-error { background: #4a1d1a; color: #ffb4ab; }
+.bd-slot-flag.is-warn { background: #3d3214; color: #ffd66b; }
+.bd-editor { display: grid; gap: 16px 24px; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
+.bd-ed-group { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.bd-ed-group legend { padding: 0; margin-bottom: 8px; font-size: 13px; color: var(--ink-2); display: flex; gap: 10px; align-items: baseline; }
+.bd-ed-evs { grid-column: 1 / -1; }
+.bd-ed-fields .bd-field select { cursor: pointer; }
+.bd-ed-row { display: flex; gap: 4px; align-items: stretch; min-width: 0; }
+.bd-ed-row.is-error .bd-ed-chip { box-shadow: inset 0 0 0 1.5px #ff8a80; }
+.bd-ed-row.is-warn .bd-ed-chip { box-shadow: inset 0 0 0 1.5px #e0b84a; }
+.bd-ed-chip {
+  flex: 1; min-width: 0; min-height: 44px; display: flex; align-items: center; gap: 8px; padding: 4px 10px 4px 6px;
+  border: 1px solid #3a3d41; border-radius: 8px; background: color-mix(in srgb, var(--type, #3a3d41) 24%, #141518);
+  color: var(--ink); font: 14px/1.2 var(--font-family-body); text-align: left; cursor: pointer; box-sizing: border-box;
+}
+.bd-ed-chip:hover { border-color: #5a5f66; }
+.bd-ed-chip.is-empty { justify-content: center; border-style: dashed; background: transparent; color: var(--ink-2); flex: none; width: 100%; }
+.bd-ed-chip.is-item { background: #141518; }
+.bd-ed-chip .bd-type-glyph, .bd-ed-search .bd-type-glyph { width: 18px; height: 18px; background-size: 90px 18px; box-shadow: none; }
+.bd-ed-move-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bd-ed-power { width: 2.4em; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); flex: none; }
+.bd-ed-x { flex: none; width: 44px; padding: 0; font-size: 20px; }
+.bd-cat { flex: none; padding: 1px 7px; border-radius: 6px; font-size: 11px; font-weight: 700; color: #fff; }
+.bd-cat.is-physical { background: #c4502a; }
+.bd-cat.is-special { background: #3d6fc7; }
+.bd-cat.is-status { background: #6b6f76; }
+.bd-ed-search .bd-picker-list { max-height: 300px; }
+.bd-ed-search .bd-picker-list button { gap: 8px; }
+.bd-ed-item-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.bd-ed-item-text small { color: var(--muted); font-size: 12px; line-height: 1.3; white-space: normal; }
+.bd-ed-issues { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.bd-ed-issues .is-error { color: #ffb4ab; }
+.bd-ed-issues .is-warn { color: #ffd66b; }
+.bd-ed-total { font-variant-numeric: tabular-nums; color: var(--muted); }
+.bd-ed-total.is-over { color: #ffb4ab; }
+.bd-ed-evs > .bd-field { max-width: 360px; }
+.bd-ed-evgrid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.bd-ed-ev { display: grid; grid-template-rows: auto auto auto; gap: 4px; min-width: 0; font-size: 12px; color: var(--ink-2); text-align: center; }
+.bd-ed-ev .bd-input { padding: 0 6px; text-align: center; font-variant-numeric: tabular-nums; }
+.bd-ed-ev.is-plus .bd-ed-ev-label { color: #ff9e8a; }
+.bd-ed-ev.is-minus .bd-ed-ev-label { color: #8ab8ff; }
+.bd-ed-stat { font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 600; }
+.bd-ed-hint { margin: 0; font-size: 12px; color: var(--muted); word-break: keep-all; }
+
 .bd-picker { position: relative; }
 .bd-picker-list {
   position: absolute; z-index: 40; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 4px; list-style: none;
@@ -425,6 +474,8 @@
   .bd-page { padding-block: 8px 40px; }
   .bd-title.bd-title { font-size: 30px; }
   .bd-slots, .bd-slots.is-1 { grid-template-columns: minmax(0, 1fr); }
+  .bd-editor { grid-template-columns: minmax(0, 1fr); }
+  .bd-ed-evgrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   /* 게임 화면은 가장자리까지 */
   .bd-game { margin-inline: calc(-1 * var(--gutter)); border-radius: 0; border-inline: 0; }
   .bd-scene { aspect-ratio: 16 / 10; }

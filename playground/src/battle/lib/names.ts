@@ -43,25 +43,17 @@ export function formatBattleEvent(event: BattleEvent, ctx: FormatContext, lang: 
 
 const prettify = (slug: string) => slug.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 
-/** 종 이름 (게임처럼 폼 이름 없이) */
+/**
+ * 종 이름. 폼은 엔진 이름 팩의 폼 이름 (rotom-wash → 워시로토무, ninetales-alola → 나인테일 (알로라의 모습) / Ninetales-Alola).
+ * 팀 빌더·검색·데이터박스·로그가 모두 같은 이름을 쓴다.
+ */
 export function speciesName(slug: string, lang: Lang): string {
   const n = names(lang).species(slug)
   return n && n !== slug ? n : getSpecies(slug)?.showdown ?? prettify(slug)
 }
 
-/**
- * 폼까지 구분하는 이름 (팀 빌더·검색용). ko 이름표에는 폼 이름이 없어서 Showdown 폼 표기를 붙인다.
- * 예: rotom-wash → "로토무 (Wash)" / "Rotom-Wash"
- */
-export function speciesFormName(slug: string, lang: Lang): string {
-  const base = speciesName(slug, lang)
-  if (lang === 'en') return base
-  const sd = getSpecies(slug)?.showdown
-  const forme = sd && sd.includes('-') ? sd.slice(sd.indexOf('-') + 1) : null
-  return forme && !base.includes(forme) ? `${base} (${forme})` : base
-}
-
 export const moveName = (slug: string, lang: Lang) => names(lang).move(slug)
+export const natureName = (slug: string, lang: Lang) => names(lang).nature(slug)
 export const typeName = (slug: string, lang: Lang) => names(lang).type(slug)
 export const itemName = (slug: string, lang: Lang) => names(lang).item(slug)
 export const abilityName = (slug: string, lang: Lang) => names(lang).ability(slug)

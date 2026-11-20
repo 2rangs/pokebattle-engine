@@ -3,7 +3,7 @@ import {
   generateRandomSet, generateRandomTeam, getSpecies, listPokeApiSpecies, parseShowdownTeam, PRNG, toId,
   type PokemonSet,
 } from './engine'
-import { speciesFormName, speciesName, stripAutoNickname } from './names'
+import { speciesName, stripAutoNickname } from './names'
 import type { Lang } from './messages'
 
 export const TEAM_SIZES = [1, 3, 6] as const
@@ -67,7 +67,7 @@ export function importTeam(text: string, unknown: (name: string) => string): Pok
 export interface SpeciesOption {
   slug: string
   num: number
-  /** 현재 언어 이름 (폼 표기 포함) */
+  /** 현재 언어 이름 (폼은 폼 이름) */
   label: string
   /** 검색용: ko·en 이름, 슬러그 */
   haystack: string
@@ -89,8 +89,10 @@ export function speciesOptions(lang: Lang): SpeciesOption[] {
     out.push({
       slug: sp.name,
       num: s.num,
-      label: speciesFormName(sp.name, lang),
-      haystack: [speciesName(sp.name, 'ko'), speciesName(sp.name, 'en'), sp.name, String(s.num)].join(' ').toLowerCase(),
+      label: speciesName(sp.name, lang),
+      // 폼은 기본 종 이름으로도 찾는다 ("로토무" → 워시로토무·히트로토무 …)
+      haystack: [speciesName(sp.name, 'ko'), speciesName(sp.name, 'en'), sp.species_name ? speciesName(sp.species_name, 'ko') : '', sp.name, String(s.num)]
+        .join(' ').toLowerCase(),
     })
   }
   out.sort((a, b) => a.num - b.num || a.slug.localeCompare(b.slug))

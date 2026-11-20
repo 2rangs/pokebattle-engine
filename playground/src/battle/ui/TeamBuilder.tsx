@@ -1,10 +1,12 @@
-// ─── 팀 빌더: 마릿수(1/3/6)만큼의 자리, 종 검색, 랜덤 팀, Showdown 가져오기/내보내기 ─────
+// ─── 팀 빌더: 마릿수(1/3/6)만큼의 자리, 종 검색, 랜덤 팀, 세트 편집(기술·특성·도구·성격·테라·노력치), Showdown 가져오기/내보내기 ─────
 import { useId, useMemo, useState, type CSSProperties } from 'react'
 import { exportShowdownTeam, getMove, getSpecies, type PokemonSet } from '../lib/engine'
-import { abilityName, itemName, moveName, pokemonLabel, speciesFormName } from '../lib/names'
+import { abilityName, itemName, moveName, natureName, pokemonLabel, speciesName } from '../lib/names'
 import { iconCandidates, itemIconUrl, TYPE_COLOR } from '../lib/sprites'
 import { importTeam, moveUp, placeAt, searchSpecies, slotsFor, speciesOptions, suggestedSet } from '../lib/team'
+import { hasErrors, validateSet } from '../lib/editor'
 import { FallbackImg, TypeBadge, TypeGlyph } from './bits'
+import { SetEditor } from './SetEditor'
 import { useBT } from './state'
 
 const newSeed = () => Math.floor(Math.random() * 1e9)
@@ -56,13 +58,24 @@ export function SpeciesPicker({ onPick, label }: { onPick: (slug: string) => voi
   )
 }
 
-function SlotCard({ n, set, onReroll, onRemove, onUp }: { n: number; set: PokemonSet; onReroll: () => void; onRemove: () => void; onUp?: () => void }) {
+function SlotCard({ n, set, open, onToggle, onChange, onReroll, onRemove, onUp }: {
+  n: number
+  set: PokemonSet
+  open: boolean
+  onToggle: () => void
+  onChange: (s: PokemonSet) => void
+  onReroll: () => void
+  onRemove: () => void
+  onUp?: () => void
+}) {
   const { t, lang } = useBT()
   const sp = getSpecies(set.species)
   const name = pokemonLabel(set, lang)
   const moves = set.moves.filter(Boolean) as string[]
+  const issues = useMemo(() => validateSet(set, lang), [set, lang])
+  const editorId = useId()
   return (
-    <div className="bd-slot" aria-label={`${t('slotN', { n })} ${name}`}>
+    <div className={`bd-slot${open ? ' is-open' : ''}`} aria-label={`${t('slotN', { n })} ${name}`}>
       <div className="bd-slot-head">
         <span className="bd-slot-n">{n}</span>
         <span className="bd-slot-icon"><FallbackImg sources={iconCandidates(set.species)} alt="" /></span>
@@ -70,27 +83,47 @@ function SlotCard({ n, set, onReroll, onRemove, onUp }: { n: number; set: Pokemo
           <b>{name}</b>
           <span className="bd-slot-lv">{t('level', { n: set.level ?? 50 })}</span>
           <span className="bd-slot-types">{(sp?.types ?? []).map(ty => <TypeBadge key={ty} type={ty} lang={lang} size="sm" />)}</span>
+          {issues.length > 0 && !open && (
+            <span className={`bd-slot-flag is-${hasErrors(issues) ? 'error' : 'warn'}`}>{t(hasErrors(issues) ? 'setErrorBadge' : 'setWarnBadge')}</span>
+          )}
         </span>
       </div>
-      <dl className="bd-slot-meta">
-        <div><dt>{t('ability')}</dt><dd>{abilityName(set.ability, lang)}</dd></div>
-        <div>
-          <dt>{t('item')}</dt>
-          <dd>{set.item ? <><img className="bd-item-icon is-pixel" src={itemIconUrl(set.item)} alt="" onError={e => { e.currentTarget.style.display = 'none' }} />{itemName(set.item, lang)}</> : t('noItem')}</dd>
-        </div>
-        {set.teraType && <div><dt>{t('tera')}</dt><dd><TypeBadge type={set.teraType} lang={lang} size="sm" /></dd></div>}
-      </dl>
-      <ul className="bd-slot-moves">
-        {moves.map(m => {
-          const md = getMove(m)
-          return (
-            <li key={m} style={{ '--type': md ? TYPE_COLOR[md.type] : '#888' } as CSSProperties}>
-              {md && <TypeGlyph type={md.type} />}{moveName(m, lang)}
-            </li>
-          )
-        })}
-      </ul>
+      {open ? (
+        <div id={editorId}><SetEditor set={set} issues={issues} onChange={onChange} /></div>
+      ) : (
+        <>
+          <dl className="bd-slot-meta">
+            <div><dt>{t('ability')}</dt><dd>{abilityName(set.ability, lang)}</dd></div>
+            <div>
+              <dt>{t('item')}</dt>
+              <dd>{set.item ? <><img className="bd-item-icon is-pixel" src={itemIconUrl(set.item)} alt="" onError={e => { e.currentTarget.style.display = 'none' }} />{itemName(set.item, lang)}</> : t('noItem')}</dd>
+            </div>
+            <div><dt>{t('nature')}</dt><dd>{natureName(set.nature ?? 'hardy', lang)}</dd></div>
+            {set.teraType && <div><dt>{t('tera')}</dt><dd><TypeBadge type={set.teraType} lang={lang} size="sm" /></dd></div>}
+          </dl>
+          <ul className="bd-slot-moves">
+            {moves.map(m => {
+              const md = getMove(m)
+              return (
+                <li key={m} style={{ '--type': md ? TYPE_COLOR[md.type] : '#888' } as CSSProperties}>
+                  {md && <TypeGlyph type={md.type} />}{moveName(m, lang)}
+                </li>
+              )
+            })}
+          </ul>
+        </>
+      )}
       <div className="bd-slot-actions">
+        <button
+          type="button"
+          className={`bd-btn is-small${open ? ' is-primary' : ''}`}
+          aria-expanded={open}
+          aria-controls={open ? editorId : undefined}
+          aria-label={open ? undefined : t('editSetNamed', { name })}
+          onClick={onToggle}
+        >
+          {open ? t('doneEdit') : t('editSet')}
+        </button>
         <button type="button" className="bd-btn is-small" onClick={onReroll}>{t('rerollSet')}</button>
         {onUp && <button type="button" className="bd-btn is-small is-ghost" onClick={onUp}>↑ {t('moveUp')}</button>}
         <button type="button" className="bd-btn is-small is-ghost" onClick={onRemove} aria-label={t('removeNamed', { name })}>{t('remove')}</button>
@@ -107,6 +140,7 @@ export function TeamBuilder({ team, size, level = 50, onChange, onRandom }: {
   onRandom: () => void
 }) {
   const { t } = useBT()
+  const [editing, setEditing] = useState<number | null>(null)
   const [ioOpen, setIoOpen] = useState(false)
   const [text, setText] = useState('')
   const [ioError, setIoError] = useState<string | null>(null)
@@ -159,14 +193,17 @@ export function TeamBuilder({ team, size, level = 50, onChange, onRandom }: {
       )}
       <ol className={`bd-slots is-${size}`}>
         {slots.map((s, i) => (
-          <li key={s ? `${s.species}-${i}` : `empty-${i}`}>
+          <li key={s ? `${s.species}-${i}` : `empty-${i}`} className={editing === i && s ? 'is-open' : undefined}>
             {s ? (
               <SlotCard
                 n={i + 1}
                 set={s}
+                open={editing === i}
+                onToggle={() => setEditing(e => (e === i ? null : i))}
+                onChange={next => onChange(placeAt(team, i, next))}
                 onReroll={() => onChange(placeAt(team, i, suggestedSet(s.species, newSeed(), s.level ?? level)))}
-                onRemove={() => onChange(placeAt(team, i, null))}
-                onUp={i > 0 ? () => onChange(moveUp(team, i)) : undefined}
+                onRemove={() => { setEditing(null); onChange(placeAt(team, i, null)) }}
+                onUp={i > 0 ? () => { setEditing(e => (e === i ? i - 1 : e === i - 1 ? i : e)); onChange(moveUp(team, i)) } : undefined}
               />
             ) : (
               <div className="bd-slot is-empty">
@@ -199,8 +236,8 @@ export function SpeciesSlots({ picks, size, onChange }: { picks: (string | null)
               {s ? (
                 <>
                   <span className="bd-slot-icon"><FallbackImg sources={iconCandidates(s)} alt="" /></span>
-                  <span className="bd-slot-title"><b>{speciesFormName(s, lang)}</b></span>
-                  <button type="button" className="bd-btn is-small is-ghost" onClick={() => onChange(placeAt(picks, i, null))} aria-label={t('removeNamed', { name: speciesFormName(s, lang) })}>{t('remove')}</button>
+                  <span className="bd-slot-title"><b>{speciesName(s, lang)}</b></span>
+                  <button type="button" className="bd-btn is-small is-ghost" onClick={() => onChange(placeAt(picks, i, null))} aria-label={t('removeNamed', { name: speciesName(s, lang) })}>{t('remove')}</button>
                 </>
               ) : (
                 <SpeciesPicker label={t('addToSlot', { n: i + 1 })} onPick={slug => onChange(placeAt(picks, i, slug))} />

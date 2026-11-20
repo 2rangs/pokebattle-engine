@@ -8,6 +8,7 @@ import { pokemonLabel } from './lib/names'
 import type { MetronomeSetup } from './lib/replay'
 import { iconCandidates } from './lib/sprites'
 import { activeTeam, randomTeam, slotsFor, TEAM_SIZES, type TeamSize } from './lib/team'
+import { hasErrors, validateSet } from './lib/editor'
 import type { BattleSetup } from './lib/frames'
 import { BattleView } from './ui/BattleView'
 import { FallbackImg } from './ui/bits'
@@ -132,7 +133,7 @@ const STAT_NAME = {
 const statName = (k: Exclude<typeof STAT_KEYS[number], 'hp'>, lang: 'ko' | 'en') => STAT_NAME[lang][k]
 
 export default function BattlePage() {
-  const { t } = useBT()
+  const { t, lang } = useBT()
   const { ready, error } = useEngineReady()
   const s = useSettings()
   const session = useBattleSession()
@@ -176,7 +177,9 @@ export default function BattlePage() {
   let blocked: string | null = null
   let makeSetup: (() => BattleSetup) | null = null
   if (s.rule === 'normal') {
+    const bad = slotsFor(s.myTeam, size).findIndex(x => x !== null && hasErrors(validateSet(x, lang)))
     if (myActive.length < size) blocked = t('fillTeamFirst', { n: myActive.length, max: size })
+    else if (bad >= 0) blocked = t('teamHasErrors', { n: bad + 1 })
     else makeSetup = () => ({
       rule: 'normal', seed: newSeed(), p1Team: myActive,
       p2Team: foeTeam.length >= size ? foeTeam : randomTeam(newSeed(), size),
