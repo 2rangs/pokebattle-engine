@@ -11,6 +11,7 @@ export type PrimaryStatus =
 // ─── 휘발성 상태 (전투 중만 유지) ────────────────────────────────
 export type VolatileStatus =
     | 'confusion'
+    | 'dynamax'
     | 'flinch'
     | 'seeded'
     | 'bound'

@@ -181,20 +181,24 @@ export type BattleEvent =
   | { type: 'battle_start';   p1: string; p2: string; seed: number }
   | { type: 'turn_start';     turn: number }
   | { type: 'turn_end';       turn: number; state: BattleState }
-  | { type: 'move_use';       pokemon_id: string; move: MoveData; target_id: string }
+  /** zeffect: Z기술 (공격 Z기술은 "전력의 Z기술" 문장이 먼저 나온다) */
+  | { type: 'move_use';       pokemon_id: string; move: MoveData; target_id: string; zeffect?: boolean }
   | { type: 'move_miss';      pokemon_id: string; move: MoveData; target_id?: string }
   | { type: 'move_fail';      pokemon_id: string; move: MoveData; reason: string }
   | { type: 'cant_move';      pokemon_id: string; reason: CantMoveReason; detail?: string }
   | { type: 'damage';         pokemon_id: string; amount: number; source: string; effectiveness?: number; crit?: boolean; hp_after?: number }
+  /** source 'z-power': 변화 Z기술의 회복, 'dynamax': 다이맥스 시작·끝의 최대 HP 변화 (문장 없음) */
   | { type: 'heal';           pokemon_id: string; amount: number; source: string; hp_after?: number }
   | { type: 'immune';         pokemon_id: string; source: string }
   | { type: 'faint';          pokemon_id: string }
   | { type: 'status_apply';   pokemon_id: string; status: string; source?: string }
   | { type: 'status_remove';  pokemon_id: string; status: string }
   /** count: 멸망의노래 카운트·비축 횟수처럼 숫자가 붙는 상태 */
-  | { type: 'volatile_apply'; pokemon_id: string; volatile: string; count?: number }
+  /** gmax: 거다이맥스 (dynamax), zeffect: 변화 Z기술의 추가 효과 (Z기충전 등) */
+  | { type: 'volatile_apply'; pokemon_id: string; volatile: string; count?: number; gmax?: boolean; zeffect?: boolean }
   | { type: 'volatile_remove';pokemon_id: string; volatile: string }
-  | { type: 'stat_change';    pokemon_id: string; stat: string; stages: number; actual?: number }
+  /** zeffect: 변화 Z기술의 추가 효과 (Z파워로 랭크 상승) */
+  | { type: 'stat_change';    pokemon_id: string; stat: string; stages: number; actual?: number; zeffect?: boolean }
   | { type: 'weather_change'; weather: Weather; source: string }
   | { type: 'terrain_change'; terrain: Terrain; source: string }
   | { type: 'side_start';     player: PlayerID; condition: SideCondition; layers?: number }

@@ -271,6 +271,10 @@ export class BattleEngine {
     private lastActive: Record<PlayerID, string[]> = { p1: [], p2: [] }
     private pendingHit = new Map<string, { crit?: boolean; eff?: number }>()
     private lastMove: { user: string; move: MoveData } | null = null
+    /** 방금 다이맥스가 시작·끝난 포켓몬 (이어지는 [silent] HP 줄은 최대 HP 변화) */
+    private dynamaxHp = ''
+    /** -zpower 를 낸 포켓몬 (이어지는 move 줄이 Z기술) */
+    private pendingZ = ''
     /** 턴 중 교체를 일으킨 아이템 (탈출버튼·탈출팩: 교체 줄에 [from] 이 없다) / 레드카드로 끌려 나올 쪽 */
     private switchItem: Partial<Record<PlayerID, string>> = {}
     /** 랭크를 직접 바꾼 줄(-setboost 등) 다음에 stat_set 을 낼 포켓몬 (줄이 쓰일 때 시뮬 상태가 아직 안 바뀌었을 수 있다) */
@@ -520,8 +524,11 @@ export class BattleEngine {
                     pp: 1, priority: 0, target: 'selected-pokemon', effect_chance: null, effect: '', meta: null, stat_changes: [],
                 } as MoveData)
                 this.lastMove = { user: this.idOf(user), move }
+                // 공격 Z기술: Showdown 은 [zeffect] 를 줄이 나간 뒤에 붙인다 (attrLastMove) → 바로 앞의 -zpower 로 안다
+                const zeffect = kw.includes('[zeffect]') || (!!this.pendingZ && this.pendingZ === this.idOf(user) && move.category !== 'status')
+                this.pendingZ = ''
                 this.pendingHit.clear() // 대타에 막힌 급소 등, 이전 기술의 플래그가 남지 않게
-                this.emit({ type: 'move_use', pokemon_id: this.idOf(user), move, target_id: this.idOf(this.resolve(pos[2])) })
+                this.emit({ type: 'move_use', pokemon_id: this.idOf(user), move, target_id: this.idOf(this.resolve(pos[2])), ...(zeffect ? { zeffect: true } : {}) })
                 return
             }
             case 'cant': {
@@ -549,7 +556,11 @@ export class BattleEngine {
                 const prev = this.lastHp.get(id) ?? p.maxhp
                 const now = Math.max(0, p.hp)
                 this.lastHp.set(id, now)
-                const source = from ? effectSlug(from) : cmd === '-sethp' ? 'pain-split' : (this.lastMove?.move.name ?? '')
+                // 다이맥스 시작·끝의 [silent] HP 줄 = 최대 HP 가 바뀐 것 (데미지·회복이 아니다)
+                const dynamaxHp = this.dynamaxHp === id && kw.includes('[silent]')
+                if (dynamaxHp) this.dynamaxHp = ''
+                const source = dynamaxHp ? 'dynamax' : kw.includes('[zeffect]') ? 'z-power'
+                    : from ? effectSlug(from) : cmd === '-sethp' ? 'pain-split' : (this.lastMove?.move.name ?? '')
                 if (now < prev) {
                     // 출처 없는 데미지 = 기술 명중. 단, 기술 사용자 자신이 받은 것(대타출동 비용 등)은 명중이 아니다
                     const isHit = !from && cmd === '-damage' && id !== this.lastMove?.user
@@ -594,12 +605,12 @@ export class BattleEngine {
             case '-boost':
             case '-unboost': {
                 const n = Number(pos[2] ?? 0) * (cmd === '-unboost' ? -1 : 1)
-                this.emit({ type: 'stat_change', pokemon_id: this.idOf(this.resolve(pos[0])), stat: STAT_FROM_PS[pos[1] ?? ''] ?? pos[1] ?? '', stages: n, actual: n })
+                this.emit({ type: 'stat_change', pokemon_id: this.idOf(this.resolve(pos[0])), stat: STAT_FROM_PS[pos[1] ?? ''] ?? pos[1] ?? '', stages: n, actual: n, ...(kw.includes('[zeffect]') ? { zeffect: true } : {}) })
                 return
             }
             case '-setboost': case '-clearboost': case '-clearallboost': case '-clearpositiveboost':
             case '-clearnegativeboost': case '-invertboost': case '-swapboost': case '-copyboost': {
-                this.emit({ type: 'activate', pokemon_id: this.idOf(this.resolve(pos[0])) || undefined, effect: cmd.slice(1) })
+                this.emit({ type: 'activate', pokemon_id: this.idOf(this.resolve(pos[0])) || undefined, effect: cmd.slice(1) + (kw.includes('[zeffect]') ? '-z' : '') })
                 // 바뀐 랭크는 숫자가 로그에 없다 → 다음 줄에서 stat_set 으로 알린다
                 const touched = cmd === '-clearallboost' ? SIDES.flatMap(s => this.battle[s].active)
                     : cmd === '-swapboost' || cmd === '-copyboost' ? [this.resolve(pos[0]), this.resolve(pos[1])] : [this.resolve(pos[0])]
@@ -687,7 +698,14 @@ export class BattleEngine {
                     ?? (effId.startsWith('protosynthesis') || effId.startsWith('quarkdrive') ? 'paradox_boost'
                         : effId.startsWith('stockpile') ? 'stockpile' : effId.startsWith('perish') ? 'perish_song' : toSlug(effRaw))
                 const count = cmd === '-start' && /^(perish|stockpile)\d$/.test(effId) ? Number(effId.slice(-1)) : undefined
-                if (cmd === '-start') this.emit({ type: 'volatile_apply', pokemon_id: this.idOf(p), volatile: key, ...(count !== undefined ? { count } : {}) })
+                if (effId === 'dynamax' && p) this.dynamaxHp = this.idOf(p)
+                if (cmd === '-start') {
+                    this.emit({
+                        type: 'volatile_apply', pokemon_id: this.idOf(p), volatile: key, ...(count !== undefined ? { count } : {}),
+                        ...(effId === 'dynamax' && toID(pos[2] ?? '') === 'gmax' ? { gmax: true } : {}),
+                        ...(kw.includes('[zeffect]') ? { zeffect: true } : {}),
+                    })
+                }
                 else this.emit({ type: 'volatile_remove', pokemon_id: this.idOf(p), volatile: key })
                 return
             }
@@ -764,6 +782,7 @@ export class BattleEngine {
                 return
             }
             case '-zpower':
+                this.pendingZ = this.idOf(this.resolve(pos[0]))
                 this.emit({ type: 'activate', pokemon_id: this.idOf(this.resolve(pos[0])), effect: 'z-power' })
                 return
             case '-zbroken':
@@ -795,6 +814,8 @@ export class BattleEngine {
                 const p = this.resolve(pos[0])
                 let reason = pos[1] ? toSlug(stripPrefix(pos[1])) : (cmd === '-notarget' ? 'no-target' : 'fail')
                 if (reason === 'move' || reason === '') reason = 'fail'
+                // 다이맥스 포켓몬은 끌어낼 수 없다 (울부짖기·날려버리기·레드카드)
+                if (cmd === '-block' && reason === 'dynamax') reason = 'dynamax-block'
                 this.emit({ type: 'move_fail', pokemon_id: this.lastMove?.user || this.idOf(p), move: this.lastMove?.move ?? getMove('struggle')!, reason })
                 return
             }
@@ -971,7 +992,9 @@ export class BattleEngine {
         const volatile_statuses: BattlePokemon['volatile_statuses'] = {}
         for (const [k, st] of Object.entries(p.volatiles)) {
             const key = (VOLATILE_FROM_PS[k] ?? (k.startsWith('protosynthesis') || k.startsWith('quarkdrive') ? 'paradox_boost' : k)) as keyof BattlePokemon['volatile_statuses']
-            volatile_statuses[key] = { turns_remaining: (st as { duration?: number }).duration ?? Infinity }
+            // 다이맥스는 duration 대신 turns 로 센다 (3 → 매 턴 끝에 1씩)
+            const turns = k === 'dynamax' ? (st as { turns?: number }).turns : undefined
+            volatile_statuses[key] = { turns_remaining: (st as { duration?: number }).duration ?? turns ?? Infinity }
         }
         const initialSpecies = speciesToShowdown(set.species)
         const species = p.species.id === initialSpecies ? set.species : speciesSlug(p.species.id)

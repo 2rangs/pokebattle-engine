@@ -159,7 +159,11 @@ new BattleEngine({ format: 'singles', gen: 7, p1, p2 })
 | 5–6 | singles, doubles, triples | |
 | 9 | singles, doubles, triples, rotation | `can_terastallize` → `terastallize` |
 
-Mechanics, the damage calculator and random-battle sets follow the chosen generation. Mega Evolution / Primal Reversion / Ultra Burst emit a `mega_evolve` event, Dynamax a `dynamax` volatile, Z-Power an `activate` event; all have log sentences.
+Mechanics, the damage calculator and random-battle sets follow the chosen generation. The log follows Showdown's wording for each gimmick:
+
+- **Mega Evolution / Primal Reversion / Ultra Burst** emit `forme_change` then `mega_evolve` (`kind: 'mega' | 'primal' | 'ultra'`). Mega and Ultra Burst read as two sentences, the reaction and the change: "Charizard's Charizardite X is reacting to the Key Stone! Charizard has Mega Evolved into Mega Charizard!", Rayquaza (no stone, needs Dragon Ascent) "…'s fervent wish has reached Rayquaza!", Necrozma "Bright light is about to burst out of Necrozma! … regained its true power through Ultra Burst!". Primal Reversion happens on its own when Kyogre / Groudon with their orb come in.
+- **Z-Moves:** `activate` `z-power` ("surrounded itself with its Z-Power!"), then a damaging Z-Move's `move_use` has `zeffect: true` ("unleashes its full-force Z-Move!"). Status Z-Move effects carry `zeffect: true` (`stat_change`, `volatile_apply`) or `source: 'z-power'` (`heal`) and have their own sentences ("boosted its Defense using its Z-Power!").
+- **Dynamax:** `volatile_apply` `dynamax` (`gmax: true` for Gigantamax), `turns_remaining` counts the 3 turns, `volatile_remove` when it ends ("returned to its normal size!"). The max-HP change at the start and end comes as `heal` / `damage` with `source: 'dynamax'` and no sentence. `PokemonSet.gigantamax` (Showdown `Gigantamax: Yes`, kept by random Gen 8 sets) turns Dynamax into Gigantamax and Max Moves into G-Max Moves.
 
 ### Random battles
 

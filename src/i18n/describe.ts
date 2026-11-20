@@ -49,7 +49,11 @@ export function describeEvent(event: BattleEvent, ctx: FormatContext): Message[]
         case 'battle_start':    return [m('battle.start', { p1: { text: event.p1 }, p2: { text: event.p2 } })]
         case 'turn_start':      return [m('turn.start', { turn: event.turn })]
         case 'turn_end':        return null
-        case 'move_use':        return [m('move.use', { pokemon: { pokemon: event.pokemon_id }, move: { move: event.move.name } })]
+        case 'move_use': {
+            const use = m('move.use', { pokemon: { pokemon: event.pokemon_id }, move: { move: event.move.name } })
+            // 공격 Z기술: "전력의 Z기술을 펼친다!" 가 먼저 (Showdown zEffect)
+            return event.zeffect ? [m('move.zeffect', { pokemon: { pokemon: event.pokemon_id } }), use] : [use]
+        }
         case 'move_miss':
             return [event.target_id ? m('move.miss.target', { pokemon: { pokemon: event.target_id } }) : m('move.miss')]
         case 'move_fail': {
@@ -68,6 +72,7 @@ export function describeEvent(event: BattleEvent, ctx: FormatContext): Message[]
             }
             return [m('cant', { pokemon: { pokemon: event.pokemon_id } }, event.reason)]
         case 'damage': {
+            if (event.source === 'dynamax') return null
             const pokemon = { pokemon: event.pokemon_id }
             if (event.source === 'substitute' && event.amount === 0) {
                 return [...(event.crit ? [m('damage.crit')] : []), m('damage.substitute', { pokemon })]
@@ -85,6 +90,9 @@ export function describeEvent(event: BattleEvent, ctx: FormatContext): Message[]
             return out
         }
         case 'heal': {
+            // 다이맥스 시작·끝: 최대 HP 가 바뀐 것뿐 (Showdown 도 [silent])
+            if (event.source === 'dynamax') return null
+            if (event.source === 'z-power') return [m('heal.zeffect', { pokemon: { pokemon: event.pokemon_id } })]
             const params = { pokemon: { pokemon: event.pokemon_id }, amount: event.amount }
             return [event.source ? m('heal.from', { ...params, effect: { effect: event.source } }) : m('heal', params)]
         }
@@ -104,11 +112,16 @@ export function describeEvent(event: BattleEvent, ctx: FormatContext): Message[]
             const key = event.type === 'volatile_apply' ? 'volatile.start' : 'volatile.end'
             const params: Message['params'] = { pokemon: { pokemon: event.pokemon_id }, volatile: { effect: event.volatile } }
             if (event.type === 'volatile_apply' && event.count !== undefined) params.count = event.count
+            // 거다이맥스 / Z파워로 생긴 상태 (Z기충전 등)는 전용 문장
+            const variant = event.type === 'volatile_apply' && event.gmax ? `${event.volatile}.gmax`
+                : event.type === 'volatile_apply' && event.zeffect ? `${event.volatile}.zeffect` : event.volatile
+            if (variant !== event.volatile) return [m([`${key}.${variant}`, key], params, event.volatile)]
             return [m(key, params, event.volatile)]
         }
         case 'stat_change': {
             const params = { pokemon: { pokemon: event.pokemon_id }, stat: { term: 'stat' as const, key: event.stat } }
             const actual = event.actual ?? event.stages
+            if (event.zeffect && actual > 0) return [m('stat.zeffect', params, actual >= 3 ? '3' : actual === 2 ? '2' : undefined)]
             if (actual === 0) return [m(event.stages > 0 ? 'stat.up.max' : 'stat.down.min', params)]
             const n = Math.abs(actual)
             return [m(actual > 0 ? 'stat.up' : 'stat.down', params, n >= 3 ? '3' : n === 2 ? '2' : undefined)]
@@ -167,10 +180,17 @@ export function describeEvent(event: BattleEvent, ctx: FormatContext): Message[]
         case 'mega_evolve': {
             // 로그 순서상 이미 바뀐 폼이므로 문장의 포켓몬은 진화 전 종 이름으로 (리자몽은 메가리자몽X로 메가진화했다!)
             const base = getSpecies(event.species)?.species_name
-            return [m('mega', {
-                pokemon: { pokemon: event.pokemon_id, ...(base ? { species: base } : {}) }, form: { species: event.species },
+            const pokemon = { pokemon: event.pokemon_id, ...(base ? { species: base } : {}) }
+            const done = m('mega', {
+                pokemon, form: { species: event.species }, ...(base ? { base: { species: base } } : {}),
                 ...(event.item ? { item: { item: event.item } } : {}),
-            }, event.kind)]
+            }, event.kind)
+            if (event.kind === 'primal') return [done]
+            // 게임처럼 두 문장: 반응 → 변신 (Showdown: mega / megaNoItem / 레쿠쟈 dragonascent.megaNoItem, 울트라네크로Z transform)
+            const side = { side: (event.pokemon_id.startsWith('p2') ? 'p2' : 'p1') as PlayerID }
+            const variant = event.kind === 'ultra' ? 'ultra' : base === 'rayquaza' ? 'rayquaza' : event.item ? undefined : 'noitem'
+            const react = m('mega.react', { pokemon, side, ...(event.item ? { item: { item: event.item } } : {}) }, variant)
+            return [react, done]
         }
         case 'hit_count':       return [m('hits', { count: event.hits })]
         case 'activate': {

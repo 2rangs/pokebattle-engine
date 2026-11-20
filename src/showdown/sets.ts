@@ -113,6 +113,7 @@ export function toShowdownSet(set: PokemonSet, strict = true): PSSet {
         shiny:    !!set.shiny,
         teraType,
         happiness: 255,
+        ...(set.gigantamax ? { gigantamax: true } : {}),
     } as PSSet
 }
 
@@ -133,5 +134,6 @@ export function fromShowdownSet(ps: PSSet): PokemonSet {
         ivs:      fromStatsTable(ps.ivs, 31),
         teraType: ps.teraType ? toID(ps.teraType) : undefined,
         shiny:    ps.shiny || undefined,
+        ...(ps.gigantamax ? { gigantamax: true } : {}),
     }
 }
