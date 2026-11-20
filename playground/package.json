@@ -9,7 +9,9 @@
     "prebuild": "test -f ../dist/index.js || npm --prefix .. run build",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "pretest": "test -f ../dist/index.js || npm --prefix .. run build",
+    "test": "node ../node_modules/vitest/vitest.mjs run"
   },
   "dependencies": {
     "@astryxdesign/core": "^0.7.16",

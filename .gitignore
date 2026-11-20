@@ -13,6 +13,7 @@ node_modules/
 dist/
 build/
 lib/
+!playground/src/battle/lib/
 
 # TypeScript
 *.tsbuildinfo
