@@ -202,9 +202,9 @@ function ReplayViewer({ data, sim }: { data: ReplayData; sim: SimulatedReplay })
           <TeamsPanel frame={f} both revealFoe={spectating} sideName={sideName} />
           <SummaryPanel frame={f} hideFoe={!spectating} sideName={sideName} />
           <BattleLog frames={sim.frames} revealed={cursor} sideName={sideName} defaultOpen={!isNarrow()} />
-          <Credits />
         </div>
       </aside>
+      <Credits />
     </div>
   )
 }

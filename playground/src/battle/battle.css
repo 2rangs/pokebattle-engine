@@ -473,12 +473,12 @@
 .bd-panel > summary::-webkit-details-marker { display: none; }
 .bd-panel > :not(summary):not(.bd-panel-head) { margin: 0 14px 12px; }
 .bd-panel-body { min-height: 0; overflow: auto; overscroll-behavior: contain; }
-.bd-panel.bd-teams-panel > .bd-panel-body { max-height: 300px; }
+.bd-panel.bd-teams-panel > .bd-panel-body { max-height: 200px; }
 .bd-panel.bd-summary-panel > .bd-panel-body { max-height: 240px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .bd-panel.is-grow.is-open { flex: 1 1 0; min-height: 140px; }
 .bd-panel.is-grow > .bd-panel-body { flex: 1; display: flex; flex-direction: column; overflow: hidden; margin-right: 4px; }
 .bd-summary { margin: 0; white-space: pre-wrap; word-break: break-word; font: 12.5px/1.6 var(--font-family-code); color: var(--ink-2); }
-.bd-side-inner > .bd-credits { flex: none; margin-top: auto; }
+.bd-battle > .bd-credits { grid-column: 1 / -1; }
 
 /* 팀 목록 (옆 패널) */
 .bd-teams { display: grid; gap: 10px; }
@@ -521,10 +521,9 @@
   .bd-battle { grid-template-columns: minmax(0, 1fr); }
   /* 패널은 게임 아래에 쌓이고, 펼치면 고정 높이 안에서 스크롤 */
   .bd-side-inner { position: static; overflow: visible; }
-  .bd-log-panel > .bd-panel-body { height: 40vh; flex: none; }
+  .bd-panel.is-grow.bd-log-panel > .bd-panel-body { height: 40vh; flex: none; }
   .bd-panel.bd-summary-panel > .bd-panel-body { height: 40vh; max-height: none; }
   .bd-panel.bd-teams-panel > .bd-panel-body { max-height: none; }
-  .bd-side-inner > .bd-credits { margin-top: 4px; }
   .bd-slots { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .bd-preview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .bd-party-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

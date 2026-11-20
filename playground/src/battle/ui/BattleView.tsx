@@ -118,9 +118,9 @@ export function BattleView({ session, onExit, onRematch }: { session: BattleSess
           <TeamsPanel frame={f} both={spectating} revealFoe={spectating} sideName={sideName} />
           <SummaryPanel frame={f} hideFoe={!spectating} sideName={sideName} />
           <BattleLog frames={session.frames} revealed={session.revealed} sideName={sideName} defaultOpen={logOpen} />
-          <Credits />
         </div>
       </aside>
+      <Credits />
     </div>
   )
 }
