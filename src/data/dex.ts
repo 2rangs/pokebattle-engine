@@ -3,8 +3,9 @@
 // 도감 슬러그·한국어 이름: PokeAPI (src/data/pokeapi.json, scripts/fetch-pokeapi.ts 로 생성)
 import { Dex, toID } from '@pkmn/sim'
 import type { Stats } from '../types/pokemon'
+import type { Generation } from '../types/battle'
 import type { MoveData, MoveTarget, MoveCategory } from '../types/move'
-import { speciesToShowdown, moveToShowdown, toSlug } from '../showdown/ids'
+import { speciesToShowdown, moveToShowdown, itemToShowdown, toSlug } from '../showdown/ids'
 import pokeapi from './pokeapi.json'
 import { loadRandoms, loadLearnsets, getRandoms, learnsetsLoaded, loadGen, genLoaded } from './lazy'
 
@@ -218,6 +219,109 @@ export function getTypeChart(): Record<string, Record<string, number>> {
         }
     }
     return chart
+}
+
+// ─── 기술표 · 도구 목록 (팀 편집기용) ──────────────────────────
+function dexFor(gen: Generation, what: string) {
+    if (gen === 9) return Dex
+    if (!genLoaded(gen)) throw new Error(`${what}: ${gen}세대 데이터가 필요합니다 — 먼저 await preloadData({ gens: [${gen}] }) 를 호출하세요`)
+    return Dex.forGen(gen)
+}
+
+const learnsetCache = new Map<string, string[]>()
+
+/**
+ * 이 종이 그 세대에 배울 수 있는 기술 (PokeAPI 기술 슬러그, 가나다가 아닌 슬러그 알파벳순).
+ *
+ * Showdown 팀 검증기와 같은 규칙(`Dex.species.getMovePool`)으로 모은다:
+ *  - 종 자신의 기술표 + 진화 전(prevo) 사슬 (알·레벨·기술머신·이벤트 등 출처 무관)
+ *  - 기술표가 따로 없는 폼(메가·거다이맥스·리전 폼이 아닌 배틀 폼 등)은 기본 폼의 기술표, 바꿀 수 있는 폼(로토무·네크로즈마)은 기본 폼 기술표도 더한다
+ *  - 9세대: 9세대 출처가 있는 기술만 (HOME 이 기술을 지운다). 1~8세대: 그 세대 이하 출처 (세대 이동 포함)
+ *  - 그 세대에 없는 기술(isNonstandard)은 뺀다. 루브도의 스케치는 스케치할 수 있는 모든 기술
+ * 같은 세트 안의 기술끼리 함께 배울 수 있는지(이벤트 전용 조합 등)는 보지 않는다.
+ *
+ * 기술표는 무거워서 따로 불러온다: 먼저 `await preloadData()` (1~8세대는 `preloadData({ gens: [n] })`). 안 불렀으면 오류를 던진다.
+ * 모르는 종이면 오류를 던진다.
+ */
+export function getLearnset(species: string, opts: { gen?: Generation } = {}): string[] {
+    const gen = opts.gen ?? 9
+    if (!learnsetsLoaded()) throw new Error('getLearnset: 기술표가 필요합니다 — 먼저 await preloadData() 를 호출하세요')
+    const dex = dexFor(gen, 'getLearnset')
+    const sp = dex.species.get(speciesToShowdown(species))
+    if (!sp.exists) throw new Error(`getLearnset: 알 수 없는 포켓몬: ${species}`)
+    const key = `${gen}:${sp.id}`
+    const hit = learnsetCache.get(key)
+    if (hit) return [...hit]
+    const out: string[] = []
+    for (const id of dex.species.getMovePool(sp.id)) {
+        const m = dex.moves.get(id)
+        if (!m.exists || m.isNonstandard || m.isZ || m.isMax) continue
+        out.push(moveSlug(m.id))
+    }
+    out.sort()
+    learnsetCache.set(key, out)
+    return [...out]
+}
+
+export interface ItemData {
+    /** PokeAPI 슬러그 (아이콘: sprites/items/{name}.png) */
+    name:      string
+    showdown:  string
+    /** Showdown 도구 번호 */
+    num:       number
+    /** 효과 한 줄 설명 (영어, Showdown) */
+    effect:    string
+    nameKo:    string | null
+    /** 나무열매 */
+    berry:     boolean
+    /** 메가스톤 → 메가진화하는 폼 슬러그 */
+    megaStone?: string
+    /** Z크리스탈 */
+    zCrystal?: boolean
+    /** 던지기(fling) 위력 */
+    flingPower?: number
+}
+
+const itemCache = new Map<string, ItemData | undefined>()
+
+function toItemData(it: ReturnType<typeof Dex.items.get>): ItemData {
+    const slug = itemSlug(it.id)
+    const mega = it.megaStone && Object.values(it.megaStone)[0]
+    return {
+        name: slug, showdown: it.name, num: it.num, effect: it.shortDesc || it.desc, nameKo: koName.item(slug),
+        berry: !!it.isBerry,
+        ...(mega ? { megaStone: speciesSlug(mega) } : {}),
+        ...(it.zMove ? { zCrystal: true } : {}),
+        ...(it.fling?.basePower ? { flingPower: it.fling.basePower } : {}),
+    }
+}
+
+/** 도구 하나 (PokeAPI 슬러그 / Showdown 이름 / ID). 없으면 undefined */
+export function getItem(name: string): ItemData | undefined {
+    if (itemCache.has(name)) return itemCache.get(name)
+    const it = Dex.items.get(itemToShowdown(name))
+    const out = it.exists ? toItemData(it) : undefined
+    itemCache.set(name, out)
+    return out
+}
+
+const itemListCache = new Map<number, ItemData[]>()
+
+/**
+ * 배틀에서 지니게 할 수 있는 도구 (그 세대에 있는 것: isNonstandard 제외, 몬스터볼 제외). 이름(영어)순.
+ * 9세대는 바로 쓸 수 있고, 1~8세대는 `preloadData({ gens: [n] })` 가 필요하다 (메가스톤·Z크리스탈 등).
+ */
+export function listItems(opts: { gen?: Generation } = {}): ItemData[] {
+    const gen = opts.gen ?? 9
+    const hit = itemListCache.get(gen)
+    if (hit) return [...hit]
+    const dex = dexFor(gen, 'listItems')
+    const out = dex.items.all()
+        .filter(it => it.exists && !it.isNonstandard && !it.isPokeball && it.num > 0)
+        .map(toItemData)
+        .sort((a, b) => a.showdown.localeCompare(b.showdown))
+    itemListCache.set(gen, out)
+    return [...out]
 }
 
 /** 하위 호환: 이제 데이터는 동기적으로 사용 가능 */

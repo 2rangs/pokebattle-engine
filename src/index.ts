@@ -10,11 +10,11 @@ export type { ReplayOptions } from './engine/replay'
 
 // 데이터
 export {
-    getSpecies, getMove, listSpecies, listMoves, getTypeChart, preloadData, isDataLoaded,
+    getSpecies, getMove, listSpecies, listMoves, getTypeChart, preloadData, isDataLoaded, getLearnset, getItem, listItems,
     speciesSlug, moveSlug, abilitySlug, itemSlug, koName, getPokeApiSpecies, listPokeApiSpecies,
     STAT_FROM_PS, STAT_TO_PS,
 } from './data/dex'
-export type { SpeciesData } from './data/dex'
+export type { SpeciesData, ItemData } from './data/dex'
 export {
     speciesToShowdown, moveToShowdown, abilityToShowdown, itemToShowdown, natureToShowdown, typeToShowdown, toSlug,
 } from './showdown/ids'

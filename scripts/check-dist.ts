@@ -22,6 +22,9 @@ if (dist.isDataLoaded()) throw new Error('isDataLoaded() should be false before 
 let threw = false
 try { dist.generateRandomTeam({ seed: 1 }) } catch { threw = true }
 if (!threw) throw new Error('generateRandomTeam should ask for preloadData() first')
+threw = false
+try { dist.getLearnset('garchomp') } catch (e) { threw = /preloadData/.test((e as Error).message) }
+if (!threw) throw new Error('getLearnset should ask for preloadData() first')
 await dist.preloadData()
 if (!dist.isDataLoaded()) throw new Error('isDataLoaded() should be true after preloadData()')
 
@@ -36,6 +39,12 @@ for (const id of species) {
     if (a !== b && ++learnMismatch <= 3) console.error(`LEARNSET MISMATCH ${id}\n  dist ${a}\n  src  ${b}`)
 }
 console.log(`generateRandomSet: ${species.length} species, ${learnMismatch} mismatches`)
+// getLearnset (팀 편집기 기술 목록): 번들 == 소스
+for (const id of species) {
+    const a = JSON.stringify(dist.getLearnset(id)), b = JSON.stringify(src.getLearnset(id))
+    if (a !== b && ++learnMismatch <= 6) console.error(`getLearnset MISMATCH ${id}`)
+}
+console.log(`getLearnset: ${species.length} species compared`)
 
 const comparable = (log: readonly string[]) => log.filter(l => !l.startsWith('|t:|')).join('\n')
 let mismatches = 0, turns = 0
@@ -87,6 +96,11 @@ let guarded = false
 try { new dist.BattleEngine({ format: 'singles', gen: 7, p1: { name: 'a', team: [] }, p2: { name: 'b', team: [] } }) } catch (e) { guarded = /preloadData/.test((e as Error).message) }
 if (!guarded) { genFail++; console.error('gen 7 battle before preloadData({ gens: [7] }) should ask for it') }
 await dist.preloadData({ gens: [1, 2, 3, 4, 5, 6, 7, 8] })
+await src.preloadData({ gens: [7] })
+for (const id of ['garchomp', 'charizard', 'rotomwash', 'ninetalesalola', 'pikachu']) {
+    if (JSON.stringify(dist.getLearnset(id, { gen: 7 })) !== JSON.stringify(src.getLearnset(id, { gen: 7 }))) { genFail++; console.error(`gen7 getLearnset MISMATCH ${id}`) }
+}
+if (JSON.stringify(dist.listItems({ gen: 7 })) !== JSON.stringify(src.listItems({ gen: 7 }))) { genFail++; console.error('gen7 listItems MISMATCH') }
 const PER_GEN = Math.max(10, Math.round(N / 6))
 for (let gen = 1; gen <= 8; gen++) {
     let bad = 0, gTurns = 0, gimmicks = 0

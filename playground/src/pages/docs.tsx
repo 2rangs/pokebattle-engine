@@ -393,8 +393,8 @@ await preloadData({ gens: [8] })    // ${t('8세대 배틀 전에 (9세대는 �
         <ApiRun id="describe" />
         <H2>{t('이름은 데이터에서', 'Names come from data')}</H2>
         <P>{t(
-          <>포켓몬·기술·특성·도구·타입·성격 이름은 PokeAPI 데이터(영어는 Showdown 이름)입니다. 스텔스록·트릭룸·도발처럼 기술·특성 이름과 같은 상태 이름도 따로 번역하지 않고 그 이름을 씁니다. 이름 팩: <C>ko, en, ja, zh-hans, zh-hant, fr, de, es, it</C> (ko·en 외에는 <C>await loadNames(code)</C>로 필요할 때).</>,
-          <>Pokémon, move, ability, item, type and nature names come from PokeAPI (Showdown names for English). Conditions named after a move or ability (Stealth Rock, Trick Room, Taunt …) reuse that name instead of a separate translation. Name packs: <C>ko, en, ja, zh-hans, zh-hant, fr, de, es, it</C> (anything but ko and en loads with <C>await loadNames(code)</C>).</>,
+          <>포켓몬·기술·특성·도구·타입·성격 이름은 PokeAPI 데이터(영어는 Showdown 이름)입니다. 스텔스록·트릭룸·도발처럼 기술·특성 이름과 같은 상태 이름도 따로 번역하지 않고 그 이름을 씁니다. 이름 팩: <C>ko, en, ja, zh-hans, zh-hant, fr, de, es, it</C> (ko·en 외에는 <C>await loadNames(code)</C>로 필요할 때). 폼은 폼 이름으로: 워시로토무, 메가리자몽X, 나인테일 (알로라의 모습).</>,
+          <>Pokémon, move, ability, item, type and nature names come from PokeAPI (Showdown names for English). Conditions named after a move or ability (Stealth Rock, Trick Room, Taunt …) reuse that name instead of a separate translation. Name packs: <C>ko, en, ja, zh-hans, zh-hant, fr, de, es, it</C> (anything but ko and en loads with <C>await loadNames(code)</C>). Forms get their form name: 워시로토무 / ウォッシュロトム for rotom-wash (English keeps Showdown's Rotom-Wash).</>,
         )}</P>
         <H2>{t('옵션', 'Options')}</H2>
         <Snippet code={`const log = createFormatter({
@@ -735,6 +735,9 @@ new BattleEngine({ format: 'singles', gen: 7, p1, p2 })`} />
           rows={[
             [<C>getSpecies(name) / getMove(name)</C>, t('엔진 형식 데이터 (한국어 이름 포함). 슬러그·Showdown 이름·ID 모두 허용', 'Engine-format data with Korean names. Slugs, Showdown names and IDs all work')],
             [<C>listSpecies() / listMoves()</C>, t('전체 목록', 'Full lists')],
+            [<C>getLearnset(species, {'{'} gen? {'}'})</C>, t('그 세대에 배울 수 있는 기술 슬러그 (Showdown 검증기 규칙: 진화 전·기본 폼 기술 포함). 먼저 await preloadData()', 'Move slugs the species can learn in that gen (Showdown validator rules: prevos and base forme included). Needs await preloadData() first')],
+            [<C>listItems({'{'} gen? {'}'}) / getItem(name)</C>, t('지닐 수 있는 도구 (몬스터볼·그 세대에 없는 도구 제외): 슬러그·한국어 이름·효과·메가스톤', 'Holdable items (no Poké Balls or items missing from that gen): slug, Korean name, effect, Mega Stone')],
+            [<C>getSpecies(name).abilities</C>, t('특성 목록 ({ name, hidden, slot }, 숨겨진 특성 포함)', 'Abilities ({ name, hidden, slot }, hidden ability included)')],
             [<C>getTypeChart()</C>, t('타입 상성표', 'Type chart')],
             [<C>koName.species | move | ability | item | type | nature</C>, t('PokeAPI 한국어 이름 (없으면 null)', 'Korean name from PokeAPI (null if missing)')],
             [<C>speciesSlug(id) / moveSlug / abilitySlug / itemSlug</C>, t('Showdown → PokeAPI 슬러그', 'Showdown → PokeAPI slug')],
