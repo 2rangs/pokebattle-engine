@@ -1433,13 +1433,17 @@ export class BattleEngine {
     }
 
     // ─── 데미지 미리보기 (@smogon/calc) ─────────────────────────
-    private calcInput(p: PSPokemon, tera = false): CalcPokemonInput {
+    private calcInput(p: PSPokemon, tera = false, form?: { species: string; dynamaxed?: boolean | 'gmax' }): CalcPokemonInput {
+        // 메가진화·울트라버스트를 미리 보면 그 폼의 종·특성
+        const formSpecies = form && form.species !== p.species.name ? Dex.species.get(form.species) : null
+        const dynamaxed = form?.dynamaxed ?? (p.volatiles['dynamax'] ? (p.gigantamax && p.canGigantamax ? 'gmax' : true) : undefined)
         const boostedVol = Object.keys(p.volatiles).find(k => k.startsWith('protosynthesis') || k.startsWith('quarkdrive'))
         return {
-            species: p.species.name,
+            species: formSpecies?.exists ? formSpecies.name : p.species.name,
             level: p.level,
             nature: p.set.nature,
-            ability: p.ability,
+            ability: formSpecies?.exists ? formSpecies.abilities['0'] : p.ability,
+            ...(dynamaxed ? { dynamaxed } : {}),
             item: p.item || null,
             evs: p.set.evs as never,
             ivs: p.set.ivs as never,
@@ -1464,7 +1468,10 @@ export class BattleEngine {
      * 현재 필드 상태로 데미지 미리보기 (singles / rotation 의 앞 포켓몬끼리).
      * moveIndex 는 현재 포켓몬의 기술 슬롯.
      */
-    previewDamage(player: PlayerID, moveIndex: number, opts: { terastallize?: boolean } = {}): DamageResult | null {
+    previewDamage(
+        player: PlayerID, moveIndex: number,
+        opts: { terastallize?: boolean; mega?: boolean; ultra_burst?: boolean; zmove?: boolean; dynamax?: boolean } = {},
+    ): DamageResult | null {
         this.start()
         const user = this.battle[player].active[this.frontSlot]
         const foe = this.battle[this.foeOf(player)].active[this.frontSlot]
@@ -1473,8 +1480,16 @@ export class BattleEngine {
         const move = Dex.moves.get(slot.id)
         if (move.category === 'Status') return null
         const foeSide = this.battle[this.foeOf(player)].sideConditions
+        // 기믹을 고른 경우: 메가·울트라 폼, Z기술, 다이맥스(거다이맥스) 기술로 계산
+        const actions = this.battle.actions as unknown as { canMegaEvo(p: PSPokemon): string | null; canUltraBurst(p: PSPokemon): string | null }
+        const formName = (opts.mega && actions.canMegaEvo(user)) || (opts.ultra_burst && actions.canUltraBurst(user)) || user.species.name
+        const maxing = !!opts.dynamax || !!user.volatiles['dynamax']
+        const gmax = maxing && user.gigantamax && user.canGigantamax ? user.canGigantamax : null
+        const form = { species: formName, ...(opts.dynamax ? { dynamaxed: gmax ? 'gmax' as const : true } : {}) }
         try {
-            return calculateDamage(this.calcInput(user, !!opts.terastallize), this.calcInput(foe), move.id, {
+            return calculateDamage(this.calcInput(user, !!opts.terastallize, form), this.calcInput(foe), move.id, {
+                zMove: !!opts.zmove,
+                maxMove: maxing ? gmax ?? true : false,
                 gen: this.gen,
                 weather: this.effectiveWeather(),
                 terrain: TERRAIN_FROM_PS[this.battle.field.terrain as string] ?? null,

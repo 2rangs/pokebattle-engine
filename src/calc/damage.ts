@@ -2,11 +2,11 @@
 // 입력은 PokeAPI 슬러그 / Showdown 이름 모두 허용한다.
 import { calculate, Field, Generations, Move, Pokemon, Side } from '@smogon/calc'
 import type { State } from '@smogon/calc'
-import { Dex } from '@pkmn/sim'
+import { Dex, toID } from '@pkmn/sim'
 import type { EVs, IVs, StatStages, Stats } from '../types/pokemon'
 import type { Weather, Terrain } from '../types/effect'
 import { speciesToShowdown, moveToShowdown, abilityToShowdown, itemToShowdown, natureToShowdown, typeToShowdown } from '../showdown/ids'
-import { STAT_TO_PS } from '../data/dex'
+import { STAT_TO_PS, moveSlug } from '../data/dex'
 
 /** 세대별 계산기 데이터 (기본 9세대) */
 const genOf = (n = 9) => Generations.get(n as never)
@@ -33,6 +33,8 @@ export interface CalcPokemonInput {
     alliesFainted?: number
     /** 고대활성/쿼크차지로 오른 스탯 */
     boostedStat?: 'atk' | 'def' | 'spa' | 'spd' | 'spe' | 'auto'
+    /** 다이맥스 중 (HP 2배, 'gmax' = 거다이맥스) */
+    dynamaxed?: boolean | 'gmax'
     /** 실수치 직접 지정 (자유 능력치). 지정한 스탯은 계산식 대신 이 값 (랭크·도구 보정은 그대로 적용) */
     stats?:    Partial<Stats>
 }
@@ -57,6 +59,10 @@ export interface CalcFieldInput {
     isCrit?:      boolean
     doubles?:     boolean
     hits?:        number
+    /** 공격 측이 Z기술로 쓴다 (7세대, 도구의 Z크리스탈에 맞는 전용 Z기술 포함) */
+    zMove?:       boolean
+    /** 공격 측이 다이맥스 기술로 쓴다 (8세대). 문자열이면 그 거다이맥스 기술 (예: 'G-Max Wildfire') */
+    maxMove?:     boolean | string
 }
 
 export interface DamageResult {
@@ -79,6 +85,8 @@ export interface DamageResult {
     moveType:      string
     category:      'physical' | 'special' | 'status'
     basePower:     number
+    /** 실제로 쓰는 기술 (Z기술·다이맥스 기술이면 그 기술의 PokeAPI 슬러그) */
+    moveName:      string
     effectiveness: number
     isSTAB:        boolean
 }
@@ -145,6 +153,7 @@ export function toCalcPokemon(input: CalcPokemonInput, genNum = 9): Pokemon {
     }
     if (ability?.exists) opts.ability = ability.name as never
     if (item?.exists) opts.item = item.name as never
+    if (input.dynamaxed) opts.isDynamaxed = input.dynamaxed
     if (input.terastallized && input.teraType) opts.teraType = typeToShowdown(input.teraType) as never
     const p = new Pokemon(gen, species.name, opts)
     if (input.stats) {
@@ -209,7 +218,11 @@ export function calculateDamage(
     const def = defender instanceof Pokemon ? defender : toCalcPokemon(defender, field.gen)
     const moveData = Dex.moves.get(moveToShowdown(move))
     if (!moveData.exists) throw new Error(`알 수 없는 기술: ${move}`)
-    const m = new Move(gen, moveData.name as never, { isCrit: !!field.isCrit, hits: field.hits })
+    const m = new Move(gen, moveData.name as never, {
+        isCrit: !!field.isCrit, hits: field.hits,
+        ...(field.zMove ? { useZ: true, item: atk.item } : {}),
+        ...(field.maxMove ? { useMax: true, ability: atk.ability, ...(typeof field.maxMove === 'string' ? { overrideMove: field.maxMove } : {}) } : {}),
+    } as never)
     const result = calculate(gen, atk, def, m, toCalcField(field))
 
     const raw = result.damage as number | number[] | number[][]
@@ -252,6 +265,8 @@ export function calculateDamage(
         moveType: m.type.toLowerCase(),
         category: m.category.toLowerCase() as DamageResult['category'],
         basePower: m.bp,
+        // PokeAPI 는 Z기술을 물리·특수로 나눈다 (gigavolt-havoc--physical / --special)
+        moveName: moveSlug(toID(m.name)).replace(/--(physical|special)$/, `--${m.category.toLowerCase()}`),
         effectiveness: max > 0 ? eff : 0,
         isSTAB: (atk.types as string[]).includes(m.type) || atk.teraType === m.type,
     }

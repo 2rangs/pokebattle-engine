@@ -191,3 +191,28 @@ describe('다이맥스·거다이맥스', () => {
         expect(found!.species).not.toMatch(/-gmax$/)
     })
 })
+
+describe('데미지 미리보기: 기믹을 고른 경우', () => {
+    it('Z기술·다이맥스·거다이맥스·메가진화의 기술과 위력', () => {
+        const z = battle(7, 'Pikachu @ Pikanium Z\nAbility: Static\n- Volt Tackle\n- Thunderbolt')
+        expect(z.e.previewDamage('p1', 0, { zmove: true })).toMatchObject({ moveName: 'catastropika', basePower: 210 })
+        expect(z.e.previewDamage('p1', 0)).toMatchObject({ moveName: 'volt-tackle', basePower: 120 })
+        const zt = battle(7, 'Raichu @ Electrium Z\nAbility: Static\n- Thunderbolt')
+        expect(zt.e.previewDamage('p1', 0, { zmove: true })).toMatchObject({ moveName: 'gigavolt-havoc--special', basePower: 175 })
+
+        const d = battle(8, 'Charizard\nAbility: Blaze\n- Flamethrower')
+        expect(d.e.previewDamage('p1', 0, { dynamax: true })).toMatchObject({ moveName: 'max-flare', basePower: 130 })
+        const g = battle(8, 'Charizard\nAbility: Blaze\nGigantamax: Yes\n- Flamethrower')
+        expect(g.e.previewDamage('p1', 0, { dynamax: true })).toMatchObject({ moveName: 'g-max-wildfire', basePower: 130 })
+        // 다이맥스 중에는 고르지 않아도 다이맥스 기술
+        g.turn({ dynamax: true })
+        expect(g.e.previewDamage('p1', 0)).toMatchObject({ moveName: 'g-max-wildfire' })
+
+        const m = battle(7, 'Charizard @ Charizardite X\nAbility: Blaze\n- Dragon Claw')
+        const base = m.e.previewDamage('p1', 0)!
+        const mega = m.e.previewDamage('p1', 0, { mega: true })!
+        expect(mega.isSTAB).toBe(true)
+        expect(base.isSTAB).toBe(false)
+        expect(mega.max).toBeGreaterThan(base.max)
+    })
+})
