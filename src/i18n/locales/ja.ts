@@ -379,7 +379,7 @@ export const ja: Locale = {
         'ability': '［{pokemon}の {ability}］',
         'item.consume': '{pokemon}は {item}を 使った！',
         'item.activate': '{pokemon}の {item}が 発動した！',
-        'mega': '{pokemon}は メガシンカした！',
+        'mega': '{pokemon}は {form}に メガシンカした！',
         'mega.primal': '{pokemon}の ゲンシカイキ！ 原始の 姿を 取り戻した！',
         'mega.ultra': '{pokemon}は ウルトラバーストした！',
         'volatile.start.dynamax': '{pokemon}は ダイマックスした！',

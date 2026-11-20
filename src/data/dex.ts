@@ -19,6 +19,8 @@ const API = pokeapi as unknown as {
     species: PokeApiSpecies[]
     moves: KoMap; abilities: KoMap; items: KoMap
     types: Record<string, string | null>; natures: Record<string, string | null>
+    /** 폼 슬러그 → 한국어 폼 이름 (워시로토무, 나인테일 (알로라의 모습)). 기본 모습은 없음 */
+    forms: Record<string, string>
 }
 
 const SPECIES_BY_SLUG = new Map<string, PokeApiSpecies>()
@@ -67,9 +69,12 @@ export function itemSlug(psIdOrName: string): string {
 
 // ─── 한국어 이름 ─────────────────────────────────────────────
 export const koName = {
+    /** 폼이면 폼 이름 (rotom-wash → 워시로토무), 아니면 종 이름 */
     species: (slug: string): string | null => {
+        const form = API.forms[slug]
+        if (form) return form
         const s = SPECIES_BY_SLUG.get(slug) ?? SPECIES_BY_SLUG.get(speciesSlug(speciesToShowdown(slug)))
-        return s?.ko ?? null
+        return (s && API.forms[s.slug]) ?? s?.ko ?? null
     },
     move:    (slug: string): string | null => API.moves[slug]?.ko ?? API.moves[moveSlug(moveToShowdown(slug))]?.ko ?? null,
     ability: (slug: string): string | null => API.abilities[slug]?.ko ?? API.abilities[abilitySlug(slug)]?.ko ?? null,
@@ -102,6 +107,7 @@ export interface SpeciesData {
     weight:       number     // hg (PokeAPI 단위)
     height:       number     // dm
     tier?:        string
+    /** 한국어 이름 (폼은 폼 이름: 워시로토무, 나인테일 (알로라의 모습)) */
     nameKo?:      string | null
 }
 
@@ -136,7 +142,7 @@ export function getSpecies(name: string): SpeciesData | undefined {
             weight:       Math.round(sp.weightkg * 10),
             height:       Math.round(sp.heightm * 10),
             tier:         sp.tier,
-            nameKo:       api?.ko ?? koName.species(slug),
+            nameKo:       koName.species(slug),
         }
     }
     speciesCache.set(name, out)

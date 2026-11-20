@@ -4,7 +4,7 @@
 // 그 외: 이름 팩 src/data/names/<코드>.json — loadNames(code) 로 필요할 때만 불러온다
 //        (scripts/fetch-pokeapi.ts 가 PokeAPI 에서 생성: ja, zh-hans, zh-hant, fr, de, es, it)
 import { Dex } from '@pkmn/sim'
-import { koName, getPokeApiSpecies, moveSlug, abilitySlug, itemSlug } from '../data/dex'
+import { koName, getPokeApiSpecies, speciesSlug, moveSlug, abilitySlug, itemSlug } from '../data/dex'
 import { speciesToShowdown, moveToShowdown, abilityToShowdown, itemToShowdown } from '../showdown/ids'
 
 export type EntityKind = 'species' | 'move' | 'ability' | 'item' | 'type' | 'nature'
@@ -12,9 +12,11 @@ export type EntityKind = 'species' | 'move' | 'ability' | 'item' | 'type' | 'nat
 /** 한 언어의 이름 조회. 데이터가 없으면 null */
 export type NameLookup = Record<EntityKind, (slug: string) => string | null>
 
-/** 이름 팩 (PokeAPI 슬러그 → 이름). species 는 종 슬러그(폼 아님) 기준 */
+/** 이름 팩 (PokeAPI 슬러그 → 이름). species 는 종 슬러그(폼 아님) 기준, forms 는 폼 슬러그 → 폼 이름 */
 export interface NamePack {
     species: Record<string, string>
+    /** 폼 이름 (rotom-wash → ウォッシュロトム). 없는 폼은 species 의 종 이름 */
+    forms?: Record<string, string>
     moves: Record<string, string>
     abilities: Record<string, string>
     items: Record<string, string>
@@ -43,7 +45,10 @@ const en: NameLookup = {
 
 function fromPack(pack: NamePack): NameLookup {
     return {
-        species: s => pack.species[s] ?? pack.species[getPokeApiSpecies(s)?.species ?? ''] ?? null,
+        species: s => {
+            const form = pack.forms?.[s] ?? (pack.forms && pack.forms[getPokeApiSpecies(s) ? s : speciesSlug(speciesToShowdown(s))])
+            return form ?? pack.species[s] ?? pack.species[getPokeApiSpecies(s)?.species ?? ''] ?? null
+        },
         move: s => pack.moves[s] ?? pack.moves[moveSlug(moveToShowdown(s))] ?? null,
         ability: s => pack.abilities[s] ?? pack.abilities[abilitySlug(abilityToShowdown(s))] ?? null,
         item: s => pack.items[s] ?? pack.items[itemSlug(itemToShowdown(s))] ?? null,

@@ -14,7 +14,8 @@ export type TermGroup = 'status' | 'stat' | 'weather' | 'direction' | 'volatile'
  *  - effect:  출처 슬러그 (기술·도구·특성·조건 무엇이든) → 알맞은 이름
  */
 export type Arg =
-    | { pokemon: string }
+    /** species: 닉네임이 없을 때 지금 종 대신 보여줄 종 (메가진화 문장의 진화 전 이름) */
+    | { pokemon: string; species?: string }
     /** 포켓몬 ID → "상대" 같은 접두어 없는 이름 */
     | { name: string }
     | { side: PlayerID }

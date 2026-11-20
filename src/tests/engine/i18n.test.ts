@@ -70,7 +70,7 @@ describe('다국어 로그', () => {
         const ja = createFormatter({ ...ctx, locale: 'ja' })
         expect(ja.name.item('heavy-duty-boots')).toBe('あつぞこブーツ')
         expect(ja.name.effect('stealth_rock')).toBe('ステルスロック')
-        expect(createFormatter({ ...ctx, locale: 'ko' }).name.species('vivillon-elegant')).toBe('비비용')
+        expect(createFormatter({ ...ctx, locale: 'ko' }).name.species('alcremie-ruby-swirl')).toBe('마휘핑')
         const enF = createFormatter({ ...ctx, locale: 'en' })
         expect(enF.render([{ key: 'hits', params: { count: 1 } }])).toBe('The Pokémon was hit 1 time!')
         expect(enF.render([{ key: 'hits', params: { count: 3 } }])).toBe('The Pokémon was hit 3 times!')

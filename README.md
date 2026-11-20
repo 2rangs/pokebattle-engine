@@ -200,6 +200,7 @@ createFormatter({ locale: 'en', getPokemon, messages: { 'move.use': '{pokemon} �
 ```
 
 - **Names come from data, not translations:** Pokémon, moves, abilities, items, types and natures use PokeAPI names (Showdown names for English). Conditions named after a move or ability (Stealth Rock, Trick Room, Taunt, Flash Fire …) reuse that name. Name packs: `ko`, `en`, `ja`, `zh-hans`, `zh-hant`, `fr`, `de`, `es`, `it` (`npm run fetch-pokeapi` regenerates them).
+- **Form names:** forms get their own name from PokeAPI's `pokemon_form_names` (`npx tsx scripts/fetch-pokeapi.ts --forms` rebuilds only these): `rotom-wash` → 워시로토무 / ウォッシュロトム, `charizard-mega-x` → 메가리자몽X / メガリザードンX, `ninetales-alola` → 나인테일 (알로라의 모습) / キュウコン (アローラのすがた). English keeps Showdown names (`Rotom-Wash`). Default forms use the plain species name, and a form with no data falls back to its species in the same language. Mega Evolution reads "리자몽은 메가리자몽X로 메가진화했다!".
 - **A locale is plain data:** `{ code, messages, terms, fallback?, postProcess? }`. Templates use `{param}`, optional parts `{?{pokemon}: }`, and plural forms `{ one, other }` (`Intl.PluralRules`). Variants are looked up as `key.variant` then `key` (e.g. `status.apply.burn` → `status.apply`).
 - **Add a language:** `registerLocale({ code: 'fr', fallback: en, terms: { … }, messages: { 'move.use': '{pokemon} utilise {move} !', … } })` + `await loadNames('fr')`. Anything missing falls back to the fallback locale.
 - `formatEvent(event, ctx, names?)` still works and is the Korean formatter.

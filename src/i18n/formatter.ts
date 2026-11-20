@@ -195,15 +195,15 @@ export function createFormatter(options: FormatterOptions): Formatter {
         return tpl === undefined ? name : fill(tpl, { name: { text: name } }) ?? name
     }
 
-    function pokemonBase(id: string): string | null {
+    function pokemonBase(id: string, species?: string): string | null {
         const p = ctx.getPokemon(id)
         if (!p) return null
         if (p.nickname && p.nickname !== p.species && p.nickname !== p.set?.species) return p.nickname
-        return entity('species', p.species)
+        return entity('species', species ?? p.species)
     }
 
-    function pokemon(id: string): string {
-        const base = pokemonBase(id)
+    function pokemon(id: string, species?: string): string {
+        const base = pokemonBase(id, species)
         if (base === null) return id
         return label(id.startsWith(self) ? 'label.self' : 'label.foe', base)
     }
@@ -217,7 +217,7 @@ export function createFormatter(options: FormatterOptions): Formatter {
     function arg(a: Arg): string {
         if (typeof a === 'number') return String(a)
         if ('text' in a) return a.text
-        if ('pokemon' in a) return pokemon(a.pokemon)
+        if ('pokemon' in a) return pokemon(a.pokemon, a.species)
         if ('name' in a) return pokemonBase(a.name) ?? a.name
         if ('side' in a) return side(a.side)
         if ('term' in a) return term(a.term, a.key) ?? prettify(a.key)
@@ -255,7 +255,7 @@ export function createFormatter(options: FormatterOptions): Formatter {
             return msgs ? render(msgs) : null
         },
         name: {
-            pokemon,
+            pokemon: id => pokemon(id),
             species: s => entity('species', s),
             move: s => entity('move', s),
             ability: s => entity('ability', s),

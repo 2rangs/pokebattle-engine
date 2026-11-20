@@ -3,6 +3,7 @@
 // UI 는 describeEvent 결과를 직접 써서 이름을 굵게 하거나 아이콘을 붙일 수도 있다.
 import type { BattleEvent, PlayerID } from '../types/battle'
 import type { FormatContext, Message } from './types'
+import { getSpecies } from '../data/dex'
 
 /** 로그에 보여줄 휘발성 상태 (나머지는 내부 상태라 문장을 만들지 않는다) */
 export const SHOWN_VOLATILES = new Set([
@@ -163,7 +164,14 @@ export function describeEvent(event: BattleEvent, ctx: FormatContext): Message[]
             })]
         case 'stat_set':        return null // 앞의 activate 가 문장을 낸다 (상태 재구성용)
         case 'terastallize':    return [m('tera', { pokemon: { pokemon: event.pokemon_id }, type: { type: event.tera_type } })]
-        case 'mega_evolve':     return [m('mega', { pokemon: { pokemon: event.pokemon_id }, ...(event.item ? { item: { item: event.item } } : {}) }, event.kind)]
+        case 'mega_evolve': {
+            // 로그 순서상 이미 바뀐 폼이므로 문장의 포켓몬은 진화 전 종 이름으로 (리자몽은 메가리자몽X로 메가진화했다!)
+            const base = getSpecies(event.species)?.species_name
+            return [m('mega', {
+                pokemon: { pokemon: event.pokemon_id, ...(base ? { species: base } : {}) }, form: { species: event.species },
+                ...(event.item ? { item: { item: event.item } } : {}),
+            }, event.kind)]
+        }
         case 'hit_count':       return [m('hits', { count: event.hits })]
         case 'activate': {
             const params: Message['params'] = { effect: { effect: event.effect } }

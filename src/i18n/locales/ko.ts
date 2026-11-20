@@ -3,19 +3,33 @@
 import type { Locale } from '../types'
 import { en } from './en'
 
-/** 받침에 맞춰 '이(가)' 같은 조사를 고른다 */
+/** 받침 (없으면 0, ㄹ 은 8, 판단할 수 없으면 null). 영문·숫자는 읽는 소리로 (X → 엑스: 없음, 6 → 육: 있음, 1 → 일: ㄹ) */
+function batchimOf(ch: string): number | null {
+    const code = ch.charCodeAt(0)
+    if (code >= 0xac00 && code <= 0xd7a3) return (code - 0xac00) % 28
+    const c = ch.toUpperCase()
+    if (/[A-Z]/.test(c)) return c === 'L' || c === 'R' ? 8 : 'MN'.includes(c) ? 4 : 0
+    if (/[0-9]/.test(c)) return c === '1' || c === '7' || c === '8' ? 8 : '036'.includes(c) ? 1 : 0
+    return null
+}
+
+/** 받침에 맞춰 '이(가)' 같은 조사를 고른다. 괄호로 끝나면(나인테일 (알로라의 모습)) 괄호 안 마지막 글자로 */
 export function fixParticles(text: string): string {
     const PAIRS: Record<string, [string, string]> = {
         '이(가)': ['이', '가'], '은(는)': ['은', '는'], '을(를)': ['을', '를'], '과(와)': ['과', '와'], '(으)로': ['으로', '로'],
     }
-    return text.replace(/(.)(이\(가\)|은\(는\)|을\(를\)|과\(와\)|\(으\)로)/g, (_, prev: string, pair: string) => {
-        const code = prev.charCodeAt(0)
-        if (code < 0xac00 || code > 0xd7a3) return prev + pair
-        const batchim = (code - 0xac00) % 28
+    return text.replace(/(이\(가\)|은\(는\)|을\(를\)|과\(와\)|\(으\)로)/g, (pair: string, _: string, offset: number) => {
+        let i = offset - 1
+        while (i >= 0 && text[i] === ')') i--
+        if (i < 0) return pair
+        // 영문·숫자는 한글 이름 끝에 붙은 것만 (메가리자몽X). 영어 이름·닉네임은 그대로 둔다
+        const word = text.slice(0, i + 1).split(/[\s(]/).pop()!
+        const batchim = /[\uac00-\ud7a3]/.test(word) ? batchimOf(text[i]!) : null
+        if (batchim === null) return pair
         const [withB, withoutB] = PAIRS[pair]!
         // '(으)로' 는 ㄹ 받침 뒤에서도 '로'
-        if (pair === '(으)로' && batchim === 8) return prev + withoutB
-        return prev + (batchim !== 0 ? withB : withoutB)
+        if (pair === '(으)로' && batchim === 8) return withoutB
+        return batchim !== 0 ? withB : withoutB
     })
 }
 
@@ -371,7 +385,7 @@ export const ko: Locale = {
         'ability': '[{ability}] {pokemon}',
         'item.consume': '{pokemon}은(는) {item}을(를) 사용했다!',
         'item.activate': '{pokemon}의 {item}이(가) 효과를 발휘했다!',
-        'mega': '{pokemon}이(가) 메가진화했다!',
+        'mega': '{pokemon}은(는) {form}(으)로 메가진화했다!',
         'mega.primal': '{pokemon}의 원시회귀! 원래의 모습을 되찾았다!',
         'mega.ultra': '{pokemon}이(가) 울트라버스트했다!',
         'volatile.start.dynamax': '{pokemon}이(가) 다이맥스했다!',
