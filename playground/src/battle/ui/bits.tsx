@@ -6,7 +6,6 @@ import { statusTip, toxicNext } from '../lib/status'
 import { TYPE_COLOR } from '../lib/sprites'
 import { CAT_KEY, CATEGORY_INDEX, CATEGORY_SHEET, typeInk } from '../lib/typeStyle'
 import { msg, type Lang } from '../lib/messages'
-import { useTypeGlyph } from './typeGlyphs'
 
 /** 후보 URL 을 앞에서부터 시도하는 이미지 (실패하면 다음, 다 실패하면 fallback) */
 export function FallbackImg({ sources, alt, className, style, fallback = null, pixel = true, onLoad }: {
@@ -39,29 +38,26 @@ export function FallbackImg({ sources, alt, className, style, fallback = null, p
 }
 
 /**
- * 타입 배지 (게임 타입 라벨처럼): 공식 타입 색 알약 + 문양 + 현재 언어 이름, 굵은 글자.
- * 글자·문양 색은 명도 대비로 (밝은 타입은 어두운 글자, 중간 밝기는 흰 글자 + 외곽선).
- * tera = 테라스탈 표시 (마름모 문양 테두리), iconOnly = 문양 동그라미만 (이름은 title·aria-label).
+ * 타입 배지: 공식 타입 색 알약 + 현재 언어 이름 (글자만, 아이콘 없음).
+ * 글자색은 명도 대비로 (밝은 타입은 어두운 글자, 중간 밝기는 흰 글자 + 외곽선).
+ * tera = 테라스탈 표시 (반짝이는 테두리). iconOnly 는 예전 호환용 — 이제 글자를 그대로 보인다.
  */
 export function TypeBadge({ type, lang, size = 'md', tera = false, iconOnly = false, text }: {
   type: string; lang: Lang; size?: 'xs' | 'sm' | 'md'; tera?: boolean; iconOnly?: boolean
   /** 타입 이름 대신 쓸 글자 (팀 카드의 기술 칩: 기술 이름) */
   text?: string
 }) {
-  const glyph = useTypeGlyph(type)
   const { ink, outline } = typeInk(type)
   const name = typeName(type, lang)
   const label = text ? `${text} (${name})` : tera ? `${msg(lang, 'tera')} ${name}` : name
   return (
     <span
-      className={`bd-type is-${size}${outline ? ' is-outline' : ''}${tera ? ' is-tera' : ''}${iconOnly ? ' is-icon' : ''}`}
+      className={`bd-type is-${size}${outline ? ' is-outline' : ''}${tera ? ' is-tera' : ''}`}
       style={{ '--type': TYPE_COLOR[type] ?? '#888', '--ink': ink } as CSSProperties}
       title={label}
-      role={iconOnly ? 'img' : undefined}
-      aria-label={iconOnly ? label : undefined}
+      data-compact={iconOnly || undefined}
     >
-      <span className="bd-type-glyph" style={glyph ? { maskImage: `url(${glyph})`, WebkitMaskImage: `url(${glyph})` } : undefined} aria-hidden />
-      {!iconOnly && <span className="bd-type-name">{tera && <span className="bd-sr">{msg(lang, 'tera')} </span>}{text ?? name}</span>}
+      <span className="bd-type-name">{tera && <span className="bd-sr">{msg(lang, 'tera')} </span>}{text ?? name}</span>
     </span>
   )
 }

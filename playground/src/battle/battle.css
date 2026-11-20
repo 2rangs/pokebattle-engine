@@ -53,32 +53,23 @@
 .bd-credits { margin: 0; font-size: 12px; line-height: 1.6; color: var(--muted); word-break: keep-all; }
 .bd-credits a { color: var(--ink-2); }
 
-/* ─── 타입 배지: 공식 타입 색 알약 + 문양 + 굵은 이름 (게임 타입 라벨처럼) ───────────────
-   글자·문양 색(--ink)은 명도 대비로 고른다 (lib/typeStyle.ts). 문양은 SV 아이콘에서 떼어 낸 흰 그림을 mask 로 칠한다. */
+/* ─── 타입 배지: 공식 타입 색 알약 + 굵은 이름 (글자만) ───────────────
+   글자색(--ink)은 명도 대비로 고른다 (lib/typeStyle.ts). */
 .bd-type {
   --h: 24px;
   display: inline-flex; align-items: center; gap: 4px; flex: none; box-sizing: border-box;
-  height: var(--h); padding: 0 10px 0 4px; border-radius: 999px;
+  height: var(--h); padding: 0 10px; border-radius: 999px;
   background: var(--type); color: var(--ink); font: 700 13px/1 var(--font-family-body); letter-spacing: .01em; white-space: nowrap;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .18);
 }
-.bd-type.is-sm { --h: 20px; gap: 3px; padding: 0 8px 0 3px; font-size: 12px; }
-.bd-type.is-xs { --h: 17px; gap: 2px; padding: 0 6px 0 2px; font-size: 11px; }
+.bd-type.is-sm { --h: 20px; padding: 0 8px; font-size: 12px; }
+.bd-type.is-xs { --h: 17px; padding: 0 6px; font-size: 11px; }
 .bd-type.is-outline .bd-type-name { text-shadow: 0 0 2px rgba(0, 0, 0, .7), 0 1px 1px rgba(0, 0, 0, .55); }
-.bd-type.is-outline .bd-type-glyph { filter: drop-shadow(0 0 1px rgba(0, 0, 0, .6)); }
-.bd-type-glyph {
-  flex: none; width: calc(var(--h) - 4px); height: calc(var(--h) - 4px); background: var(--ink);
-  mask: no-repeat center / 100% 100%; -webkit-mask: no-repeat center / 100% 100%;
-}
-/* 문양만: 동그라미 */
-.bd-type.is-icon { width: var(--h); padding: 0; justify-content: center; }
-/* 테라스탈: 마름모 테두리 (게임의 테라 표시) */
+/* 테라스탈: 반짝이는 테두리 */
 .bd-type.is-tera {
   background: linear-gradient(135deg, rgba(255, 255, 255, .38), rgba(255, 255, 255, 0) 45%, rgba(255, 255, 255, .22) 75%, rgba(255, 255, 255, 0)), var(--type);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .7), 0 0 0 1px rgba(0, 0, 0, .35), 0 0 6px color-mix(in srgb, var(--type) 70%, transparent);
 }
-.bd-type.is-tera.is-icon { border-radius: 3px; transform: rotate(45deg) scale(.84); }
-.bd-type.is-tera.is-icon .bd-type-glyph { transform: rotate(-45deg); }
 
 /* 기술 분류 아이콘: PokéRogue categories.png (28×11 도트 세 칸) */
 .bd-cat-icon {
@@ -305,12 +296,9 @@
 .bd-box.is-fainted { opacity: .55; }
 .bd-box { container-type: inline-size; }
 .bd-box-types { display: inline-flex; gap: 3px; flex: none; }
-/* 좁은 데이터박스(휴대폰): 타입 이름은 숨기고 문양 동그라미만 (이름은 title·aria) */
+/* 좁은 데이터박스(휴대폰): 타입 글자를 조금 작게 */
 @container (max-width: 250px) {
-  .bd-box-types .bd-type { width: var(--h); padding: 0; justify-content: center; }
-  .bd-box-types .bd-type.is-tera { border-radius: 3px; transform: rotate(45deg) scale(.84); margin-inline: 1px; }
-  .bd-box-types .bd-type.is-tera .bd-type-glyph { transform: rotate(-45deg); }
-  .bd-box-types .bd-type-name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .bd-box-types .bd-type { --h: 15px; padding: 0 4px; font-size: 10px; }
 }
 .bd-box-row { display: flex; align-items: center; gap: .45em; min-width: 0; }
 .bd-box-row + .bd-box-row { margin-top: .45em; }
@@ -320,8 +308,6 @@
 .bd-gender { font-size: .9em; }
 .bd-gender.is-m { color: #8cb8f0; }
 .bd-gender.is-f { color: #f0a0c0; }
-.bd-tera-mark { width: .62em; height: .62em; flex: none; transform: rotate(45deg); background: var(--type); border-radius: 1px; }
-.bd-tera-mark.is-unused { background: transparent; box-shadow: inset 0 0 0 1.5px var(--type); }
 .bd-status-gap { width: 0; }
 
 .bd-hp { display: flex; align-items: center; gap: .45em; flex: 1; min-width: 0; }

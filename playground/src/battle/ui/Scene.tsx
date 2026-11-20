@@ -156,7 +156,7 @@ function StageChips({ p, lang }: { p: PokeView; lang: Lang }) {
   )
 }
 
-/** 데이터박스 타입: 지금 타입 (테라스탈했으면 테라 타입 하나 + 테라 표시). 좁으면 문양만 */
+/** 데이터박스 타입: 지금 타입 (테라스탈했으면 테라 타입 하나 + 테라 표시) */
 function BoxTypes({ p, lang }: { p: PokeView; lang: Lang }) {
   const { t } = useBT()
   const tera = p.terastallized && p.tera_type
@@ -169,7 +169,7 @@ function BoxTypes({ p, lang }: { p: PokeView; lang: Lang }) {
   )
 }
 
-function Databox({ side, ours, showNumbers, showTera, lang }: { side: SideView; ours: boolean; showNumbers: boolean; showTera: boolean; lang: Lang }) {
+function Databox({ side, ours, showNumbers, lang }: { side: SideView; ours: boolean; showNumbers: boolean; lang: Lang }) {
   const { t } = useBT()
   const p = side.active
   const name = pokemonLabel(p, lang)
@@ -181,7 +181,6 @@ function Databox({ side, ours, showNumbers, showTera, lang }: { side: SideView; 
         <div className="bd-box-row">
           <span className="bd-box-name">{name}</span>
           <Gender g={p.gender} />
-          {!p.terastallized && showTera && p.tera_type && !side.usedTera && <span className="bd-tera-mark is-unused" style={{ '--type': TYPE_COLOR[p.tera_type] } as CSSProperties} />}
           <BoxTypes p={p} lang={lang} />
           <span className="bd-box-lv">{t('level', { n: p.level })}</span>
         </div>
@@ -374,8 +373,8 @@ export function Scene({ frames, frame, me = 'p1', revealFoe, speed = 650, childr
       </span>
       <FxLayer frames={frames} frame={frame} me={me} psMove={psMove} />
       <div className="bd-psfx" ref={psFxRef} aria-hidden />
-      <Databox side={foe} ours={false} showNumbers={revealFoe} showTera={revealFoe} lang={lang} />
-      <Databox side={mine} ours showNumbers showTera lang={lang} />
+      <Databox side={foe} ours={false} showNumbers={revealFoe} lang={lang} />
+      <Databox side={mine} ours showNumbers lang={lang} />
       {children}
     </div>
   )
