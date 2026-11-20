@@ -12,8 +12,8 @@ own licences in their headers ("the battle replay/animation engine
   - battle-animations.ts        @license MIT
   - battle-animations-moves.ts  @license CC0-1.0
 
-Only the animation tables were kept; the scene adapter (scene.ts) and the
-types (types.ts) are original code of this repository (MIT, see the root
+Only the animation tables were kept; the scene adapter (scene.ts), the
+coordinate helpers (coords.ts) and the types (types.ts) are original code of this repository (MIT, see the root
 LICENSE). The fx images are loaded by URL from the client repository and are
 not redistributed here.
 

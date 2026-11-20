@@ -7,8 +7,8 @@
 import { BattleEffects, BattleOtherAnims, type AnimTable } from './battle-animations'
 import { BattleMoveAnims } from './battle-animations-moves'
 import type { BattleScene, EffectHandle, PokemonSprite, ScenePos, SpriteData } from './types'
+import { psBox, psFracX, psFracY, type Box } from './coords'
 
-type Box = { left: number; top: number; width: number; height: number; opacity: number }
 type EaseName = 'linear' | 'swing' | 'quadUp' | 'quadDown' | 'ballisticUp' | 'ballisticDown'
 type Eases = Record<keyof Box, EaseName>
 
@@ -22,23 +22,6 @@ const EASE: Record<EaseName, (t: number) => number> = {
 }
 
 const LINEAR: Eases = { left: 'linear', top: 'linear', width: 'linear', height: 'linear', opacity: 'linear' }
-
-// ─── Showdown 무대 좌표 → 상자 (원본 BattleScene.pos 와 같은 식) ────────────
-function psBox(loc: ScenePos, obj: SpriteData): Box {
-  const l = { x: 0, y: 0, z: 0, scale: 1, opacity: 1, ...loc }
-  const xs = !l.xscale && l.xscale !== 0 ? l.scale! : l.xscale
-  const ys = !l.yscale && l.yscale !== 0 ? l.scale! : l.yscale
-  let scale = obj.gen === 5 ? 2 - l.z! / 200 : 1.5 - 0.5 * (l.z! / 200)
-  if (scale < 0.1) scale = 0.1
-  let left = 210 + 220 * (l.z! / 200)
-  let top = 245 - 110 * (l.z! / 200)
-  left += Math.floor(l.x! * scale)
-  top -= Math.floor(l.y! * scale)
-  const width = Math.floor(obj.w * scale * xs)
-  const height = Math.floor(obj.h * scale * ys)
-  const hoffset = Math.floor((obj.h - (obj.y || 0) * 2) * scale * ys)
-  return { left: left - Math.floor(width / 2), top: top - Math.floor(hoffset / 2), width, height, opacity: l.opacity! }
-}
 
 /** 원본 posT 의 전환 이름 → 속성별 이징 (모르는 이름은 linear) */
 function easesFor(transition: string | undefined, to: Box, from: Box | null, z: number): Eases {
@@ -93,7 +76,31 @@ class Track {
   }
 }
 
-interface FxEl { track: Track; img: HTMLImageElement; css?: Record<string, string> }
+interface FxEl { track: Track; img: HTMLElement; ok: boolean; css?: Record<string, string> }
+
+/** 원본 rawHTML 효과(보호·벽 상자)의 class → 우리 CSS class (색은 원본 battle.css 그대로, battle.css 의 .ps-*) */
+const rawClass = (html: string) => /class="([a-z-]+)"/.exec(html)?.[1] ?? ''
+
+/** 원본 표의 /sprites/gen6bgs/*.jpg 는 클라이언트 저장소에 없다 (서버에서만 제공) → 같은 배경의 fx/bg-*.png */
+export const fixBgUrl = (bg: string) => bg.replace(/\/sprites\/gen6bgs\/(bg-[a-z]+)\.jpg/g, '/fx/$1.png')
+
+/** scene.$bg.animate({ top, bottom }, ms) 기록 (땅울림·불도저·대지의힘: 배경이 흔들린다). 원본 기본 top = -90 */
+class BgShake {
+  t = 0
+  frames: { time: number; dy: number }[] = []
+  private dy = 0
+  animate(css: { top?: number }, ms = 400) {
+    this.frames.push({ time: this.t, dy: this.dy })
+    this.t += ms
+    if (typeof css.top === 'number') this.dy = css.top + 90
+    this.frames.push({ time: this.t, dy: this.dy })
+    return this
+  }
+  delay(ms: number) {
+    this.t += ms
+    return this
+  }
+}
 
 const FRONT = { x: 0, y: 0, z: 200 }
 const BACK = { x: 0, y: 0, z: 0 }
@@ -103,16 +110,26 @@ const SPRITE_SP: SpriteData = { w: 96, h: 96 }
 class RecordingScene implements BattleScene {
   timeOffset = 0
   battle = { mySide: { ...BACK } }
-  $bg = { animate: () => this.$bg, delay: () => this.$bg }
+  $bg = new BgShake()
   effects: FxEl[] = []
   backgrounds: { bg: string; duration: number; opacity: number; delay: number }[] = []
 
   showEffect(effect: string | SpriteData, start: ScenePos, end: ScenePos, transition: string, after?: string, css?: Record<string, string>): EffectHandle {
     const sp = typeof effect === 'string' ? BattleEffects[effect] : effect
-    const img = document.createElement('img')
-    if (sp?.url) img.src = sp.url
-    img.alt = ''
-    const el: FxEl = { track: new Track({ left: 0, top: 0, width: 0, height: 0, opacity: 0 }), img, css }
+    let img: HTMLElement
+    let ok = false
+    if (sp?.rawHTML) {
+      img = document.createElement('div')
+      img.dataset.ps = rawClass(sp.rawHTML)
+      ok = !!img.dataset.ps
+    } else {
+      const im = document.createElement('img')
+      if (sp?.url) im.src = sp.url
+      im.alt = ''
+      ok = !!sp?.url
+      img = im
+    }
+    const el: FxEl = { track: new Track({ left: 0, top: 0, width: 0, height: 0, opacity: 0 }), img, ok, css }
     this.effects.push(el)
     return this.animateEffect(el as unknown as EffectHandle, effect, start, end, transition, after)
   }
@@ -150,7 +167,7 @@ class RecordingScene implements BattleScene {
   }
 
   backgroundEffect(bg: string, duration: number, opacity = 1, delay = 0) {
-    this.backgrounds.push({ bg, duration, opacity, delay })
+    this.backgrounds.push({ bg: fixBgUrl(bg), duration, opacity, delay })
   }
 
   wait(time: number) {
@@ -204,6 +221,8 @@ export interface PlayTargets {
   /** 스프라이트 래퍼: 앞(상대)·뒤(우리) */
   front: HTMLElement | null
   back: HTMLElement | null
+  /** 땅(발판·필드 배경): scene.$bg 흔들기를 여기에 (원본은 배경 그림을 흔든다) */
+  ground?: HTMLElement[]
 }
 
 export interface PlayOptions {
@@ -231,8 +250,8 @@ export function playMoveAnim(move: string, attackerFront: boolean, selfTarget: b
   const cw = t.fx.clientWidth
   const ch = t.fx.clientHeight
   const k = cw / 640
-  const mapX = (px: number) => cw * (0.27 + (px - 210) * (0.45 / 220))
-  const mapY = (py: number) => ch * (0.68 + (py - 245) * (0.28 / 110))
+  const mapX = (px: number) => cw * psFracX(px)
+  const mapY = (py: number) => ch * psFracY(py)
   const place = (b: Box) => {
     const w = b.width * k
     const h = b.height * k
@@ -240,17 +259,17 @@ export function playMoveAnim(move: string, attackerFront: boolean, selfTarget: b
   }
 
   const tracks = [...scene.effects.map(e => e.track), att.track, def.track]
-  const bgEnd = Math.max(0, ...scene.backgrounds.map(b => b.delay + b.duration))
+  const bgEnd = Math.max(0, scene.$bg.t, ...scene.backgrounds.map(b => b.delay + b.duration))
   const total = Math.max(1, scene.timeOffset, bgEnd, ...tracks.map(tr => Math.max(tr.t, ...tr.frames.map(f => f.time))))
   const rate = Math.max(1, total / Math.max(1, opts.budget))
   const duration = total / rate
   const anims: Animation[] = []
   const nodes: HTMLElement[] = []
   const timing: KeyframeAnimationOptions = { duration, fill: 'both', easing: 'linear' }
-  const offsets = (frames: Track['frames']) => frames.map(f => Math.min(1, f.time / total))
+  const offsets = (frames: readonly { time: number }[]) => frames.map(f => Math.min(1, f.time / total))
 
   for (const e of scene.effects) {
-    if (!e.img.src) continue
+    if (!e.ok) continue
     e.img.className = 'bd-psfx-el'
     if (e.css) Object.assign(e.img.style, e.css)
     e.img.onerror = () => e.img.remove()
@@ -303,6 +322,13 @@ export function playMoveAnim(move: string, attackerFront: boolean, selfTarget: b
     })
     kf.push({ offset: 1, transform: 'none', opacity: '1' })
     anims.push(el.animate(kf, timing))
+  }
+  if (scene.$bg.frames.length > 0) {
+    const fr = scene.$bg.frames
+    const off = offsets(fr)
+    const kf = fr.map((f, i) => ({ offset: off[i], translate: `0 ${(f.dy * k).toFixed(1)}px` }))
+    kf.push({ offset: 1, translate: '0 0' })
+    for (const g of t.ground ?? []) anims.push(g.animate(kf, timing))
   }
   spriteAnim(att, attackerFront ? t.front : t.back)
   if (!selfTarget) spriteAnim(def, attackerFront ? t.back : t.front)
