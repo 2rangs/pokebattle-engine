@@ -248,7 +248,7 @@ const ko = {
   replayForfeit: '{name}이(가) 기권했다!',
 
   // 크레딧
-  credits: '비공식 팬 데모입니다. 스프라이트·아이콘·울음소리: PokeAPI (sprites·cries), 3D 스프라이트: Pokémon Showdown·Pokémon HOME (PokeAPI/sprites 경유), 기술 연출: Pokémon Showdown 클라이언트 (fx 그림, 기술 애니메이션 표 — MIT/CC0). Pokémon © Nintendo / Creatures Inc. / GAME FREAK inc.',
+  credits: '비공식 팬 데모입니다. 스프라이트·아이콘·울음소리: PokeAPI (sprites·cries), 3D 스프라이트: Pokémon Showdown·Pokémon HOME (PokeAPI/sprites 경유), 기술 연출·날씨/필드/장판 그림: Pokémon Showdown 클라이언트 (fx 그림·날씨 영상, 기술 애니메이션 표 — MIT/CC0), 능력치 변화 연출: PokéRogue (CC BY-NC-SA 4.0). Pokémon © Nintendo / Creatures Inc. / GAME FREAK inc.',
 }
 
 type Key = keyof typeof ko
@@ -489,7 +489,7 @@ const en: Record<Key, string> = {
   replayMismatchDesc: 'You can watch up to where it stopped (turn {n}).',
   replayForfeit: '{name} forfeited!',
 
-  credits: 'Unofficial fan demo. Sprites, icons and cries: PokeAPI (sprites, cries); 3D sprites: Pokémon Showdown and Pokémon HOME (via PokeAPI/sprites); move animations: Pokémon Showdown client (fx images and move animation tables, MIT/CC0). Pokémon © Nintendo / Creatures Inc. / GAME FREAK inc.',
+  credits: 'Unofficial fan demo. Sprites, icons and cries: PokeAPI (sprites, cries); 3D sprites: Pokémon Showdown and Pokémon HOME (via PokeAPI/sprites); move animations and weather/terrain/hazard images: Pokémon Showdown client (fx images, weather videos and move animation tables, MIT/CC0); stat effect: PokéRogue (CC BY-NC-SA 4.0). Pokémon © Nintendo / Creatures Inc. / GAME FREAK inc.',
 }
 
 export const MESSAGES: Record<Lang, Record<Key, string>> = { ko, en }
