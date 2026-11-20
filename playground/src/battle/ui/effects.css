@@ -53,7 +53,14 @@
 
 /* 모래바람: 모래빛 + 옆으로 날리는 알갱이 */
 .bd-weather.is-sandstorm { background: linear-gradient(rgba(180, 135, 75, .20), rgba(150, 105, 55, .16)); }
-.bd-weather.is-sandstorm::before { background: radial-gradient(circle, rgba(240, 210, 160, .55) 0 1px, transparent 1.6px) 0 0 / 22px 15px; }
+.bd-weather.is-sandstorm::before {
+  background:
+    radial-gradient(circle at 14% 22%, rgba(240, 210, 160, .55) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 58% 64%, rgba(240, 210, 160, .45) 0 .9px, transparent 1.5px),
+    radial-gradient(circle at 82% 30%, rgba(240, 210, 160, .5) 0 1.1px, transparent 1.7px),
+    radial-gradient(circle at 36% 86%, rgba(240, 210, 160, .4) 0 .8px, transparent 1.4px);
+  background-size: 44px 30px;
+}
 .bd-weather.is-sandstorm::after { background: radial-gradient(ellipse 3px 1.2px, rgba(230, 190, 130, .45) 0 60%, transparent 100%) 0 0 / 37px 29px; }
 
 /* 눈 */
