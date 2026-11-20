@@ -19,6 +19,8 @@ export interface SceneEffects {
     hazards: { id: HazardFx; layers: number }[]
     barriers: BarrierFx[]
     tailwind: boolean
+    /** 나와 있는 포켓몬이 방어(Protect 계열) 중 */
+    protect: boolean
   }>
 }
 
@@ -50,6 +52,7 @@ export function sceneEffects(f: Pick<Frame, 'weather' | 'terrain' | 'field' | 'p
       }),
       barriers: BARRIERS.filter(id => conds.some(x => x.id === id)),
       tailwind: conds.some(x => x.id === 'tailwind'),
+      protect: !!f[p].active?.volatiles?.includes('protect'),
     }
   }
   const terrain = f.terrain ? norm(f.terrain) : null
@@ -72,6 +75,7 @@ export function effectKeys(fx: SceneEffects): string[] {
     for (const h of v.hazards) out.push(`${s}:${h.id}:${h.layers}`)
     for (const b of v.barriers) out.push(`${s}:${b}`)
     if (v.tailwind) out.push(`${s}:tailwind`)
+    if (v.protect) out.push(`${s}:protect`)
   }
   return out
 }

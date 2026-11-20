@@ -233,7 +233,7 @@
 .bd-scene::before { content: ''; position: absolute; left: 0; right: 0; top: 46%; height: 1px; z-index: -1; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .06) 30%, rgba(255, 255, 255, .06) 70%, transparent); }
 
 .bd-spot { position: absolute; width: 0; height: 0; z-index: 1; }
-.bd-spot.is-ours { z-index: 2; }
+.bd-spot.is-ours { z-index: 3; }
 .bd-shadow {
   position: absolute; left: 0; top: 0; width: calc(150px * var(--unit)); height: calc(34px * var(--unit)); transform: translate(-50%, -50%); border-radius: 50%;
   background: radial-gradient(closest-side, rgba(0, 0, 0, .45), rgba(255, 255, 255, .025) 75%, transparent);
@@ -251,16 +251,16 @@
 .bd-ball { position: absolute; left: 50%; bottom: 10%; width: calc(22px * var(--unit)); height: auto; image-rendering: pixelated; opacity: 0; pointer-events: none; }
 .bd-zzz { position: absolute; right: -8px; top: 0; color: var(--ink-2); font: 600 calc(16px * var(--unit))/1 var(--font-family-heading); }
 .bd-zzz small { font-size: .7em; }
-.bd-statfx { position: absolute; inset: -6% -10%; pointer-events: none; overflow: hidden; z-index: 3; --c: #ff5f4f; --c2: #ffb3a6; }
-.bd-statfx.is-down { --c: #3f8cff; --c2: #a8ccff; }
-.bd-statfx-glow { position: absolute; inset: 10% 15%; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in srgb, var(--c) 28%, transparent), transparent); opacity: 0; mix-blend-mode: screen; }
-.bd-statfx-streak { position: absolute; width: calc(3px * var(--unit)); height: var(--h); border-radius: 3px; opacity: 0; background: linear-gradient(to top, transparent, var(--c2), transparent); box-shadow: 0 0 6px var(--c); }
-.bd-statfx-chevron { position: absolute; transform: translateX(-50%); color: var(--c2); text-shadow: 0 0 6px var(--c); font: 700 calc(22px * var(--unit))/1 var(--font-family-body); opacity: 0; }
-.bd-statfx.lv-2 .bd-statfx-streak { width: calc(4px * var(--unit)); }
-.bd-statfx.lv-3 .bd-statfx-streak { width: calc(5px * var(--unit)); }
-.bd-statfx.lv-3 .bd-statfx-chevron { font-size: calc(28px * var(--unit)); }
-.bd-statfx-ring { position: absolute; left: 50%; top: 55%; width: 40%; aspect-ratio: 1; border-radius: 50%; border: 2px solid var(--c2); box-shadow: 0 0 10px var(--c); transform: translate(-50%, -50%) scale(.2); opacity: 0; }
-/* 스프라이트 색조 (능력치 변화 중) */
+/* 능력치 변화 (PokéRogue battle_stats.png): 그 능력치의 32×32 무늬를 스프라이트 실루엣(mask)에만 깔고
+   상승 = 위로, 하락 = 아래로(무늬 뒤집음) 흘린다. 스프라이트 색조는 상승 빨강 / 하락 파랑 */
+.bd-sprite-ps { position: relative; }
+.bd-statfx {
+  position: absolute; inset: 0; pointer-events: none; opacity: .6;
+  background-image: var(--tile); background-repeat: repeat; background-size: var(--ts) var(--ts); image-rendering: pixelated;
+  -webkit-mask-image: var(--mask); mask-image: var(--mask);
+  -webkit-mask-size: 100% 100%; mask-size: 100% 100%; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+}
+.bd-statfx.is-mirrored { transform: scaleX(-1); }
 .bd-sprite:has(.bd-statfx.is-up) .bd-sprite-img { --tint: #ff5f4f; }
 .bd-sprite:has(.bd-statfx.is-down) .bd-sprite-img { --tint: #3f8cff; }
 
@@ -579,14 +579,8 @@
   .bd-sprite-img.is-home { animation: bd-breathe 3.2s ease-in-out infinite; }
   .bd-spot.is-ours .bd-sprite-img.is-home { animation-delay: -1.3s; }
   .bd-zzz { animation: bd-zzz 2.4s ease-in-out infinite; }
-  .bd-statfx-glow { animation: bd-statfx-glow .9s ease-out; }
-  .bd-statfx.is-up .bd-statfx-streak { bottom: 0; animation: bd-streak-up .75s cubic-bezier(.3,.6,.4,1) var(--d) both; }
-  .bd-statfx.is-down .bd-statfx-streak { top: 0; animation: bd-streak-down .75s cubic-bezier(.3,.6,.4,1) var(--d) both; }
-  .bd-statfx.is-up .bd-statfx-chevron { bottom: 10%; animation: bd-chev-up .8s ease-out var(--d) both; }
-  .bd-statfx.is-down .bd-statfx-chevron { top: 10%; animation: bd-chev-down .8s ease-out var(--d) both; }
-  .bd-statfx.lv-2 .bd-statfx-streak, .bd-statfx.lv-2 .bd-statfx-chevron { animation-duration: .6s; }
-  .bd-statfx.lv-3 .bd-statfx-streak, .bd-statfx.lv-3 .bd-statfx-chevron { animation-duration: .5s; animation-iteration-count: 2; }
-  .bd-statfx-ring { animation: bd-statfx-ring .7s ease-out .1s both; }
+  .bd-statfx { animation: bd-stat-fade var(--dur) linear both, bd-stat-up var(--pass) linear var(--n); }
+  .bd-statfx.is-down { animation-name: bd-stat-fade, bd-stat-down; }
   .bd-sprite:has(.bd-statfx) .bd-sprite-img { animation: bd-stat-tint .9s ease-in-out; }
   .bd-fx-shot { animation: bd-shot .3s ease-in forwards; }
   .bd-fx-hit { animation: bd-impact .32s ease-out; }
@@ -595,7 +589,6 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .bd-sprite-anim, .bd-hp-fill { transition: none; }
-  .bd-statfx-glow { opacity: .7; }
 }
 @keyframes bd-lunge { 0%, 100% { transform: none; } 40% { transform: translate(7%, -4%); } }
 @keyframes bd-lunge-foe { 0%, 100% { transform: none; } 40% { transform: translate(-7%, 4%); } }
@@ -624,12 +617,9 @@
 @keyframes bd-shimmer { 0%, 100% { filter: none; } 50% { filter: brightness(1.35) drop-shadow(0 0 8px rgba(180, 211, 255, .7)); } }
 @keyframes bd-status { 0%, 100% { filter: none; } 40% { filter: brightness(1.3); } }
 @keyframes bd-zzz { 0% { transform: translate(0, 20%); opacity: 0; } 30% { opacity: .8; } 100% { transform: translate(40%, -70%); opacity: 0; } }
-@keyframes bd-statfx-glow { 0% { opacity: 0; } 30% { opacity: 1; } 100% { opacity: 0; } }
-@keyframes bd-streak-up { 0% { opacity: 0; transform: translateY(60%); } 25% { opacity: .95; } 100% { opacity: 0; transform: translateY(-120%); } }
-@keyframes bd-streak-down { 0% { opacity: 0; transform: translateY(-60%); } 25% { opacity: .95; } 100% { opacity: 0; transform: translateY(120%); } }
-@keyframes bd-chev-up { 0% { opacity: 0; transform: translate(-50%, 40%); } 30%, 60% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -180%); } }
-@keyframes bd-chev-down { 0% { opacity: 0; transform: translate(-50%, -40%); } 30%, 60% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, 180%); } }
-@keyframes bd-statfx-ring { 0% { opacity: .9; transform: translate(-50%, -50%) scale(.2); } 100% { opacity: 0; transform: translate(-50%, -50%) scale(2.2); } }
+@keyframes bd-stat-fade { 0% { opacity: 0; } 12%, 80% { opacity: .6; } 100% { opacity: 0; } }
+@keyframes bd-stat-up { from { background-position: 0 0; } to { background-position: 0 calc(var(--ts) * -2); } }
+@keyframes bd-stat-down { from { background-position: 0 0; } to { background-position: 0 calc(var(--ts) * 2); } }
 @keyframes bd-stat-tint { 0%, 100% { filter: none; } 30%, 60% { filter: drop-shadow(0 0 6px var(--tint)) drop-shadow(0 0 2px var(--tint)) brightness(1.15); } }
 @keyframes bd-shot {
   0% { left: var(--x0); top: var(--y0); opacity: 0; transform: translate(-50%, -50%) scale(.6); }

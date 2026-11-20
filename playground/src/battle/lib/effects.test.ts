@@ -25,10 +25,18 @@ test('진영: 우리 = 아래, 겹 수는 최대치까지', () => {
     p2: side('p2', [['stealth_rock'], ['toxic_spikes', 2], ['sticky_web'], ['aurora_veil'], ['mist']]),
   })
   const fx = sceneEffects(f)
-  expect(fx.sides.ours).toEqual({ hazards: [{ id: 'spikes', layers: 3 }], barriers: ['reflect'], tailwind: true })
+  expect(fx.sides.ours).toEqual({ hazards: [{ id: 'spikes', layers: 3 }], barriers: ['reflect'], tailwind: true, protect: false })
   expect(fx.sides.foe.hazards.map(h => h.id)).toEqual(['stealth_rock', 'toxic_spikes', 'sticky_web'])
   expect(fx.sides.foe.barriers).toEqual(['aurora_veil', 'mist'])
   // p2 시점이면 위아래가 바뀐다
   expect(sceneEffects(f, 'p2').sides.ours.hazards[0]!.id).toBe('stealth_rock')
   expect(effectKeys(fx)).toContain('ours:spikes:3')
+})
+
+test('방어: 나와 있는 포켓몬의 protect 휘발 상태', () => {
+  const p1 = { ...side('p1', []), active: { volatiles: ['protect'] } } as unknown as SideView
+  const fx = sceneEffects(frame({ p1 }))
+  expect(fx.sides.ours.protect).toBe(true)
+  expect(fx.sides.foe.protect).toBe(false)
+  expect(effectKeys(fx)).toContain('ours:protect')
 })

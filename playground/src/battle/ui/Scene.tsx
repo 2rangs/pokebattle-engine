@@ -18,6 +18,8 @@ import { FallbackImg, Gender, HpBar, StatusBadge } from './bits'
 import { useBT, useSettings, type SpriteStyle } from './state'
 import { AIM, SPOT } from './layout'
 import { SceneEffects } from './SceneEffects'
+import { StatFx } from './statFx'
+import { loadStatTiles, statFxDuration, statTileOf, type StatTile } from './statTiles'
 
 type SpriteAnim = 'lunge' | 'hit' | 'crit' | 'enter' | 'heal' | 'shimmer' | 'status'
 
@@ -36,7 +38,30 @@ function spriteAnimFor(f: Frame, p: PokeView): SpriteAnim | null {
   }
 }
 
-function BattleSprite({ p, back, frame, unit, lang, style, psMove }: { p: PokeView; back: boolean; frame: Frame; unit: number; lang: Lang; style: SpriteStyle; psMove: boolean }) {
+/** 능력치 변화 (그 포켓몬, 0 이 아닌 단계). 같은 기술로 여러 능력치가 같은 쪽으로 바뀌면(앞뒤 프레임) 무늬는 mix */
+interface StatEv { key: number; stages: number; tile: StatTile }
+function statEventOf(frames: readonly Frame[], frame: Frame, id: string): StatEv | null {
+  const e = frame.event
+  if (e.type !== 'stat_change' || e.pokemon_id !== id || !e.stages) return null
+  const sibling = (f: Frame | undefined) =>
+    !!f && f.event.type === 'stat_change' && f.event.pokemon_id === id && Math.sign(f.event.stages) === Math.sign(e.stages) && f.event.stat !== e.stat
+  const mix = sibling(frames[frame.index - 1]) || sibling(frames[frame.index + 1])
+  return { key: frame.index, stages: e.stages, tile: mix ? 'mix' : statTileOf(e.stat) }
+}
+
+/** 능력치 연출은 프레임이 넘어가도 끝까지 (한 번 흐르는 데 0.8초, ±2 두 번, ±3 세 번) */
+function useStatFx(stat: StatEv | null): StatEv | null {
+  const [shown, setShown] = useState<StatEv | null>(null)
+  if (stat && stat.key !== shown?.key) setShown(stat)
+  useEffect(() => {
+    if (!shown) return
+    const t = setTimeout(() => setShown(s => (s === shown ? null : s)), statFxDuration(shown.stages))
+    return () => clearTimeout(t)
+  }, [shown])
+  return shown
+}
+
+function BattleSprite({ p, back, frame, stat, unit, lang, style, psMove }: { p: PokeView; back: boolean; frame: Frame; stat: StatEv | null; unit: number; lang: Lang; style: SpriteStyle; psMove: boolean }) {
   const [size, setSize] = useState<{ src: string; w: number; h: number } | null>(null)
   const sources = style === '3d' ? battleSprite3dCandidates(p.species, back) : battleSpriteCandidates(p.species, back)
   const own = spriteAnimFor(frame, p)
@@ -60,7 +85,7 @@ function BattleSprite({ p, back, frame, unit, lang, style, psMove }: { p: PokeVi
   // HOME 렌더는 512px 정사각형 (여백 포함) → 장면 크기에 맞춘 고정 크기 (우리 쪽이 더 크게)
   const home = !!size && isHomeSprite(size.src)
   const scale = !size ? 0 : home ? ((back ? 215 : 155) * unit) / size.h : Math.min(k, max / size.h)
-  const stat = frame.event.type === 'stat_change' && frame.event.pokemon_id === p.id ? frame.event : null
+  const statFx = useStatFx(stat)
   const status = p.fainted ? null : p.status
 
   return (
@@ -75,33 +100,19 @@ function BattleSprite({ p, back, frame, unit, lang, style, psMove }: { p: PokeVi
           style={size ? { width: Math.round(size.w * scale), height: Math.round(size.h * scale) } : { opacity: 0 }}
           onLoad={img => setSize(s => (s?.src === img.src ? s : { src: img.src, w: img.naturalWidth, h: img.naturalHeight }))}
         />
+        {statFx && size && !p.fainted && (
+          <StatFx
+            key={statFx.key}
+            stages={statFx.stages}
+            tile={statFx.tile}
+            src={size.src}
+            mirrored={home && back}
+            tilePx={Math.round(32 * (home ? 1.6 : Math.max(1, scale)) )}
+          />
+        )}
         </span>
       </span>
       {status === 'sleep' && <span className="bd-zzz" aria-hidden>Z<small>z</small></span>}
-      {stat && stat.stages !== 0 && <StatFx key={frame.index} stages={stat.stages} />}
-    </span>
-  )
-}
-
-/**
- * 능력치 변화 연출 (게임처럼 상승 = 붉은색 위로, 하락 = 푸른색 아래로).
- * 스프라이트 색조 + 빛줄기 + 화살표. 단계가 클수록(크게/매우 크게) 줄기가 많고 빠르며 고리가 퍼진다.
- */
-const STREAKS = [8, 22, 36, 50, 64, 78, 92, 15, 43, 71, 29, 57, 85, 5]
-function StatFx({ stages }: { stages: number }) {
-  const up = stages > 0
-  const n = Math.min(3, Math.abs(stages))
-  const count = n === 1 ? 7 : n === 2 ? 10 : 14
-  return (
-    <span className={`bd-statfx is-${up ? 'up' : 'down'} lv-${n}`} aria-hidden>
-      <span className="bd-statfx-glow" />
-      {STREAKS.slice(0, count).map((x, i) => (
-        <i key={i} className="bd-statfx-streak" style={{ left: `${x}%`, '--d': `${(i % 7) * 0.06}s`, '--h': `${38 + ((i * 17) % 30)}%` } as CSSProperties} />
-      ))}
-      {[22, 50, 78].map((x, i) => (
-        <b key={i} className="bd-statfx-chevron" style={{ left: `${x}%`, '--d': `${i * 0.08}s` } as CSSProperties}>{up ? '︽' : '︾'}</b>
-      ))}
-      {n >= 2 && <span className="bd-statfx-ring" />}
     </span>
   )
 }
@@ -261,6 +272,7 @@ function useShowdownMoveAnim(frame: Frame, me: PlayerID, speed: number, scene: R
       bg: bg.current,
       front: root.querySelector<HTMLElement>('.bd-spot.is-foe .bd-sprite-ps'),
       back: root.querySelector<HTMLElement>('.bd-spot.is-ours .bd-sprite-ps'),
+      ground: [...root.querySelectorAll<HTMLElement>('.bd-shadow, .bd-efx-bg')],
     }, { budget: moveFrameDelay(speed) * 0.95 })
   }, [frame.index, handles, e, me, speed, scene, fx, bg])
   useEffect(() => () => stop.current?.(), [])
@@ -321,6 +333,7 @@ export function Scene({ frames, frame, me = 'p1', revealFoe, speed = 650, childr
   const psFxRef = useRef<HTMLDivElement>(null)
   const psBgRef = useRef<HTMLDivElement>(null)
   const psMove = useShowdownMoveAnim(frame, me, speed, ref, psFxRef, psBgRef)
+  useEffect(() => { void loadStatTiles() }, [])
   usePreloadHome(sprites === '3d' ? [...frame.p1.team, ...frame.p2.team].map(x => x.species) : [])
 
   return (
@@ -331,15 +344,15 @@ export function Scene({ frames, frame, me = 'p1', revealFoe, speed = 650, childr
       aria-label={`${t('battleScene')}: ${pokemonLabel(foe.active, lang)} vs ${pokemonLabel(mine.active, lang)}`}
       style={{ '--unit': unit } as CSSProperties}
     >
-      <div className="bd-psfx-bg" ref={psBgRef} aria-hidden />
       <SceneEffects frame={frame} me={me} />
+      <div className="bd-psfx-bg" ref={psBgRef} aria-hidden />
       <span className="bd-spot is-foe" style={{ left: `${SPOT.foe.x}%`, top: `${SPOT.foe.y}%` }}>
         <span className="bd-shadow" />
-        <BattleSprite key={`${foe.active.id}-${sprites}`} p={foe.active} back={false} frame={frame} unit={unit} lang={lang} style={sprites} psMove={psMove} />
+        <BattleSprite key={`${foe.active.id}-${sprites}`} p={foe.active} back={false} frame={frame} stat={statEventOf(frames, frame, foe.active.id)} unit={unit} lang={lang} style={sprites} psMove={psMove} />
       </span>
       <span className="bd-spot is-ours" style={{ left: `${SPOT.ours.x}%`, top: `${SPOT.ours.y}%` }}>
         <span className="bd-shadow" />
-        <BattleSprite key={`${mine.active.id}-${sprites}`} p={mine.active} back frame={frame} unit={unit} lang={lang} style={sprites} psMove={psMove} />
+        <BattleSprite key={`${mine.active.id}-${sprites}`} p={mine.active} back frame={frame} stat={statEventOf(frames, frame, mine.active.id)} unit={unit} lang={lang} style={sprites} psMove={psMove} />
       </span>
       <FxLayer frames={frames} frame={frame} me={me} psMove={psMove} />
       <div className="bd-psfx" ref={psFxRef} aria-hidden />
