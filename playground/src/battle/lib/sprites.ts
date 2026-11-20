@@ -58,6 +58,20 @@ export function battleSpriteCandidates(slug: string, back: boolean): string[] {
   ]
 }
 
+/** Pokémon HOME 3D 렌더 (512×512 정지 그림, 앞모습만) */
+export const homeSpriteUrl = (id: number) => `${POKEMON}/other/home/${id}.png`
+export const isHomeSprite = (url: string) => url.includes('/other/home/')
+
+/**
+ * 3D 후보: HOME 렌더(폼 → 기본) 다음에 2D 후보 (HOME 그림이 없으면 2D 로 내려간다).
+ * 우리 쪽도 앞모습을 좌우로 뒤집어 쓴다 (HOME 은 뒷모습이 없다).
+ */
+export function battleSprite3dCandidates(slug: string, back: boolean): string[] {
+  const ids = spriteIdsOf(slug)
+  if (!ids) return []
+  return [...[...new Set([ids.form, ids.num])].map(homeSpriteUrl), ...battleSpriteCandidates(slug, back)]
+}
+
 /** 작은 아이콘 (팀 빌더·교체 화면): Gen 5 B/W 애니메이션 → 정지 도트 */
 export function iconCandidates(slug: string): string[] {
   const ids = spriteIdsOf(slug)

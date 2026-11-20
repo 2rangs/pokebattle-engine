@@ -3,7 +3,7 @@
 //   상대 = 위 오른쪽(앞모습), 상대 데이터박스 = 위 왼쪽 (HP 숫자 없음)
 //   우리 = 아래 왼쪽(뒷모습), 우리 데이터박스 = 아래 오른쪽 (HP 숫자)
 // 연출은 transform/opacity/filter 애니메이션만 써서 레이아웃이 움직이지 않는다 (prefers-reduced-motion 이면 끔).
-import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { MoveData, PlayerID } from '../lib/engine'
 import { foeOf, sideOfId, type Frame, type PokeView, type SideView } from '../lib/frame'
 import { pctOf, stageMultiplier } from '../lib/hud'
@@ -11,10 +11,11 @@ import type { Lang } from '../lib/messages'
 import { moveName, pokemonLabel, statLabel, statusLongName, typeName, volatileName } from '../lib/names'
 import { volatileDesc } from '../lib/status'
 import {
-  backgroundFor, backgroundUrl, battleSpriteCandidates, fxUrl, moveFx, POKE_BALL, TYPE_COLOR, type FxSprite,
+  backgroundFor, backgroundUrl, battleSprite3dCandidates, battleSpriteCandidates, fxUrl, homeSpriteUrl, isHomeSprite, moveFx, POKE_BALL,
+  spriteIdsOf, TYPE_COLOR, type FxSprite,
 } from '../lib/sprites'
 import { FallbackImg, Gender, HpBar, StatusBadge } from './bits'
-import { useBT } from './state'
+import { useBT, useSettings, type SpriteStyle } from './state'
 import { AIM, SPOT } from './layout'
 import { SceneEffects } from './SceneEffects'
 
@@ -35,9 +36,9 @@ function spriteAnimFor(f: Frame, p: PokeView): SpriteAnim | null {
   }
 }
 
-function BattleSprite({ p, back, frame, unit, lang }: { p: PokeView; back: boolean; frame: Frame; unit: number; lang: Lang }) {
+function BattleSprite({ p, back, frame, unit, lang, style }: { p: PokeView; back: boolean; frame: Frame; unit: number; lang: Lang; style: SpriteStyle }) {
   const [size, setSize] = useState<{ src: string; w: number; h: number } | null>(null)
-  const sources = battleSpriteCandidates(p.species, back)
+  const sources = style === '3d' ? battleSprite3dCandidates(p.species, back) : battleSpriteCandidates(p.species, back)
   const anim = spriteAnimFor(frame, p)
   const ref = useRef<HTMLSpanElement>(null)
   // 같은 연출이 연달아 와도 (연속기 등) 프레임마다 처음부터
@@ -52,7 +53,9 @@ function BattleSprite({ p, back, frame, unit, lang }: { p: PokeView; back: boole
   // Showdown 은 640px 필드에 1배로 그린다. 게임처럼 우리 쪽(가까운 쪽)을 더 크게
   const k = (back ? 1.5 : 1.1) * unit
   const max = (back ? 185 : 140) * unit
-  const scale = size ? Math.min(k, max / size.h) : 0
+  // HOME 렌더는 512px 정사각형 (여백 포함) → 장면 크기에 맞춘 고정 크기 (우리 쪽이 더 크게)
+  const home = !!size && isHomeSprite(size.src)
+  const scale = !size ? 0 : home ? ((back ? 215 : 155) * unit) / size.h : Math.min(k, max / size.h)
   const stat = frame.event.type === 'stat_change' && frame.event.pokemon_id === p.id ? frame.event : null
   const status = p.fainted ? null : p.status
 
@@ -63,7 +66,7 @@ function BattleSprite({ p, back, frame, unit, lang }: { p: PokeView; back: boole
         <FallbackImg
           sources={sources}
           alt={pokemonLabel(p, lang)}
-          className={`bd-sprite-img${status ? ` tint-${status}` : ''}`}
+          className={`bd-sprite-img${home ? ` is-home${back ? ' is-mirrored' : ''}` : ''}${status ? ` tint-${status}` : ''}`}
           style={size ? { width: Math.round(size.w * scale), height: Math.round(size.h * scale) } : { opacity: 0 }}
           onLoad={img => setSize(s => (s?.src === img.src ? s : { src: img.src, w: img.naturalWidth, h: img.naturalHeight }))}
         />
@@ -85,12 +88,7 @@ function PartyBalls({ side, lang }: { side: SideView; lang: Lang }) {
   return (
     <span className="bd-balls" role="img" aria-label={`${t('partyStatus')}: ${lines.join(', ')}`} title={lines.join('\n')}>
       {side.team.map(p => (
-        <img
-          key={p.id}
-          src={POKE_BALL}
-          alt=""
-          className={`bd-ball-icon is-pixel${p.fainted ? ' is-fainted' : p.status ? ` is-status st-${p.status}` : ''}`}
-        />
+        <i key={p.id} className={`bd-dot${p.fainted ? ' is-fainted' : p.status ? ` is-status st-${p.status}` : ''}`} />
       ))}
     </span>
   )
@@ -199,6 +197,28 @@ function Shot({ sprite, from, to }: { sprite: FxSprite; from: { x: number; y: nu
   )
 }
 
+/** 3D: 지금 두 팀의 HOME 렌더를 미리 받아 둔다 (교체 때 늦게 뜨지 않게) */
+const preloaded = new Set<string>()
+function usePreloadHome(species: string[]) {
+  const key = [...new Set(species)].sort().join('|')
+  useEffect(() => {
+    if (!key) return
+    for (const sp of key.split('|')) {
+      const ids = spriteIdsOf(sp)
+      if (!ids) continue
+      const url = homeSpriteUrl(ids.form)
+      if (preloaded.has(url)) continue
+      preloaded.add(url)
+      const img = new Image()
+      img.decoding = 'async'
+      img.src = url
+    }
+  }, [key])
+}
+
+/** 배경: flat = 토큰 색 무대 + 발판 / photo = Showdown 배경을 어둡게 (비교용, 빌드 때 VITE_BD_STAGE=photo) */
+const STAGE: 'flat' | 'photo' = import.meta.env.VITE_BD_STAGE === 'photo' ? 'photo' : 'flat'
+
 // ─── 장면 ────────────────────────────────────────────────────
 export interface SceneProps {
   frames: readonly Frame[]
@@ -230,24 +250,26 @@ export function Scene({ frames, frame, seed, me = 'p1', revealFoe, called, child
   const bg = backgroundFor(seed)
   const mine = frame[me]
   const foe = frame[foeOf(me)]
+  const { sprites } = useSettings()
+  usePreloadHome(sprites === '3d' ? [...frame.p1.team, ...frame.p2.team].map(x => x.species) : [])
 
   return (
     <div
       ref={ref}
-      className={`bd-scene${bgFailed ? ' is-fallback' : ''}`}
+      className={`bd-scene is-${STAGE}${bgFailed ? ' is-fallback' : ''}`}
       role="img"
       aria-label={`${t('battleScene')}: ${pokemonLabel(foe.active, lang)} vs ${pokemonLabel(mine.active, lang)}`}
       style={{ '--unit': unit } as CSSProperties}
     >
-      {!bgFailed && <img className="bd-bg" src={backgroundUrl(bg)} alt="" aria-hidden onError={() => setBgFailed(true)} />}
+      {STAGE === 'photo' && !bgFailed && <img className="bd-bg" src={backgroundUrl(bg)} alt="" aria-hidden onError={() => setBgFailed(true)} />}
       <SceneEffects frame={frame} me={me} />
       <span className="bd-spot is-foe" style={{ left: `${SPOT.foe.x}%`, top: `${SPOT.foe.y}%` }}>
         <span className="bd-shadow" />
-        <BattleSprite key={foe.active.id} p={foe.active} back={false} frame={frame} unit={unit} lang={lang} />
+        <BattleSprite key={`${foe.active.id}-${sprites}`} p={foe.active} back={false} frame={frame} unit={unit} lang={lang} style={sprites} />
       </span>
       <span className="bd-spot is-ours" style={{ left: `${SPOT.ours.x}%`, top: `${SPOT.ours.y}%` }}>
         <span className="bd-shadow" />
-        <BattleSprite key={mine.active.id} p={mine.active} back frame={frame} unit={unit} lang={lang} />
+        <BattleSprite key={`${mine.active.id}-${sprites}`} p={mine.active} back frame={frame} unit={unit} lang={lang} style={sprites} />
       </span>
       <FxLayer frames={frames} frame={frame} me={me} />
       <Databox side={foe} ours={false} showNumbers={revealFoe} showTera={revealFoe} lang={lang} />
