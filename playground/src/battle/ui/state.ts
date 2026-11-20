@@ -11,6 +11,7 @@ import { normalizeSize, type TeamSize } from '../lib/team'
 export type Rule = 'normal' | 'metronome'
 export type Mode = 'vs-cpu' | 'spectate'
 export type Difficulty = 'easy' | 'normal' | 'hard'
+export type SpriteStyle = '2d' | '3d'
 
 export interface MetronomeForm {
   p1Mode: 'random' | 'picked'
@@ -32,9 +33,13 @@ export interface DemoSettings {
   sound: boolean
   /** 내 팀 (자리 순서, 최대 6, 빈 자리 null) */
   myTeam: (PokemonSet | null)[]
-  /** 상대 팀 (랜덤으로 뽑아 둔 것, 6마리) */
-  foeTeam: PokemonSet[]
+  /** 상대(CPU) 팀 (설정 화면에서 시드로 뽑아 두고 자리마다 다시 뽑기·편집, 최대 6) */
+  foeTeam: (PokemonSet | null)[]
   metronome: MetronomeForm
+  /** 손가락흔들기 랜덤 팀을 정하는 시드 (설정 화면에서 미리 보여 주고 그대로 시작) */
+  metroSeed: number
+  /** 배틀 스프라이트: 2D 도트 / 3D HOME 렌더 */
+  sprites: SpriteStyle
 }
 
 const KEY = 'pokebattle-demo-v1'
@@ -49,6 +54,8 @@ const DEFAULTS: DemoSettings = {
   myTeam: [],
   foeTeam: [],
   metronome: { p1Mode: 'random', p2Mode: 'random', p1Pick: [], p2Pick: [], level: 100, stats: {} },
+  metroSeed: Math.floor(Math.random() * 1e9),
+  sprites: '2d',
 }
 
 function load(): DemoSettings {
@@ -63,6 +70,8 @@ function load(): DemoSettings {
       myTeam: Array.isArray(v.myTeam) ? v.myTeam.slice(0, 6) : [],
       foeTeam: Array.isArray(v.foeTeam) ? v.foeTeam.slice(0, 6) : [],
       metronome: { ...DEFAULTS.metronome, ...(v.metronome ?? {}) },
+      metroSeed: Number.isInteger(v.metroSeed) && v.metroSeed! >= 0 ? v.metroSeed! : DEFAULTS.metroSeed,
+      sprites: v.sprites === '3d' ? '3d' : '2d',
     }
   } catch {
     return DEFAULTS
