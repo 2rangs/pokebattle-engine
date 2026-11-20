@@ -11,6 +11,9 @@ export const POKEROGUE_BASE = 'https://raw.githubusercontent.com/pagefaultgames/
 
 const KEY_SET = new Set<string>(KEYS.keys)
 const FEMALE_SET = new Set<string>(KEYS.female)
+// 본 그림이 한 프레임(정지)뿐이고 exp/(실험용 애니메이션)에 움직이는 그림이 있는 키 — 주로 6세대 이후
+const EXP_FRONT = new Set<string>(KEYS.expFront)
+const EXP_BACK = new Set<string>(KEYS.expBack)
 
 const REGION_OFFSET: Record<string, number> = { alola: 2000, galar: 4000, hisui: 6000, paldea: 8000 }
 
@@ -135,10 +138,15 @@ export interface AtlasUrls {
   key: string
 }
 
-/** 앞·뒷모습 아틀라스 URL. 암컷이고 암컷 그림이 있으면 female/ */
+/**
+ * 앞·뒷모습 아틀라스 URL. 암컷이고 암컷 그림이 있으면 female/,
+ * 본 그림이 정지 한 장이면 exp/ 의 애니메이션 (PokéRogue 설정의 실험용 스프라이트와 같은 파일).
+ */
 export function pokeRogueAtlas(slug: string, back: boolean, gender?: 'M' | 'F' | null): AtlasUrls | null {
   const key = pokeRogueKey(slug)
   if (!key) return null
-  const dir = `${back ? 'back/' : ''}${gender === 'F' && FEMALE_SET.has(key) ? 'female/' : ''}`
+  const female = gender === 'F' && FEMALE_SET.has(key)
+  const exp = !female && (back ? EXP_BACK : EXP_FRONT).has(key)
+  const dir = `${exp ? 'exp/' : ''}${back ? 'back/' : ''}${female ? 'female/' : ''}`
   return { key, json: `${POKEROGUE_BASE}/${dir}${key}.json`, png: `${POKEROGUE_BASE}/${dir}${key}.png` }
 }

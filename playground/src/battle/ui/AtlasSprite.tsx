@@ -3,7 +3,7 @@
 // 캔버스 크기 = sourceSize, 잘린 프레임은 spriteSourceSize 위치에 → 프레임마다 흔들리지 않고 아래가 맞는다.
 // 화면 밖·탭 숨김이면 멈추고, 움직임 줄이기면 첫 프레임만.
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
-import { ATLAS_FPS, ATLAS_FRAME_EVENT, loadAtlas, reducedMotion, type Atlas } from '../lib/atlas'
+import { ATLAS_FPS, ATLAS_FRAME_EVENT, firstFrameUrl, loadAtlas, reducedMotion, type Atlas } from '../lib/atlas'
 
 export interface AtlasSpriteProps {
   json: string
@@ -12,17 +12,19 @@ export interface AtlasSpriteProps {
   className?: string
   style?: CSSProperties
   fps?: number
-  /** 첫 프레임을 그린 뒤: 원래 크기 (FallbackImg 의 onLoad 와 같은 모양) */
+  /** 첫 프레임을 그린 뒤: 원래 크기 (FallbackImg 의 onLoad 와 같은 모양). src 는 첫 프레임 data URL (mask 용) */
   onLoad?: (img: { src: string; naturalWidth: number; naturalHeight: number }) => void
   onError?: () => void
+  /** 프레임을 그릴 때마다 */
+  onFrame?: (canvas: HTMLCanvasElement) => void
 }
 
-export function AtlasSprite({ json, png, alt, className, style, fps = ATLAS_FPS, onLoad, onError }: AtlasSpriteProps) {
+export function AtlasSprite({ json, png, alt, className, style, fps = ATLAS_FPS, onLoad, onError, onFrame }: AtlasSpriteProps) {
   const ref = useRef<HTMLCanvasElement>(null)
   const [atlas, setAtlas] = useState<{ key: string; a: Atlas } | null>(null)
-  const cb = useRef({ onLoad, onError })
+  const cb = useRef({ onLoad, onError, onFrame })
   useLayoutEffect(() => {
-    cb.current = { onLoad, onError }
+    cb.current = { onLoad, onError, onFrame }
   })
 
   useEffect(() => {
@@ -48,9 +50,10 @@ export function AtlasSprite({ json, png, alt, className, style, fps = ATLAS_FPS,
       ctx.clearRect(0, 0, a.w, a.h)
       ctx.drawImage(a.img, f.sx, f.sy, f.w, f.h, f.dx, f.dy, f.w, f.h)
       cv.dispatchEvent(new Event(ATLAS_FRAME_EVENT))
+      cb.current.onFrame?.(cv)
     }
     draw()
-    cb.current.onLoad?.({ src: png, naturalWidth: a.w, naturalHeight: a.h })
+    cb.current.onLoad?.({ src: firstFrameUrl(a), naturalWidth: a.w, naturalHeight: a.h })
     if (a.frames.length < 2 || reducedMotion()) return
 
     let visible = true
@@ -103,7 +106,7 @@ export function AtlasSprite({ json, png, alt, className, style, fps = ATLAS_FPS,
       role="img"
       aria-label={alt}
       data-sprite-src={png}
-      className={`${className ?? ''} is-pixel bd-atlas`}
+      className={`${className ?? ''} is-pixel bd-atlas${a && a.frames.length < 2 ? ' is-still' : ''}`}
       style={style}
     />
   )

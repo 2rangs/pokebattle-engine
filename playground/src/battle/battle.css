@@ -577,6 +577,8 @@
   .anim-shimmer { animation: bd-shimmer .7s ease-in-out; }
   .anim-status { animation: bd-status .5s ease-out; }
   .bd-sprite-img.is-home { animation: bd-breathe 3.2s ease-in-out infinite; }
+  /* PokéRogue 에 움직이는 그림이 없는 종 (한 프레임 아틀라스): 3D 정지 렌더처럼 살짝 숨 쉬기 */
+  .bd-sprite-img.bd-atlas.is-still { transform-origin: 50% 100%; animation: bd-breathe 3.2s ease-in-out infinite; }
   .bd-spot.is-ours .bd-sprite-img.is-home { animation-delay: -1.3s; }
   .bd-zzz { animation: bd-zzz 2.4s ease-in-out infinite; }
   .bd-statfx { animation: bd-stat-fade var(--dur) linear both, bd-stat-up var(--pass) linear var(--n); }

@@ -14,6 +14,16 @@ export interface Atlas {
   h: number
 }
 
+/** Phaser 멀티 아틀라스(textures[]), TexturePacker/Aseprite 배열(frames[]) 또는 해시(frames{이름: …}) */
+type AtlasJson = { textures?: { frames: AtlasFrame[] }[]; frames?: AtlasFrame[] | Record<string, Omit<AtlasFrame, 'filename'>> }
+
+/** 프레임 목록 (파일 이름 순 = 재생 순서) */
+export function atlasFrames(data: AtlasJson): AtlasFrame[] {
+  const f = data.textures?.[0]?.frames ?? data.frames ?? []
+  const list = Array.isArray(f) ? [...f] : Object.entries(f).map(([filename, v]) => ({ ...v, filename }))
+  return list.sort((a, b) => a.filename.localeCompare(b.filename))
+}
+
 const cache = new Map<string, Promise<Atlas>>()
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -35,11 +45,11 @@ export function loadAtlas(json: string, png: string): Promise<Atlas> {
   const p = Promise.all([
     fetch(json).then(r => {
       if (!r.ok) throw new Error(`atlas json ${r.status}`)
-      return r.json() as Promise<{ textures?: { frames: AtlasFrame[] }[]; frames?: AtlasFrame[] }>
+      return r.json() as Promise<AtlasJson>
     }),
     loadImage(png),
   ]).then(([data, img]) => {
-    const raw = [...(data.textures?.[0]?.frames ?? data.frames ?? [])].sort((a, b) => a.filename.localeCompare(b.filename))
+    const raw = atlasFrames(data)
     if (!raw.length) throw new Error('atlas has no frames')
     const { w, h } = raw[0].sourceSize
     return {
@@ -72,4 +82,23 @@ export function drawSilhouette(target: HTMLCanvasElement, source: HTMLCanvasElem
   ctx.fillStyle = color
   ctx.fillRect(0, 0, target.width, target.height)
   ctx.globalCompositeOperation = 'source-over'
+}
+
+const firstFrames = new WeakMap<Atlas, string>()
+/**
+ * 첫 프레임 그림의 data URL (아틀라스마다 한 번). 시트 전체가 아니라 한 프레임이라
+ * 능력치 변화 무늬의 CSS mask(`url(...)`) 등에 그대로 쓸 수 있다.
+ */
+export function firstFrameUrl(a: Atlas): string {
+  const hit = firstFrames.get(a)
+  if (hit) return hit
+  const cv = document.createElement('canvas')
+  cv.width = a.w
+  cv.height = a.h
+  const f = a.frames[0]
+  cv.getContext('2d')?.drawImage(a.img, f.sx, f.sy, f.w, f.h, f.dx, f.dy, f.w, f.h)
+  let url = a.img.src
+  try { url = cv.toDataURL() } catch { /* CORS 로 오염되면 시트 URL */ }
+  firstFrames.set(a, url)
+  return url
 }

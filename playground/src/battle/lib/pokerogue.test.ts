@@ -43,5 +43,8 @@ test('URL: 뒷모습·암컷', () => {
   expect(pokeRogueAtlas('rotom-wash', true)?.json).toMatch(/pokerogue-assets\/beta\/images\/pokemon\/back\/479-wash\.json$/)
   expect(pokeRogueAtlas('garchomp', false, 'F')?.png).toMatch(/\/pokemon\/female\/445\.png$/)
   expect(pokeRogueAtlas('garchomp', true, 'F')?.png).toMatch(/\/pokemon\/back\/female\/445\.png$/)
-  expect(pokeRogueAtlas('dragapult', false, 'F')?.png).toMatch(/\/pokemon\/887\.png$/)
+  // 본 그림이 정지 한 장인 종은 exp/ 애니메이션
+  expect(pokeRogueAtlas('dragapult', false, 'F')?.png).toMatch(/\/pokemon\/exp\/887\.png$/)
+  expect(pokeRogueAtlas('dragapult', true)?.png).toMatch(/\/pokemon\/exp\/back\/887\.png$/)
+  expect(pokeRogueAtlas('pikachu', false)?.png).toMatch(/\/pokemon\/25\.png$/)
 })
