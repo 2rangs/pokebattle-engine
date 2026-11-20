@@ -100,9 +100,12 @@ export function itemOptions(lang: Lang, gen: Gen = DEFAULT_GEN): ItemOption[] {
 export function itemOptionsFor(set: PokemonSet, lang: Lang, gen: Gen): ItemOption[] {
   const all = itemOptions(lang, gen)
   const types = set.moves.map(m => (m ? getMove(m)?.type : undefined)).filter((t): t is string => !!t)
-  const top = new Set(gimmickItemsFor(set.species, types, gen))
-  if (!top.size) return all
-  return [...all.filter(o => top.has(o.slug)).map(o => ({ ...o, gimmick: true })), ...all.filter(o => !top.has(o.slug))]
+  const order = gimmickItemsFor(set.species, types, gen)
+  if (!order.length) return all
+  const top = new Set(order)
+  const bySlug = new Map(all.map(o => [o.slug, o]))
+  const first = order.map(slug => bySlug.get(slug)).filter((o): o is ItemOption => !!o).map(o => ({ ...o, gimmick: true }))
+  return [...first, ...all.filter(o => !top.has(o.slug))]
 }
 
 // ─── 특성 · 성격 · 테라 타입 ──────────────────────────────────

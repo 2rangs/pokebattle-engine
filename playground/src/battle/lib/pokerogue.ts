@@ -41,6 +41,7 @@ const ALIAS: Record<string, string> = {
   'tatsugiri-droopy-mega': '978-mega-droopy',
   'tatsugiri-stretchy-mega': '978-mega-stretchy',
   'meowstic-male-mega': '678-mega',
+  'meowstic-female-mega': '678-mega',
   'zygarde-10-power-construct': '718-10',
   'zygarde-50-power-construct': '718',
   'pikachu-rock-star': '25-cool-cosplay',
