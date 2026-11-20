@@ -324,16 +324,6 @@
 .bd-chip.is-vol { color: #d8c2f5; }
 .bd-chip small { margin-left: .3em; color: var(--muted); }
 
-/* 손가락흔들기 배너 */
-.bd-called {
-  position: absolute; z-index: 12; left: 50%; top: 36%; transform: translateX(-50%);
-  display: flex; align-items: center; gap: .5em; padding: .4em .9em; border-radius: 999px; white-space: nowrap;
-  background: rgba(15, 16, 18, .9); color: var(--ink-2); border: 1px solid var(--rule-2);
-  font: 500 calc(13px * clamp(.85, var(--unit), 1.1))/1.2 var(--font-family-body);
-}
-.bd-called::before { content: ''; width: .55em; height: .55em; border-radius: 50%; background: var(--type); }
-.bd-called b { color: var(--ink); font-weight: 600; }
-
 /* ─── 기술 연출 (짧고 옅게) ─────────────────────────────── */
 .bd-fx { position: absolute; inset: 0; pointer-events: none; z-index: 8; }
 .bd-fx-shot, .bd-fx-hit, .bd-fx-aura { position: absolute; transform: translate(-50%, -50%); opacity: 0; }
@@ -585,7 +575,6 @@
   .bd-fx-shot { animation: bd-shot .3s ease-in forwards; }
   .bd-fx-hit { animation: bd-impact .32s ease-out; }
   .bd-fx-aura { animation: bd-aura .42s ease-out; }
-  .bd-called { animation: bd-called .25s ease-out; }
   .bd-msg-more { animation: bd-blink 1.2s steps(2) infinite; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -628,7 +617,6 @@
 }
 @keyframes bd-impact { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.5); } 30% { opacity: .8; } 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.2); } }
 @keyframes bd-aura { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.6); } 35% { opacity: .7; } 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.15); } }
-@keyframes bd-called { from { opacity: 0; transform: translate(-50%, -30%); } to { opacity: 1; transform: translateX(-50%); } }
 @keyframes bd-breathe { 50% { scale: 1.012 1.028; } }
 @keyframes bd-blink { 50% { opacity: 0; } }
 @media (max-width: 640px) { .bd-replay-title { flex-basis: 100%; } .bd-replay-title + .bd-toolbar-gap { display: none; } }

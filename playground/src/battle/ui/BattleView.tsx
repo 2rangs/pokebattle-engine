@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { PlayerID } from '../lib/engine'
 import { frameText } from '../lib/frames'
-import { calledMoveIndexes, lastCalledMoves, messageFrameIndex } from '../lib/hud'
+import { lastCalledMoves, messageFrameIndex } from '../lib/hud'
 import type { ReplayData } from '../lib/replay'
 import { Scene, SceneOverlay } from './Scene'
 import { ActionConsole, MessageBox } from './Console'
@@ -64,7 +64,6 @@ export function BattleView({ session, onExit, onRematch }: { session: BattleSess
   useBattleCries(f, sound, session.speed)
   useDebugHook(f, 'p1', !spectating, lang, sideName)
 
-  const called = useMemo(() => calledMoveIndexes(session.frames), [session.frames])
   if (!f) return null
 
   const msgIndex = messageFrameIndex(session.frames, session.revealed)
@@ -75,8 +74,6 @@ export function BattleView({ session, onExit, onRematch }: { session: BattleSess
       : spectating ? t('winnerIs', { name: cpu2 }) : t('lose')
   const text = ended && forfeited ? t('replayForfeit', { name: spectating ? sideName!(forfeited) : t('replayYou') })
     : msgFrame ? frameText(msgFrame, lang, sideName) : ''
-  const calledInfo = msgFrame && called.has(msgFrame.index) && msgFrame.event.type === 'move_use'
-    ? { move: msgFrame.event.move.name, type: msgFrame.event.move.type, key: msgFrame.index } : null
   const lastCalled = lastCalledMoves(session.frames, session.revealed).get(f.p1.active.id) ?? null
 
   return (
@@ -92,7 +89,7 @@ export function BattleView({ session, onExit, onRematch }: { session: BattleSess
           <ToolButton onClick={onExit}>{t('exit')}</ToolButton>
         </div>
         <div className="bd-game">
-          <Scene frames={session.frames} frame={f} revealFoe={spectating} called={calledInfo} speed={session.speed}>
+          <Scene frames={session.frames} frame={f} revealFoe={spectating} speed={session.speed}>
             {ended && <ResultOverlay result={result} replay={session.replayData} onRematch={onRematch} onExit={onExit} />}
           </Scene>
           {spectating || ended

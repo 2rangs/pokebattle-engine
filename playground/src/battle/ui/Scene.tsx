@@ -8,7 +8,7 @@ import type { MoveData, PlayerID } from '../lib/engine'
 import { foeOf, sideOfId, type Frame, type PokeView, type SideView } from '../lib/frame'
 import { moveFrameDelay, pctOf, stageMultiplier } from '../lib/hud'
 import type { Lang } from '../lib/messages'
-import { moveName, pokemonLabel, statLabel, statusLongName, typeName, volatileName } from '../lib/names'
+import { pokemonLabel, statLabel, statusLongName, typeName, volatileName } from '../lib/names'
 import { volatileDesc } from '../lib/status'
 import {
   battleSprite3dCandidates, battleSpriteCandidates, fxUrl, homeSpriteUrl, isHomeSprite, moveFx, POKE_BALL,
@@ -277,13 +277,12 @@ export interface SceneProps {
   /** 상대 HP 숫자·테라 타입까지 보여줄지 (관전·리플레이 관전) */
   revealFoe: boolean
   /** 손가락흔들기로 불려 나온 기술 (메시지 프레임이 그 기술일 때) */
-  called?: { move: string; type: string; key: number } | null
   /** 재생 간격 (ms): 기술 애니메이션을 이 속도에 맞춰 줄인다 */
   speed?: number
   children?: ReactNode
 }
 
-export function Scene({ frames, frame, me = 'p1', revealFoe, called, speed = 650, children }: SceneProps) {
+export function Scene({ frames, frame, me = 'p1', revealFoe, speed = 650, children }: SceneProps) {
   const { t, lang } = useBT()
   const ref = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(640)
@@ -326,12 +325,6 @@ export function Scene({ frames, frame, me = 'p1', revealFoe, called, speed = 650
       <div className="bd-psfx" ref={psFxRef} aria-hidden />
       <Databox side={foe} ours={false} showNumbers={revealFoe} showTera={revealFoe} lang={lang} />
       <Databox side={mine} ours showNumbers showTera lang={lang} />
-      {called && (
-        <span key={called.key} className="bd-called" style={{ '--type': TYPE_COLOR[called.type] ?? '#888' } as CSSProperties}>
-          <span>{moveName('metronome', lang)}</span>
-          <b>→ {moveName(called.move, lang)}</b>
-        </span>
-      )}
       {children}
     </div>
   )

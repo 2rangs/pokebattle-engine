@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PlayerID } from '../lib/engine'
 import { frameText, simulateReplay, type SimulatedReplay } from '../lib/frames'
-import { calledMoveIndexes, frameDelay, messageFrameIndex } from '../lib/hud'
+import { frameDelay, messageFrameIndex } from '../lib/hud'
 import { decodeReplay, ReplayError, type ReplayData, type ReplayErrorCode } from '../lib/replay'
 import { Scene, SceneOverlay } from './Scene'
 import { MessageBox } from './Console'
@@ -135,12 +135,9 @@ function ReplayViewer({ data, sim }: { data: ReplayData; sim: SimulatedReplay })
     return () => window.removeEventListener('keydown', onKey)
   }, [prevTurn, nextTurn, togglePlay])
 
-  const called = useMemo(() => calledMoveIndexes(sim.frames), [sim])
   const msgIndex = messageFrameIndex(sim.frames, cursor)
   const msgFrame = msgIndex === null ? null : sim.frames[msgIndex]!
   const text = atEnd && data.forfeit ? t('replayForfeit', { name: nameOf(data.forfeit) }) : msgFrame ? frameText(msgFrame, lang, sideName) : ''
-  const calledInfo = msgFrame && called.has(msgFrame.index) && msgFrame.event.type === 'move_use'
-    ? { move: msgFrame.event.move.name, type: msgFrame.event.move.type, key: msgFrame.index } : null
 
   return (
     <div className="bd-battle" ref={rootRef}>
@@ -157,7 +154,7 @@ function ReplayViewer({ data, sim }: { data: ReplayData; sim: SimulatedReplay })
           <ToolButton href="#/battle">{t('exit')}</ToolButton>
         </div>
         <div className="bd-game">
-          <Scene frames={sim.frames} frame={f} revealFoe={spectating} called={calledInfo} speed={speed}>
+          <Scene frames={sim.frames} frame={f} revealFoe={spectating} speed={speed}>
             {atEnd && !playing && result && (
               <SceneOverlay title={result}>
                 <button type="button" className="bd-btn is-primary" onClick={() => { setCursor(1); setPlaying(true) }}>{t('replayRestart')}</button>
