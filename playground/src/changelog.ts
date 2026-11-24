@@ -33,6 +33,18 @@ export const CHANGELOG: readonly ChangeEntry[] = [
   {
     date: '2026-11-24',
     kind: 'improved',
+    area: 'demo',
+    title: ['팀 설정 화면 정리: 좌우 배치와 하나로 통일한 랜덤 버튼', 'Tidier team setup: side-by-side teams and one Randomize button'],
+    points: [
+      ['샌드박스의 손가락흔들기 팀도 내 팀 | 상대 팀으로 나란히 보입니다. 좌우 배치는 화면 폭 860px부터 적용됩니다.', 'Metronome teams in the sandbox now sit side by side too, and the side-by-side layout starts at 860px wide.'],
+      ['랜덤 팀, 상대 팀 다시 뽑기, 세트 다시 뽑기처럼 따로 있던 버튼을 모두 «랜덤 뽑기» 하나로 통일했습니다.', 'Random team, reroll foe, re-roll set and the metronome reroll are now all a single “Randomize” button.'],
+      ['나란히 볼 때 4·6마리는 두 칸씩, 그 밖에는 한 줄에 한 마리씩 놓입니다.', 'Side by side, 4 or 6 Pokémon are laid out two per row; other team sizes use one per row.'],
+    ],
+    link: { href: '#/battle', label: ['배틀 데모', 'Battle demo'] },
+  },
+  {
+    date: '2026-11-24',
+    kind: 'improved',
     area: 'site',
     title: ['첫 화면이 훨씬 가벼워졌습니다', 'Much lighter first load'],
     points: [
