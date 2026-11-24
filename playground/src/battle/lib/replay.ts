@@ -1,7 +1,7 @@
 // ─── 리플레이 직렬화 (Pokestra 배틀 시뮬레이터에서 옮김) ─────────────
 // 시드 + 규칙(일반: 두 팀의 Showdown 텍스트 / 손가락흔들기: 옵션) + 기록한 모든 행동(사람·AI)
 // → JSON → deflate-raw → base64url. 같은 시드·팀에 같은 행동을 순서대로 넣으면 엔진이 같은 로그를 만든다.
-import type { Action, PlayerID } from './engine'
+import type { Action, BattleRuleOptions, PlayerID, Stats } from './engine'
 
 export const REPLAY_VERSION = 1
 
@@ -12,6 +12,8 @@ export interface ReplaySide {
     /** Showdown 팀 텍스트 (일반 배틀만, 손가락흔들기는 빈 문자열) */
     team: string
     ctrl: ReplayController
+    /** 자유 능력치 (샌드박스): 팀 순서대로, 없으면 null */
+    stats?: (Partial<Stats> | null)[]
 }
 
 /** 손가락흔들기 설정 (엔진 createMetronomeBattle 옵션의 JSON 부분집합) */
@@ -25,8 +27,8 @@ export interface MetronomeSetup {
 }
 
 /** 일반 배틀의 세대 (없으면 9세대 — 세대를 저장하기 전의 링크) */
-export type ReplayGen = 6 | 7 | 8 | 9
-const GENS: readonly ReplayGen[] = [6, 7, 8, 9]
+export type ReplayGen = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
+const GENS: readonly ReplayGen[] = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
 export interface ReplayData {
     v:       1
@@ -38,6 +40,8 @@ export interface ReplayData {
     p1:      ReplaySide
     p2:      ReplaySide
     metronome?: MetronomeSetup
+    /** 배틀 옵션 (엔진 config.options: 팀 프리뷰·레벨·기믹 끄기·클로즈·기믹 겹치기). 없으면 기본 (예전 링크) */
+    options?: BattleRuleOptions
     actions: Action[]
     /** 기권한 쪽 (모든 행동 뒤에 적용) */
     forfeit?: PlayerID
@@ -218,6 +222,7 @@ interface Wire {
     p1: ReplaySide
     p2: ReplaySide
     m?: MetronomeSetup
+    o?: BattleRuleOptions
     a:  ActionTuple[]
     x?: PlayerID
 }
@@ -227,6 +232,7 @@ export async function encodeReplay(data: ReplayData): Promise<string> {
     if (data.rule !== 'normal') wire.r = data.rule
     if (data.gen && data.gen !== 9) wire.g = data.gen
     if (data.metronome) wire.m = data.metronome
+    if (data.options && Object.keys(data.options).length) wire.o = data.options
     if (data.forfeit) wire.x = data.forfeit
     const bytes = new TextEncoder().encode(JSON.stringify(wire))
     return toBase64Url(await pump(bytes, new CompressionStream('deflate-raw')))
@@ -234,12 +240,36 @@ export async function encodeReplay(data: ReplayData): Promise<string> {
 
 const CTRLS: readonly ReplayController[] = ['human', 'easy', 'normal', 'hard']
 
+const STAT_KEYS = ['hp', 'attack', 'defense', 'special_attack', 'special_defense', 'speed']
+
 function side(v: unknown): ReplaySide {
     const s = v as Partial<ReplaySide> | null
     if (!s || typeof s !== 'object' || !isStr(s.team) || !CTRLS.includes(s.ctrl as ReplayController)) {
         throw new ReplayError('corrupt', 'bad side')
     }
-    return { team: s.team, ctrl: s.ctrl as ReplayController }
+    const out: ReplaySide = { team: s.team, ctrl: s.ctrl as ReplayController }
+    if (s.stats !== undefined) {
+        const ok = Array.isArray(s.stats) && s.stats.length <= 6 && s.stats.every(x => x === null || (typeof x === 'object'
+            && Object.entries(x).every(([k, n]) => STAT_KEYS.includes(k) && isInt(n, 1, 9999))))
+        if (!ok) throw new ReplayError('corrupt', 'bad stats')
+        out.stats = s.stats
+    }
+    return out
+}
+
+const BOOL_OPTS = ['teamPreview', 'terastal', 'dynamax', 'megaEvolution', 'zMoves', 'stackGimmicks', 'speciesClause', 'itemClause', 'sleepClause', 'ohkoClause', 'evasionClause', 'endlessBattleClause'] as const
+const INT_OPTS = ['pickedTeamSize', 'level'] as const
+
+/** 링크의 배틀 옵션: 아는 칸만 (값 검사) */
+function ruleOptions(v: unknown): BattleRuleOptions {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) throw new ReplayError('corrupt', 'bad options')
+    const out: BattleRuleOptions = {}
+    for (const [k, x] of Object.entries(v)) {
+        if ((BOOL_OPTS as readonly string[]).includes(k) && typeof x === 'boolean') (out as Record<string, unknown>)[k] = x
+        else if ((INT_OPTS as readonly string[]).includes(k) && isInt(x, 1, k === 'level' ? 100 : 6)) (out as Record<string, unknown>)[k] = x
+        else throw new ReplayError('corrupt', `bad option ${k}`)
+    }
+    return out
 }
 
 export async function decodeReplay(s: string): Promise<ReplayData> {
@@ -271,6 +301,7 @@ export async function decodeReplay(s: string): Promise<ReplayData> {
     }
     if (wire.g && wire.g !== 9) out.gen = wire.g
     if (rule === 'metronome') out.metronome = metronomeSetup(wire.m)
+    if (wire.o !== undefined) out.options = ruleOptions(wire.o)
     if (wire.x) out.forfeit = wire.x
     return out
 }

@@ -26,17 +26,19 @@ export type Logger = (line: string, kind?: LogKind) => void
 export type LogKind = 'out' | 'info' | 'json' | 'error' | 'dim'
 
 export type DocLang = 'ko' | 'en'
+/** 배틀 로그 언어 (문서 언어 + 일본어) */
+export type LogLang = DocLang | 'ja'
 
 export interface Example {
   /** 보여줄 소스. 주석은 L(ko, en) 표시로 두 언어를 담고, localizeCode 로 고른다 */
   code: string
   /** lang: 문서 언어 (배틀 로그를 그 언어로 낸다) */
-  run: (log: Logger, lang: DocLang) => void
+  run: (log: Logger, lang: LogLang) => void
 }
 
 /** 배틀 로그 한 줄 (문서 언어, 배틀마다 포매터 하나) */
 const formatters = new WeakMap<BattleEngine, ReturnType<typeof createFormatter>>()
-function say(engine: BattleEngine, lang: DocLang, ev: BattleEvent): string | null {
+function say(engine: BattleEngine, lang: LogLang, ev: BattleEvent): string | null {
   let f = formatters.get(engine)
   if (!f) { f = createFormatter({ locale: lang, getPokemon: id => engine.getPokemon(id) }); formatters.set(engine, f) }
   return f.format(ev)

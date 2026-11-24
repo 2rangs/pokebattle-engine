@@ -3,7 +3,7 @@ import {
   generateRandomSet, generateRandomTeam, getLearnset, getSpecies, listPokeApiSpecies, parseShowdownTeam, PRNG, toId,
   type PokemonSet,
 } from './engine'
-import { DEFAULT_GEN, gimmickItemsFor, gimmicksOf, gmaxForm, itemInGen, randomFormat, speciesInGen, type Gen } from './gimmick'
+import { DEFAULT_GEN, gimmickItemsFor, gimmicksOf, gmaxForm, itemInGen, randomFormat, speciesInGen, type Gen, type GenGimmicks } from './gimmick'
 import { speciesName, stripAutoNickname } from './names'
 import type { Lang } from './messages'
 
@@ -45,11 +45,28 @@ export function moveUp<T>(team: readonly (T | null)[], i: number): (T | null)[] 
   return next
 }
 
-/** 9세대가 아니면 테라 타입은 세트에서 뺀다 (그 세대에 없는 칸) */
-export function forGen(set: PokemonSet, gen: Gen): PokemonSet {
+const MAX_EVS = { hp: 252, attack: 252, defense: 252, special_attack: 252, special_defense: 252, speed: 252 }
+
+/**
+ * 그 세대에 없는 칸을 세트에서 정리한다 (엔진도 1·2세대 세트를 같은 식으로 정리한다: adaptSetToGen).
+ *  - 테라 타입은 9세대만, 거다이맥스는 다이맥스가 켜진 8세대(또는 샌드박스)만
+ *  - 1·2세대: 특성·성격 없음, 능력치 경험치는 모두 최대 (Showdown 팀 빌더 기본), 1세대: 지닌 도구 없음
+ *  - 3세대 이후: 그 세대에 없는 특성(예: 4세대까지의 숨겨진 특성)은 첫 특성으로
+ */
+export function forGen(set: PokemonSet, gen: Gen, g: GenGimmicks = gimmicksOf(gen)): PokemonSet {
   const out = { ...set }
   if (gen !== 9) delete out.teraType
-  if (!gimmicksOf(gen).dynamax) delete out.gigantamax
+  if (!g.dynamax) delete out.gigantamax
+  if (gen <= 2) {
+    out.ability = ''
+    out.nature = 'hardy'
+    out.evs = { ...MAX_EVS }
+    delete out.ivs
+    if (gen === 1) delete out.item
+  } else if (gen < 9) {
+    const abilities = getSpecies(set.species, { gen })?.abilities.map(a => a.name) ?? []
+    if (abilities.length && !abilities.includes(out.ability)) out.ability = abilities[0]!
+  }
   return out
 }
 
@@ -57,25 +74,24 @@ export function forGen(set: PokemonSet, gen: Gen): PokemonSet {
  * 랜덤 팀: 마릿수만큼 (그 세대 Showdown 랜덤배틀 세트, 레벨 통일, 자동 닉네임 제거).
  * 7세대 세트에는 메가스톤·Z크리스탈, 8세대 세트에는 거다이맥스가 그대로 들어 있다.
  */
-export function randomTeam(seed: number, size: number, level = DEFAULT_LEVEL, gen: Gen = DEFAULT_GEN): PokemonSet[] {
-  return generateRandomTeam({ seed, size, level, format: randomFormat(gen) }).map(s => forGen(stripAutoNickname(s), gen))
+export function randomTeam(seed: number, size: number, level: number | 'balanced' = DEFAULT_LEVEL, gen: Gen = DEFAULT_GEN, g: GenGimmicks = gimmicksOf(gen)): PokemonSet[] {
+  return generateRandomTeam({ seed, size, ...(level === 'balanced' ? {} : { level }), format: randomFormat(gen) }).map(s => forGen(stripAutoNickname(s), gen, g))
 }
 
 /**
  * 고른 종 → 추천 세트 (그 세대 기술표 기반). 그 세대에 없는 도구는 먹다남은음식으로,
  * 메가진화할 수 있는 종(6·7세대)은 메가스톤, 거다이맥스할 수 있는 종(8세대)은 거다이맥스로.
  */
-export function suggestedSet(species: string, seed: number, level = DEFAULT_LEVEL, gen: Gen = DEFAULT_GEN): PokemonSet {
+export function suggestedSet(species: string, seed: number, level = DEFAULT_LEVEL, gen: Gen = DEFAULT_GEN, g: GenGimmicks = gimmicksOf(gen)): PokemonSet {
   const learnset = gen === 9 ? undefined : getLearnset(species, { gen })
   let set = stripAutoNickname(generateRandomSet(species, { rng: new PRNG(seed), level, ...(learnset ? { learnset } : {}) }))
-  if (gen === 9) return set
-  if (set.item && !itemInGen(set.item, gen)) set = { ...set, item: 'leftovers' }
-  if (gimmicksOf(gen).mega) {
-    const stone = gimmickItemsFor(species, [], gen).find(i => /ite(-[xy])?$/.test(i) || /-orb$/.test(i))
+  if (gen !== 9 && set.item && !itemInGen(set.item, gen)) set = { ...set, item: 'leftovers' }
+  if (g.mega) {
+    const stone = gimmickItemsFor(species, [], gen, g).find(i => /ite(-[xy])?$/.test(i) || /-orb$/.test(i))
     if (stone) set = { ...set, item: stone }
   }
-  if (gimmicksOf(gen).dynamax && gmaxForm(species)) set = { ...set, gigantamax: true }
-  return forGen(set, gen)
+  if (g.dynamax && gmaxForm(species)) set = { ...set, gigantamax: true }
+  return forGen(set, gen, g)
 }
 
 /** Showdown 텍스트 → 세트 (종 이름을 엔진 슬러그로, 6마리까지) */

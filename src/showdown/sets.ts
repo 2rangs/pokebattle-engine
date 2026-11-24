@@ -117,6 +117,23 @@ export function toShowdownSet(set: PokemonSet, strict = true): PSSet {
     } as PSSet
 }
 
+/**
+ * 세대에 없는 칸을 Showdown 검증기처럼 정리한다 (배틀 시뮬레이터는 세트를 그대로 믿기 때문).
+ *  - 1·2세대: 특성·성격 없음 ('No Ability', 무보정), 특수는 하나 (특방 DV·능력치 경험치 = 특공), HP DV 는 다른 DV 로 정해진다
+ *  - 1세대: 지닌 도구 없음
+ * 3세대 이상은 그대로 둔다.
+ */
+export function adaptSetToGen(ps: PSSet, gen: number): PSSet {
+    if (gen > 2) return ps
+    const out: PSSet = { ...ps, ability: 'No Ability', nature: '', evs: { ...ps.evs }, ivs: { ...ps.ivs } }
+    if (gen === 1) out.item = ''
+    out.evs.spd = out.evs.spa
+    out.ivs.spd = out.ivs.spa
+    const dv = (k: keyof StatsTable) => Math.floor(Math.max(0, Math.min(31, out.ivs[k])) / 2)
+    out.ivs.hp = ((dv('atk') % 2) * 8 + (dv('def') % 2) * 4 + (dv('spe') % 2) * 2 + (dv('spa') % 2)) * 2
+    return out
+}
+
 /** Showdown 세트 → 엔진 세트 (PokeAPI 슬러그) */
 export function fromShowdownSet(ps: PSSet): PokemonSet {
     const species = Dex.species.get(ps.species)
