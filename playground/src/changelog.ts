@@ -33,6 +33,24 @@ export const CHANGELOG: readonly ChangeEntry[] = [
   {
     date: '2026-11-24',
     kind: 'improved',
+    area: 'site',
+    title: ['첫 화면이 훨씬 가벼워졌습니다', 'Much lighter first load'],
+    points: [
+      ['문서·업데이트 내역·첫 화면은 엔진을 미리 받지 않아, 처음 받는 양이 8.6MB에서 1.5MB로 줄었습니다. 엔진은 예제를 실행하거나 배틀 데모를 열 때 받습니다.', 'The docs, changelog and home page no longer download the engine up front: the first load went from 8.6 MB to 1.5 MB. The engine loads when you run an example or open the battle demo.'],
+    ],
+  },
+  {
+    date: '2026-11-24',
+    kind: 'fixed',
+    area: 'demo',
+    title: ['손가락흔들기 배틀이 멈추던 문제', 'Metronome battles could stall'],
+    points: [
+      ['손가락흔들기가 봉인 등으로 막혔을 때 CPU가 막힌 기술을 고르다 배틀이 멈추던 문제를 고쳤습니다. 이제 발버둥을 씁니다.', 'When Metronome was blocked (by Imprison, for example) the CPU kept picking it and the battle stalled; it now uses Struggle.'],
+    ],
+  },
+  {
+    date: '2026-11-24',
+    kind: 'improved',
     area: 'demo',
     title: ['새 메가진화가 3D로 움직입니다', 'New Mega Evolutions move in 3D'],
     points: [

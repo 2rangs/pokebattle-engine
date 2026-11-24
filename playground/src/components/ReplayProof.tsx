@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { Button } from '@astryxdesign/core/Button'
 import { useLang } from '../i18n'
-import { dataReady } from '../engine'
+import { loadEngine } from '../engineLoader'
 import type { ReplayProof as Proof } from '../proof/replay-proof'
 
 export function ReplayProof() {
@@ -14,7 +14,7 @@ export function ReplayProof() {
   const run = async () => {
     setBusy(true); setErr('')
     try {
-      const [{ proveReplay }] = await Promise.all([import('../proof/replay-proof'), dataReady])
+      const [{ proveReplay }] = await Promise.all([import('../proof/replay-proof'), loadEngine()])
       await new Promise(r => setTimeout(r, 30))
       setRes(await proveReplay(1 + Math.floor(Math.random() * 100_000)))
     } catch (e) {

@@ -14,6 +14,9 @@
     "resolveJsonModule": true,
     "esModuleInterop": true,
     "ignoreDeprecations": "6.0",
+    // scripts/*.ts 는 node 로 바로 돌리므로 .ts 확장자로 import 한다 (이 설정은 편집기·tsc --noEmit 용, 빌드는 tsconfig.build.json)
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
     "types": ["node"],
     "paths": { "@kyasi/pokebattle-engine": ["./src/index.ts"] }
   },

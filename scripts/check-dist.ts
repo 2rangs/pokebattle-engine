@@ -57,8 +57,8 @@ for (let n = 0; n < N; n++) {
     const inputs: string[] = []
     const b = engine.battle
     const choose = b.choose.bind(b), tie = b.tie.bind(b)
-    b.choose = (s: string, c: string) => { const ok = choose(s, c); if (ok) inputs.push(`>${s} ${c}`); return ok }
-    b.tie = () => { inputs.push('>forcetie'); tie() }
+    b.choose = (s: Parameters<typeof choose>[0], c: string) => { const ok = choose(s, c); if (ok) inputs.push(`>${s} ${c}`); return ok }
+    b.tie = () => { inputs.push('>forcetie'); return tie() }
     engine.start()
     const header = engine.battle.inputLog.filter((l: string) => !/^>p[12] /.test(l))
     let g = 0
@@ -66,7 +66,7 @@ for (let n = 0; n < N; n++) {
         for (const p of ['p1', 'p2'] as const) {
             if (engine.battle.ended) break
             if (multi) {
-                const req = engine.getRawRequest(p)
+                const req = engine.getRawRequest(p) as { wait?: boolean } | null
                 if (!req || req.wait || engine.battle[p].isChoiceDone()) continue
                 try { engine.submitChoice(p, randomDoublesChoice(req, rng)) } catch { engine.submitChoice(p, 'default') }
             } else if (engine.getRequest(p)) engine.submitAction(rng.pick(engine.getAvailableActions(p)))
@@ -105,20 +105,21 @@ const PER_GEN = Math.max(10, Math.round(N / 6))
 for (let gen = 1; gen <= 8; gen++) {
     let bad = 0, gTurns = 0, gimmicks = 0
     for (let n = 0; n < PER_GEN; n++) {
-        const engine = dist.createRandomBattle({ gen, seed: n * 31 + gen, engine: { turnSnapshots: false } })
+        const engine = dist.createRandomBattle({ gen: gen as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8, seed: n * 31 + gen, engine: { turnSnapshots: false } })
         const rng = new dist.PRNG(n)
         const inputs: string[] = []
         const b = engine.battle
         const choose = b.choose.bind(b), tie = b.tie.bind(b)
-        b.choose = (sd: string, c: string) => { const ok = choose(sd, c); if (ok) inputs.push(`>${sd} ${c}`); return ok }
-        b.tie = () => { inputs.push('>forcetie'); tie() }
+        b.choose = (sd: Parameters<typeof choose>[0], c: string) => { const ok = choose(sd, c); if (ok) inputs.push(`>${sd} ${c}`); return ok }
+        b.tie = () => { inputs.push('>forcetie'); return tie() }
         engine.start()
         const header = engine.battle.inputLog.filter((l: string) => !/^>p[12] /.test(l))
         for (let g = 0; !engine.battle.ended && g < 3000; g++) {
             for (const p of ['p1', 'p2'] as const) {
                 if (engine.battle.ended || !engine.getRequest(p)) continue
-                const a = rng.pick(engine.getAvailableActions(p)) as { mega?: boolean; zmove?: boolean; dynamax?: boolean; ultra_burst?: boolean }
-                if (a.mega || a.zmove || a.dynamax || a.ultra_burst) gimmicks++
+                const a = rng.pick(engine.getAvailableActions(p))
+                const g = a as { mega?: boolean; zmove?: boolean; dynamax?: boolean; ultra_burst?: boolean }
+                if (g.mega || g.zmove || g.dynamax || g.ultra_burst) gimmicks++
                 engine.submitAction(a)
             }
         }

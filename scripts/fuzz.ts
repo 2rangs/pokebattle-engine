@@ -56,7 +56,7 @@ async function runWorker(): Promise<void> {
         const minSize = ACTIVE_PER_SIDE[format]
         // 세대: 70% 9세대, 30% 그 형식이 있는 1~8세대 (옛 세대는 그 세대 랜덤배틀 세트 → 메가·Z·다이맥스 포함)
         const oldGens = format === 'singles' ? [1, 2, 3, 4, 5, 6, 7, 8] : format === 'doubles' ? [3, 4, 5, 6, 7, 8] : format === 'triples' ? [5, 6] : []
-        const gen = oldGens.length && rng.chance(30) ? rng.pick(oldGens) : 9
+        const gen = (oldGens.length && rng.chance(30) ? rng.pick(oldGens) : 9) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
         const team = () => (gen !== 9
             ? generateRandomTeam({ seed: rng.int(0x7fffffff), format: `gen${gen}randombattle`, size: rng.int(minSize, 6) })
             : rng.chance(50)

@@ -1,26 +1,31 @@
 // 문서의 "실행" 예제. 각 예제는 브라우저에서 실제 엔진을 돌리고, 결과를 텍스트 로그로만 출력한다.
 // code 는 화면에 보여줄 소스이고, run 은 같은 내용을 실제로 실행하는 함수다.
-import {
-  BattleEngine,
-  HeuristicAI,
-  RandomAI,
-  calculateDamage,
-  formatKO,
-  formatEvent,
-  generateRandomTeam,
-  getMove,
-  getSpecies,
-  koName,
-  parseShowdownTeam,
-  simulateBattle,
-  createFormatter,
-  createRandomBattle,
-  createMetronomeBattle,
-  getRandomBattleSet,
-  randomBattleLevelStats,
-  comparableLog,
-} from './engine'
-import type { BattleEvent, PokemonSet } from './engine'
+// 엔진은 예제를 실행할 때만 받는다 (첫 화면 번들에 엔진·데이터를 넣지 않는다): loadEngine() → bindEngine()
+import type * as Eng from './engine'
+let BattleEngine!: typeof Eng.BattleEngine
+let HeuristicAI!: typeof Eng.HeuristicAI
+let RandomAI!: typeof Eng.RandomAI
+let calculateDamage!: typeof Eng.calculateDamage
+let formatKO!: typeof Eng.formatKO
+let formatEvent!: typeof Eng.formatEvent
+let generateRandomTeam!: typeof Eng.generateRandomTeam
+let getMove!: typeof Eng.getMove
+let getSpecies!: typeof Eng.getSpecies
+let koName!: typeof Eng.koName
+let parseShowdownTeam!: typeof Eng.parseShowdownTeam
+let simulateBattle!: typeof Eng.simulateBattle
+let createFormatter!: typeof Eng.createFormatter
+let createRandomBattle!: typeof Eng.createRandomBattle
+let createMetronomeBattle!: typeof Eng.createMetronomeBattle
+let getRandomBattleSet!: typeof Eng.getRandomBattleSet
+let randomBattleLevelStats!: typeof Eng.randomBattleLevelStats
+let comparableLog!: typeof Eng.comparableLog
+
+/** 받은 엔진 모듈을 예제 함수들이 쓰는 이름에 묶는다 (run 전에 한 번) */
+export function bindEngine(m: typeof Eng): void {
+  ({ BattleEngine, HeuristicAI, RandomAI, calculateDamage, formatKO, formatEvent, generateRandomTeam, getMove, getSpecies, koName, parseShowdownTeam, simulateBattle, createFormatter, createRandomBattle, createMetronomeBattle, getRandomBattleSet, randomBattleLevelStats, comparableLog } = m)
+}
+import type { BattleEvent, PokemonSet, BattleEngine as BattleEngineT } from './engine'
 
 export type Logger = (line: string, kind?: LogKind) => void
 export type LogKind = 'out' | 'info' | 'json' | 'error' | 'dim'
@@ -37,8 +42,8 @@ export interface Example {
 }
 
 /** 배틀 로그 한 줄 (문서 언어, 배틀마다 포매터 하나) */
-const formatters = new WeakMap<BattleEngine, ReturnType<typeof createFormatter>>()
-function say(engine: BattleEngine, lang: LogLang, ev: BattleEvent): string | null {
+const formatters = new WeakMap<BattleEngineT, ReturnType<typeof createFormatter>>()
+function say(engine: BattleEngineT, lang: LogLang, ev: BattleEvent): string | null {
   let f = formatters.get(engine)
   if (!f) { f = createFormatter({ locale: lang, getPokemon: id => engine.getPokemon(id) }); formatters.set(engine, f) }
   return f.format(ev)

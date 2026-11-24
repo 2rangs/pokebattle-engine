@@ -204,8 +204,10 @@ export const metronomeAI: BattleAI = {
     const req = engine.getRequest(player)
     if (!req) return null
     if (req.type === 'move') {
-      const opt = req.moves.find(m => !m.disabled) ?? req.moves[0]
-      return { type: 'move', player, pokemon_id: req.active.id, move_index: opt ? opt.index : -1 }
+      // 엔진이 허락하는 행동에서 고른다: 손가락흔들기가 막히면(도발 등) 발버둥
+      const acts = engine.getAvailableActions(player)
+      const plain = acts.find(a => a.type === 'move' && !a.terastallize && !a.mega && !a.zmove && !a.dynamax && !a.ultra_burst)
+      return plain ?? acts.find(a => a.type === 'move') ?? acts[0] ?? null
     }
     const next = req.switches[0]
     return next ? { type: 'switch', player, pokemon_id: req.active.id, switch_to_id: next.id } : null

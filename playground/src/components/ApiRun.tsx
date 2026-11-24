@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Button } from '@astryxdesign/core/Button'
 import { CodeBlock } from '@astryxdesign/core/CodeBlock'
 import { examples, localizeCode, type DocLang, type ExampleId, type LogKind, type LogLang } from '../examples'
 import { useLang } from '../i18n'
-import { dataReady, loadNames } from '../engine'
+import { loadEngine } from '../engineLoader'
 
 interface Line { text: string; kind: LogKind }
 
@@ -30,16 +30,28 @@ export function LogWindow({ id, title, command, maxHeight = 420, logLang, toolba
   const { lang: docLang } = useLang()
   const lang = logLang ?? docLang
   const [lines, setLines] = useState<Line[] | null>(null)
+  // 화면에 들어올 때 처음 실행 (엔진·데이터는 그때 받는다)
+  const ref = useRef<HTMLElement>(null)
+  // IntersectionObserver 가 없는 환경(오래된 브라우저)은 바로 실행
+  const [seen, setSeen] = useState(() => typeof IntersectionObserver === 'undefined')
   useEffect(() => {
+    const el = ref.current
+    if (!el || seen) return
+    const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { setSeen(true); io.disconnect() } }, { rootMargin: '200px' })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [seen])
+  useEffect(() => {
+    if (!seen) return
     let live = true
     // 엔진 데이터(랜덤배틀 세트 등)가 준비되면 실행. 언어를 바꾸면 그 언어로 다시
     // 일본어는 이름 팩(포켓몬·기술 이름)을 따로 받는다 (영어·한국어는 내장)
-    const ready = lang === 'ja' ? Promise.all([dataReady, loadNames('ja')]) : dataReady
+    const ready = loadEngine().then(m => (lang === 'ja' ? m.loadNames('ja') : undefined))
     ready.then(() => setTimeout(() => { if (live) setLines(collect(id, lang)) }, 0))
     return () => { live = false }
-  }, [id, lang])
+  }, [id, lang, seen])
   return (
-    <figure className="logwin">
+    <figure className="logwin" ref={ref}>
       <figcaption className="logwin-bar">
         <span className="logwin-title">{title}</span>
         <span className="logwin-meta">{toolbar}{lines ? `${lines.length} lines` : '…'}</span>
@@ -68,7 +80,7 @@ export function ApiRun({ id, title, maxHeight = 360 }: {
 
   const run = useCallback(async () => {
     setBusy(true)
-    await dataReady
+    await loadEngine()
     // "실행 중" 상태가 한 번 그려진 뒤에 (동기) 실행
     await new Promise(r => setTimeout(r, 30))
     const t0 = performance.now()

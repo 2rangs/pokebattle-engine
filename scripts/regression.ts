@@ -217,7 +217,7 @@ function drive(engine: BattleEngine, where: string, turns: number, choose: (p: P
         if (previews.length) checkPreview(engine, before, previews, where)
         if (!acted) break
     }
-    for (const k of engine.unhandledProtocol.keys()) report('protocol', k, engine.unhandledProtocol.get(k) ?? '', where)
+    for (const k of engine.unhandledProtocol.keys()) report('protocol', k, String(engine.unhandledProtocol.get(k) ?? ''), where)
     checkReplay(engine, where)
 }
 
@@ -316,7 +316,7 @@ function sweepItems() {
         const where = `item:${slug}`
         // 전용 아이템(메가스톤·Z크리스탈·전용 아이템)은 그 포켓몬에게
         const species = it.megaStone ? Object.values(it.megaStone)[0]!.replace(/-Mega.*$/, '')
-            : it.itemUser?.[0] ?? (it.zMoveUser?.[0]) ?? 'mew'
+            : it.itemUser?.[0] ?? ((it as { zMoveUser?: string[] }).zMoveUser?.[0]) ?? 'mew'
         safe(where, () => {
             const e = new BattleEngine({
                 format: 'singles', seed: ++n, gen: it.megaStone || it.zMove ? 7 : 9,
@@ -368,7 +368,7 @@ function sweepDoubles() {
                     try { e.submitChoice(p, randomDoublesChoice(req, rng)) } catch { e.submitChoice(p, 'default') }
                 }
             }
-            for (const k of e.unhandledProtocol.keys()) report('protocol', k, e.unhandledProtocol.get(k) ?? '', where)
+            for (const k of e.unhandledProtocol.keys()) report('protocol', k, String(e.unhandledProtocol.get(k) ?? ''), where)
             checkReplay(e, where)
         })
     }

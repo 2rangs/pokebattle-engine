@@ -99,3 +99,17 @@ test('행동이 어긋나면 그 지점에서 멈추고 mismatch', () => {
   expect(r.frames.length).toBeLessThan(live.frames.length)
   expect(simulateReplay({ ...data, actions: [...data.actions, data.actions.at(-1)!] }).error).toBe('mismatch')
 })
+
+test('손가락흔들기 CPU: 숨은 사용 불가(봉인)로 손가락흔들기가 막히면 발버둥 (막힌 기술을 내지 않는다)', async () => {
+  const { BattleEngine } = await import('./engine')
+  const { metronomeAI } = await import('./frames')
+  const set = (species: string, moves: string[]) => ({ species, level: 50, gender: null, ability: '', nature: 'hardy' as const, moves: moves as [string] })
+  // 상대가 손가락흔들기를 알고 봉인 → 내 손가락흔들기가 봉인된다 (요청에는 maybeDisabled 로만 표시)
+  const e = new BattleEngine({ format: 'singles', seed: 1, p1: { name: 'a', team: [set('clefable', ['metronome'])] }, p2: { name: 'b', team: [set('mew', ['imprison', 'metronome'])] } })
+  e.submitActions({ type: 'move', player: 'p1', pokemon_id: 'p1_0', move_index: 0 }, { type: 'move', player: 'p2', pokemon_id: 'p2_0', move_index: 0 })
+  const req = e.getRequest('p1')!
+  expect(req.type === 'move' && req.moves.every(m => m.disabled)).toBe(true)
+  const action = metronomeAI.chooseAction(e, 'p1')!
+  expect(action).toMatchObject({ type: 'move', move_index: -1 })
+  expect(() => e.submitAction(action)).not.toThrow()
+})
