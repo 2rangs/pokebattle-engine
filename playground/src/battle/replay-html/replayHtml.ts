@@ -11,6 +11,7 @@ import { msg, type Lang, type MessageKey, type Vars } from '../lib/messages'
 import { abilityName, itemName, moveName, particles, pokemonLabel, speciesName, typeName } from '../lib/names'
 import { REPLAY_VERSION, type ReplayData } from '../lib/replay'
 import { battleSpriteCandidates } from '../lib/sprites'
+import type { OfflineReplay } from './player/types'
 
 export const ENGINE_REPO = 'https://github.com/2rangs/pokebattle-engine'
 
@@ -18,7 +19,19 @@ export const ENGINE_REPO = 'https://github.com/2rangs/pokebattle-engine'
 const TEXT = {
   ko: {
     save: 'HTML로 저장',
-    saveTip: '리플레이를 HTML 파일로 저장 (오프라인에서도 로그·팀을 볼 수 있음)',
+    saveTip: '리플레이를 HTML 파일로 저장 (인터넷 없이도 애니메이션·로그·팀을 볼 수 있음)',
+    saving: 'HTML 파일을 만드는 중… (스프라이트를 파일에 넣는 중)',
+    play: '재생',
+    pause: '일시정지',
+    restart: '처음부터',
+    prevTurn: '이전 턴',
+    nextTurn: '다음 턴',
+    speed: '재생 속도',
+    turn: '{n}턴',
+    start: '시작',
+    progress: '재생 위치',
+    offlineNote: '이 파일 하나로 인터넷 없이 재생됩니다.',
+    online: '온라인 뷰어로 열기',
     saved: 'HTML 파일을 저장했습니다.',
     saveFailed: 'HTML 파일을 만들지 못했습니다.',
     heading: '배틀 리플레이',
@@ -43,7 +56,19 @@ const TEXT = {
   },
   en: {
     save: 'Save as HTML',
-    saveTip: 'Save the replay as an HTML file (log and teams readable offline)',
+    saveTip: 'Save the replay as an HTML file (animation, log and teams work offline)',
+    saving: 'Creating the HTML file… (embedding sprites)',
+    play: 'Play',
+    pause: 'Pause',
+    restart: 'Restart',
+    prevTurn: 'Previous turn',
+    nextTurn: 'Next turn',
+    speed: 'Playback speed',
+    turn: 'Turn {n}',
+    start: 'Start',
+    progress: 'Playback position',
+    offlineNote: 'This single file plays without an internet connection.',
+    online: 'Open in the online viewer',
     saved: 'Saved the HTML file.',
     saveFailed: 'Could not create the HTML file.',
     heading: 'Battle replay',
@@ -92,6 +117,10 @@ export interface ReplayHtmlInput {
   /** 데모 주소 (`${origin}${pathname}#/battle`) */
   demoUrl: string
   savedAt?: Date
+  /** 오프라인 재생기 (스크립트 + 데이터). 있으면 파일 하나로 애니메이션까지 재생된다 */
+  player?: { code: string; data: OfflineReplay }
+  /** 팀 목록 카드 그림 (종 → data: URI). 없으면 PokeAPI 주소 */
+  cards?: Record<string, string>
 }
 
 export interface ReplayHtml {
@@ -124,10 +153,10 @@ function spriteUrl(species: string): string | null {
   return c.find(u => /\/sprites\/pokemon\/\d+\.png$/.test(u)) ?? c.at(-1) ?? null
 }
 
-function pokemonCard(p: PokeView, lang: Lang, showTera: boolean): string {
+function pokemonCard(p: PokeView, lang: Lang, showTera: boolean, cards?: Record<string, string>): string {
   const label = pokemonLabel(p, lang)
   const species = speciesName(p.setSpecies, lang)
-  const src = spriteUrl(p.setSpecies)
+  const src = cards?.[p.setSpecies] ?? spriteUrl(p.setSpecies)
   const moves = p.moves.map(m => `<li>${esc(moveName(m.id, lang))}</li>`).join('')
   const meta = [
     `<dt>${esc(htmlText(lang, 'item'))}</dt><dd>${esc(p.item ? itemName(p.item, lang) : htmlText(lang, 'noItem'))}</dd>`,
@@ -210,6 +239,61 @@ footer p{margin:6px 0}
 @media (max-width:520px){h1{font-size:19px}main{padding-top:16px}}
 `
 
+/** 오프라인 재생기 (player/main.ts 가 그리는 장면) */
+const PLAYER_CSS = `
+.op-host{margin:16px 0 4px}
+.op{display:flex;flex-direction:column;gap:8px}
+.op-scene{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:10px;border:1px solid var(--rule);user-select:none}
+.op-bg{position:absolute;inset:0;background:
+radial-gradient(ellipse 15% 5% at 72% 54%,rgba(40,70,40,.85),rgba(40,70,40,.85) 60%,transparent 62%),
+radial-gradient(ellipse 19% 6% at 27% 92%,rgba(40,70,40,.85),rgba(40,70,40,.85) 60%,transparent 62%),
+linear-gradient(180deg,#9fd0f0 0%,#cfe9f7 46%,#a9d48a 46.2%,#7fbf62 100%)}
+.op-bg>.bd-g5fx-tint{position:absolute;inset:0;pointer-events:none}
+.op-spot{position:absolute;transform:translate(-50%,-100%);display:flex;justify-content:center;align-items:flex-end}
+.op-spot.is-foe{left:72%;top:55%;height:36%}
+.op-spot.is-ours{left:27%;top:94%;height:48%}
+.op-mon,.op-flip{height:100%;display:flex;align-items:flex-end;justify-content:center}
+.op-flip.is-flip{transform:scaleX(-1)}
+.op-sprite{height:100%;width:auto;max-width:none;object-fit:contain}
+.op-sprite.is-px{image-rendering:pixelated}
+.op-alt{align-self:center;padding:4px 10px;border-radius:999px;background:rgba(0,0,0,.55);color:#fff;font-size:13px}
+.op-fx{position:absolute;inset:0;pointer-events:none}
+.op-fx>.bd-g5fx{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated}
+.op-fx>.bd-g5fx-flash{position:absolute;inset:0}
+.op-box{position:absolute;min-width:min(42%,240px);padding:6px 10px 7px;border-radius:8px;background:rgba(20,22,26,.86);color:#fff;font-size:13px;line-height:1.3;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.op-box.is-foe{left:3%;top:6%}
+.op-box.is-ours{right:3%;top:60%}
+.op-box.is-down{opacity:.55}
+.op-box-head{display:flex;align-items:center;gap:6px}
+.op-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.op-lv{color:#cfd3da;font-size:12px}
+.op-st{padding:0 6px;border-radius:4px;font-size:11px;font-weight:700;color:#fff}
+.op-track{margin-top:4px;height:6px;border-radius:3px;background:#3a3d44;overflow:hidden}
+.op-bar{height:100%;width:100%;transition:width .45s ease,background-color .45s}
+.op-hp{margin-top:2px;text-align:right;font-size:11.5px;color:#cfd3da;font-variant-numeric:tabular-nums}
+.op-result{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);padding:10px 22px;border-radius:999px;background:rgba(15,16,18,.85);color:#fff;font-size:20px;font-weight:700}
+.op-msg{min-height:3.2em;padding:10px 14px;border-radius:8px;background:var(--raised);border:1px solid var(--rule);color:var(--ink);font-size:15px}
+.op-range{width:100%;accent-color:var(--accent)}
+.op-ctrl{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.op-speed{min-height:40px;padding:0 10px;border-radius:999px;border:0;background:var(--fill);color:var(--ink);font:inherit}
+.op-turn{margin-left:auto;color:var(--muted);font-size:13px}
+.op-mon.is-down{opacity:0;transform:translateY(30%);transition:opacity .35s,transform .35s}
+.op-mon.is-hit{animation:op-blink .5s steps(2) 1}
+.op-mon.is-crit{animation:op-blink .7s steps(2) 1,op-shake .4s 1}
+.op-mon.is-faint{animation:op-faint .6s ease-in 1 forwards}
+.op-mon.is-enter{animation:op-enter .45s ease-out 1}
+.op-mon.is-heal{animation:op-glow .7s 1}
+.op-mon.is-status{animation:op-glow .6s 1}
+.op-mon.is-shimmer{animation:op-glow 1s 1}
+@keyframes op-blink{0%,100%{opacity:1}50%{opacity:.15}}
+@keyframes op-shake{0%,100%{translate:0}25%{translate:-6px}75%{translate:6px}}
+@keyframes op-faint{from{opacity:1;transform:none}to{opacity:0;transform:translateY(40%)}}
+@keyframes op-enter{from{opacity:0;transform:scale(.2)}to{opacity:1;transform:none}}
+@keyframes op-glow{0%,100%{filter:none}50%{filter:brightness(1.8) saturate(.6)}}
+@media (prefers-reduced-motion:reduce){.op-mon{animation:none!important}}
+@media (max-width:520px){.op-box{font-size:11.5px;min-width:44%;padding:4px 7px}.op-hp{font-size:10.5px}.op-msg{font-size:14px}}
+`
+
 /** 온라인일 때만: 뷰어를 이 페이지 안의 iframe 으로 (정적인 부분은 이 스크립트 없이도 완전하다) */
 const SCRIPT = `
 (function(){
@@ -226,6 +310,23 @@ const SCRIPT = `
 })();
 `
 
+/** 리플레이 뷰어와 같은 결과 문구 (사람이 있으면 그 사람 기준) */
+export function replayResult(data: ReplayData, sim: SimulatedReplay, lang: Lang): string | null {
+  const t = (k: MessageKey, v?: Vars) => particles(msg(lang, k, v), lang)
+  const { nameOf } = sideNamer(data, lang)
+  return sim.winner === null ? null
+    : sim.winner === 'draw' ? t('draw')
+      : data[sim.winner].ctrl === 'human' ? t('win')
+        : data.p1.ctrl === 'human' ? t('lose')
+          : t('winnerIs', { name: nameOf(sim.winner) })
+}
+
+/** 로그 맨 끝 문장 (기권) */
+export function replayTail(data: ReplayData, sim: SimulatedReplay, lang: Lang): string | null {
+  const { nameOf } = sideNamer(data, lang)
+  return data.forfeit && !sim.error ? particles(msg(lang, 'replayForfeit', { name: nameOf(data.forfeit) }), lang) : null
+}
+
 export function buildReplayHtml(input: ReplayHtmlInput): ReplayHtml {
   const { data, encoded, sim, lang, viewerBase, demoUrl } = input
   const savedAt = input.savedAt ?? new Date()
@@ -236,19 +337,14 @@ export function buildReplayHtml(input: ReplayHtmlInput): ReplayHtml {
   const gen = data.rule === 'normal' ? data.gen ?? 9 : 9
   const rule = `${t(data.rule === 'metronome' ? 'ruleMetronome' : 'ruleNormal')}${data.rule === 'normal' ? ` · ${t('genShort', { n: gen })}` : ''}`
   const vs = t('replayVs', { a: nameOf('p1'), b: nameOf('p2') })
-  // 리플레이 뷰어와 같은 결과 문구 (사람이 있으면 그 사람 기준)
-  const result = sim.winner === null ? null
-    : sim.winner === 'draw' ? t('draw')
-      : data[sim.winner].ctrl === 'human' ? t('win')
-        : data.p1.ctrl === 'human' ? t('lose')
-          : t('winnerIs', { name: nameOf(sim.winner) })
+  const result = replayResult(data, sim, lang)
   const first = sim.frames[0]
   const showTera = data.rule === 'normal' && gen === 9
-  const tail = data.forfeit && !sim.error ? t('replayForfeit', { name: nameOf(data.forfeit) }) : null
+  const tail = replayTail(data, sim, lang)
   const viewer = viewerBase + encoded
   const dateText = savedAt.toISOString().slice(0, 16).replace('T', ' ') + ' UTC'
 
-  const team = (p: PlayerID) => `<div class="side"><h3>${esc(nameOf(p))}</h3><ul>${first ? first[p].team.map(x => pokemonCard(x, lang, showTera)).join('\n') : ''}</ul></div>`
+  const team = (p: PlayerID) => `<div class="side"><h3>${esc(nameOf(p))}</h3><ul>${first ? first[p].team.map(x => pokemonCard(x, lang, showTera, input.cards)).join('\n') : ''}</ul></div>`
 
   const title = `${h('heading')}: ${vs} (${rule})${result ? ` · ${result}` : ''}`
   const embedded = { app: 'pokebattle-engine', kind: 'replay', v: REPLAY_VERSION, d: encoded, viewer: viewerBase, lang }
@@ -260,7 +356,7 @@ export function buildReplayHtml(input: ReplayHtmlInput): ReplayHtml {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="generator" content="pokebattle-engine battle demo">
 <title>${esc(title)}</title>
-<style>${CSS}</style>
+<style>${CSS}${input.player ? PLAYER_CSS : ''}</style>
 </head>
 <body>
 <main>
@@ -269,13 +365,14 @@ export function buildReplayHtml(input: ReplayHtmlInput): ReplayHtml {
 <p class="sub">${esc(rule)} · ${esc(h('turns', { n: sim.turns }))} · ${esc(h('saved_at', { date: dateText }))}</p>
 ${result ? `<p><span class="result">${esc(result)}</span></p>` : ''}
 ${sim.error ? `<p class="warn" role="alert">${esc(h('mismatch', { n: sim.turns }))}</p>` : ''}
-<div class="actions">
+${input.player ? `<div id="offline-player" class="op-host"></div>
+<p class="hint">${esc(h('offlineNote'))} <a href="${esc(viewer)}" target="_blank" rel="noopener">${esc(h('online'))}</a></p>` : `<div class="actions">
 <a class="btn primary" id="watch" href="${esc(viewer)}" target="_blank" rel="noopener">${esc(h('watch'))}</a>
 <button class="btn" id="inline" type="button" hidden aria-expanded="false" data-show="${esc(h('inline'))}" data-hide="${esc(h('inlineHide'))}">${esc(h('inline'))}</button>
 <span class="hint warn" id="offline" hidden>${esc(h('offline'))}</span>
 </div>
 <p class="hint">${esc(h('needsOnline'))}</p>
-<div id="player"></div>
+<div id="player"></div>`}
 </header>
 <h2>${esc(h('teams'))}</h2>
 <div class="teams">${team('p1')}${team('p2')}</div>
@@ -290,7 +387,8 @@ ${logHtml(sim.frames, lang, sideName, tail)}
 </footer>
 </main>
 <script type="application/json" id="replay">${scriptJson(embedded)}</script>
-<script>${SCRIPT}</script>
+${input.player ? `<script type="application/json" id="offline-replay">${scriptJson(input.player.data)}</script>
+<script>${input.player.code}</script>` : `<script>${SCRIPT}</script>`}
 </body>
 </html>
 `

@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 import { execFileSync } from 'child_process'
@@ -43,8 +43,35 @@ function repoStats(useVitest: boolean) {
   }
 }
 
+/**
+ * 저장한 리플레이 HTML 에 넣을 오프라인 재생기: src/battle/replay-html/player/main.ts 를
+ * 의존성까지 한 덩어리 IIFE 로 묶어 문자열로 내보낸다 (import code from 'virtual:offline-player').
+ */
+function offlinePlayer(): Plugin {
+  const id = 'virtual:offline-player'
+  const resolved = '\0' + id
+  const entry = path.resolve(__dirname, 'src/battle/replay-html/player/main.ts')
+  return {
+    name: 'offline-player',
+    resolveId: s => (s === id ? resolved : undefined),
+    async load(s) {
+      if (s !== resolved) return
+      const { rolldown } = await import('rolldown')
+      const bundle = await rolldown({ input: entry, platform: 'browser', logLevel: 'silent' })
+      try {
+        const { output } = await bundle.generate({ format: 'iife', minify: true })
+        // HTML 안 <script> 가 끊기지 않게
+        const code = output[0].code.replace(/<\/(script)/gi, '<\\/$1')
+        return `export default ${JSON.stringify(code)}`
+      } finally {
+        await bundle.close()
+      }
+    },
+  }
+}
+
 export default defineConfig(({ command }) => ({
-  plugins: [react()],
+  plugins: [react(), offlinePlayer()],
   define: {
     // 개발 서버에서는 빠르게 (소스에서 센 값), 빌드에서는 vitest 목록
     __REPO_STATS__: JSON.stringify(repoStats(command === 'build')),

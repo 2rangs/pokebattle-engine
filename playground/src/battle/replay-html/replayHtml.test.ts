@@ -124,3 +124,35 @@ test('metronome replay and forfeit tail', async () => {
   expect(html).toContain('You lost…')
   expect(replayFileName(data, when)).toBe('pokebattle-replay-you-vs-cpu-2026-11-24-0905.html')
 })
+
+test('offline player: scene data, embedded player script, no external player loads', async () => {
+  const { buildOfflineReplay, neededSprites } = await import('./offline')
+  const setup: BattleSetup = { rule: 'normal', seed: 77, p1Team: randomTeam(21, 3), p2Team: randomTeam(22, 3) }
+  const data = cpuBattle(setup, { p1: 'human', p2: 'normal' })
+  const encoded = await encodeReplay(data)
+  const sim = simulateReplay(data)
+  const labels = { play: 'Play', pause: 'Pause', restart: 'Restart', prevTurn: 'Prev', nextTurn: 'Next', speed: 'Speed', turn: 'Turn {n}', start: 'Start', progress: 'Pos' }
+  const offline = buildOfflineReplay({ sim, lang: 'en', me: 'p1', names: ['You', 'CPU'], result: 'You win!', tail: null, labels })
+  expect(offline.steps.length).toBeGreaterThan(5)
+  expect(offline.steps.length).toBeLessThanOrEqual(sim.frames.length + 1)
+  // 장면이 가리키는 포켓몬은 다 표에 있고, 우리 쪽은 뒷모습·상대는 앞모습
+  for (const s of offline.steps) for (const i of s.m) expect(offline.mons[i]).toBeDefined()
+  expect(offline.mons[offline.steps[0]!.m[0]]!.s).toMatch(/\|b/)
+  expect(offline.mons[offline.steps[0]!.m[1]]!.s).toMatch(/\|f/)
+  // 기술 연출과 기절이 들어 있다
+  expect(offline.steps.some(s => s.ev?.k === 'move')).toBe(true)
+  expect(offline.steps.some(s => s.ev?.k === 'faint')).toBe(true)
+  expect(neededSprites(offline).length).toBeGreaterThanOrEqual(2)
+
+  offline.sprites = { [neededSprites(offline)[0]!]: { src: 'data:image/png;base64,AAAA', px: true, flip: false } }
+  const code = 'window.__player = "ok </script> inside"'.replace(/<\/(script)/gi, '<\\/$1')
+  const { html } = buildReplayHtml({ data, encoded, sim, lang: 'en', viewerBase, demoUrl, savedAt: when, player: { code, data: offline }, cards: { x: 'data:image/png;base64,BBBB' } })
+  expect(html).toContain('id="offline-player"')
+  expect(html).toContain('id="offline-replay"')
+  expect(html).not.toContain('<iframe')
+  // </script> 로 끊기지 않는다: 스크립트 블록이 정확히 짝을 이룬다
+  expect(html.match(/<script/g)!.length).toBe(html.match(/<\/script>/g)!.length)
+  const json = /<script type="application\/json" id="offline-replay">([\s\S]*?)<\/script>/.exec(html)![1]!
+  expect(JSON.parse(json).steps.length).toBe(offline.steps.length)
+  expect(extractEmbeddedReplay(html)?.d).toBe(encoded)
+})
