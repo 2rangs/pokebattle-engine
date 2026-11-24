@@ -67,6 +67,9 @@ const SILENT_OK_KIND = new Set([
     'volatile_apply:roost', 'volatile_apply:throat-chop', 'volatile_remove:throat-chop', 'volatile_apply:glaive-rush',
     'volatile_remove:glaive-rush', 'volatile_apply:rage', 'volatile_apply:mimic', 'status_apply:reconcile',
     'volatile_remove:roost', 'volatile_remove:mimic', 'volatile_remove:rage',
+    // 다이맥스 시작·끝: 최대 HP 가 2배/원래대로 바뀌는 것 (Showdown 도 [silent], 게임에도 회복·데미지 문장이 없다).
+    // describe.ts 가 의도적으로 문장을 내지 않는다 (8d00302). 이벤트는 HP 재구성을 위해 남긴다.
+    'heal:dynamax', 'damage:dynamax',
 ])
 /** 의도된 차이 (보고는 하되 실패로 치지 않음) */
 const EXPECTED = [
