@@ -55,6 +55,8 @@ function genItems(gen: Gen): Set<string> {
 // ─── 거다이맥스 ───────────────────────────────────────────────
 /** 거다이맥스할 수 있으면 그 모습의 종 슬러그 (charizard → charizard-gmax, toxtricity-low-key → toxtricity-low-key-gmax) */
 export function gmaxForm(species: string): string | null {
+  // 메가·원시·울트라 모습은 거다이맥스하지 않는다 (기믹 겹치기: 그 모습 그대로 다이맥스)
+  if (/-(mega|primal)(-[xy])?$|^necrozma-ultra$/.test(species)) return null
   const sp = getSpecies(`${species}-gmax`)
   if (sp) return sp.name
   // 폼 이름이 붙은 종 (urshifu → urshifu-single-strike-gmax 처럼 대표 폼)

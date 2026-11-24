@@ -148,6 +148,12 @@ describe('팀 프리뷰: CPU 선택', () => {
 })
 
 describe('샌드박스', () => {
+  test('메가·원시·울트라 모습은 거다이맥스 모습이 없다 (그대로 다이맥스)', async () => {
+    const { gmaxForm } = await import('./gimmick')
+    expect(gmaxForm('charizard')).toBe('charizard-gmax')
+    expect(gmaxForm('charizard-mega-y')).toBeNull()
+    expect(gmaxForm('necrozma-ultra')).toBeNull()
+  })
   test('토글 → 엔진 옵션·세트', () => {
     expect(sandboxEngineOptions(sandboxPreset('allGimmicks'))).toEqual({ stackGimmicks: true })
     expect(sandboxEngineOptions(sandboxPreset('metronome'))).toEqual({})

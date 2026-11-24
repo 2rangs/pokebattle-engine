@@ -271,7 +271,7 @@ export function ActionConsole({ session, player, message, more, team, lastCalled
             {req.can_zmove && <GimmickButton label={t('zMove')} on={zOn} onClick={() => toggle('zmove')} />}
             {req.can_dynamax && (
               <GimmickButton
-                label={t(active.set.gigantamax && gmaxForm(active.species) ? 'gigantamaxBtn' : 'dynamaxBtn')}
+                label={t(active.set.gigantamax && gmaxForm(active.species) && !on.mega && !on.ultra_burst ? 'gigantamaxBtn' : 'dynamaxBtn')}
                 on={!!on.dynamax}
                 tone="dmax"
                 onClick={() => toggle('dynamax')}
