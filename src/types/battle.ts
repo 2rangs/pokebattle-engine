@@ -270,6 +270,12 @@ export interface BattleRuleOptions {
   maxLevel?: number
   /** false 면 테라스탈 금지 (Terastal Clause). 기본 true */
   terastal?: boolean
+  /** false 면 다이맥스·거다이맥스 금지 (Showdown 'Dynamax Clause'). 기본 true */
+  dynamax?: boolean
+  /** false 면 메가진화·울트라버스트 금지 (엔진 규칙 'Mega Evolution Clause', 원시회귀는 그대로). 기본 true */
+  megaEvolution?: boolean
+  /** false 면 Z기술 금지 (엔진 규칙 'Z-Move Clause'). 기본 true */
+  zMoves?: boolean
   /** 같은 종 1마리 */
   speciesClause?: boolean
   /** 같은 도구 1개 */

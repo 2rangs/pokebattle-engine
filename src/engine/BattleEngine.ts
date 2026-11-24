@@ -14,7 +14,7 @@ import type {
 import type { BattlePokemon, PokemonSet, StatStages } from '../types/pokemon'
 import type { FieldCondition, PrimaryStatus, SideCondition, Terrain, Weather } from '../types/effect'
 import type { MoveData, MoveSlot } from '../types/move'
-import { toCustomStats, toShowdownSet } from '../showdown/sets'
+import { adaptSetToGen, toCustomStats, toShowdownSet } from '../showdown/sets'
 import { genLoaded } from '../data/lazy'
 import { getMove, speciesSlug, abilitySlug, itemSlug, moveSlug, STAT_FROM_PS } from '../data/dex'
 import { speciesToShowdown, toSlug } from '../showdown/ids'
@@ -22,6 +22,7 @@ import { PRNG } from '../utils/rng'
 import { calculateDamage, type CalcPokemonInput, type DamageResult } from '../calc/damage'
 import { enableFastPath } from './fastpath'
 import { CUSTOM_STATS_RULE, encodeCustomStats, ensureCustomStatsRule } from './customstats'
+import { ensureGimmickRules, MEGA_CLAUSE, ZMOVE_CLAUSE } from './gimmickrules'
 import { FOE_FRONT_LOC, FRONT, frontLocked, installRotationPatches } from './rotation'
 
 type AnyEventListener = (event: BattleEvent) => void
@@ -140,6 +141,9 @@ export function optionsToRules(options: BattleRuleOptions = {}): { battle: strin
         if (key !== 'level') validate.push(`${rule} = ${v}`)
     }
     if (options.terastal === false) battle.push('Terastal Clause')
+    if (options.dynamax === false) battle.push('Dynamax Clause')
+    if (options.megaEvolution === false) battle.push(MEGA_CLAUSE)
+    if (options.zMoves === false) battle.push(ZMOVE_CLAUSE)
     flag(options.sleepClause, 'Sleep Clause Mod', battle)
     flag(options.endlessBattleClause, 'Endless Battle Clause', battle)
     flag(options.speciesClause, 'Species Clause', validate)
@@ -174,6 +178,7 @@ function buildFormatId(config: BattleConfig): { formatid: string; validatorid: s
     const opts = config.options ?? {}
     const { battle, validate } = optionsToRules(opts)
     const root = config.formatid ?? base.battle
+    if (opts.megaEvolution === false || opts.zMoves === false) ensureGimmickRules(config.gen ?? 9)
     const rootFormat = Dex.formats.get(root)
     if (!rootFormat.exists) throw new BattleError(`알 수 없는 포맷: ${root}`)
     // 팀 프리뷰는 (걷어낼 규칙을 뺀) 포맷 기본값과 다를 때만 규칙을 더한다 (세대·포맷마다 기본값이 다르다)
@@ -344,7 +349,7 @@ export class BattleEngine {
             const team = this.config[player].team.slice(0, 6).map(set => (level ? { ...set, level } : set))
             const ps = team.map(set => {
                 try {
-                    return toShowdownSet(set)
+                    return adaptSetToGen(toShowdownSet(set), this.gen)
                 } catch (err) {
                     throw new BattleError(`${player}: ${(err as Error).message}`)
                 }
@@ -1016,8 +1021,9 @@ export class BattleEngine {
             nickname: set.nickname ?? set.species,
             level: p.level,
             gender: p.gender === 'M' || p.gender === 'F' ? p.gender : null,
-            ability: abilitySlug(p.ability),
-            base_ability: abilitySlug(p.baseAbility),
+            // 1·2세대는 특성이 없다 ('No Ability' → '')
+            ability: p.ability === 'noability' ? '' : abilitySlug(p.ability),
+            base_ability: p.baseAbility === 'noability' ? '' : abilitySlug(p.baseAbility),
             item: p.item ? itemSlug(p.item) : null,
             types: p.getTypes(false, true).map(t => t.toLowerCase()) as [string, string?],
             original_types: p.baseSpecies.types.map(t => t.toLowerCase()) as [string, string?],

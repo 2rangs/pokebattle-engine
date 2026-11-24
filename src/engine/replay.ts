@@ -5,6 +5,7 @@ import { Battle } from '@pkmn/sim'
 import { enableFastPath } from './fastpath'
 import { installRotationPatches } from './rotation'
 import { ensureCustomStatsRuleFor } from './customstats'
+import { ensureGimmickRulesFor } from './gimmickrules'
 
 export interface ReplayOptions {
     /** 빠른 경로 사용 (기본 false = Showdown 원본 그대로) */
@@ -24,7 +25,7 @@ export function replayInputLog(inputLog: readonly string[], options: ReplayOptio
         if (cmd === 'start') {
             if (options.rotation) installRotationPatches()
             const spec = JSON.parse(rest) as { formatid?: string }
-            if (spec.formatid) ensureCustomStatsRuleFor(spec.formatid)
+            if (spec.formatid) { ensureCustomStatsRuleFor(spec.formatid); ensureGimmickRulesFor(spec.formatid) }
             battle = new Battle(spec as never)
             if (options.rotation) (battle as unknown as { rotation: boolean }).rotation = true
             if (options.fast) enableFastPath(battle)
