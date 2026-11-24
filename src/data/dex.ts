@@ -114,16 +114,22 @@ export interface SpeciesData {
 
 const speciesCache = new Map<string, SpeciesData | undefined>()
 
-/** PokeAPI 슬러그 / Showdown 이름 / ID 모두 허용 */
-export function getSpecies(name: string): SpeciesData | undefined {
-    if (speciesCache.has(name)) return speciesCache.get(name)
-    const sp = Dex.species.get(speciesToShowdown(name))
+/**
+ * PokeAPI 슬러그 / Showdown 이름 / ID 모두 허용.
+ * gen 을 주면 그 세대 데이터 (1세대 특수, 페어리 이전 타입, 그 세대 특성 — 1·2세대는 특성 없음). 1~8세대는 preloadData({ gens }) 뒤에.
+ */
+export function getSpecies(name: string, opts: { gen?: Generation } = {}): SpeciesData | undefined {
+    const gen = opts.gen ?? 9
+    const key = gen === 9 ? name : `${gen}:${name}`
+    if (speciesCache.has(key)) return speciesCache.get(key)
+    const dex = dexFor(gen, 'getSpecies')
+    const sp = dex.species.get(speciesToShowdown(name))
     let out: SpeciesData | undefined
-    if (sp.exists) {
+    if (sp.exists && (gen === 9 || !sp.isNonstandard || sp.isNonstandard === 'Past' || sp.isNonstandard === 'Unobtainable')) {
         const api = SPECIES_BY_SLUG.get(name)
         const slug = api?.slug ?? speciesSlug(sp.id)
-        const abilities = Object.entries(sp.abilities)
-            .filter(([, a]) => !!a)
+        const abilities = gen <= 2 ? [] : Object.entries(sp.abilities)
+            .filter(([, a]) => !!a && a !== 'No Ability')
             .map(([k, a], i) => ({ name: abilitySlug(a as string), hidden: k === 'H', slot: k === 'H' ? 3 : i + 1 }))
         out = {
             id:           sp.num,
@@ -146,7 +152,7 @@ export function getSpecies(name: string): SpeciesData | undefined {
             nameKo:       koName.species(slug),
         }
     }
-    speciesCache.set(name, out)
+    speciesCache.set(key, out)
     return out
 }
 
@@ -160,9 +166,12 @@ const TARGET_MAP: Record<string, MoveTarget> = {
 
 const moveCache = new Map<string, MoveData | undefined>()
 
-export function getMove(name: string): MoveData | undefined {
-    if (moveCache.has(name)) return moveCache.get(name)
-    const m = Dex.moves.get(moveToShowdown(name))
+/** gen 을 주면 그 세대의 타입·분류·위력 (3세대까지는 분류가 타입으로 정해진다). 1~8세대는 preloadData({ gens }) 뒤에 */
+export function getMove(name: string, opts: { gen?: Generation } = {}): MoveData | undefined {
+    const gen = opts.gen ?? 9
+    const key = gen === 9 ? name : `${gen}:${name}`
+    if (moveCache.has(key)) return moveCache.get(key)
+    const m = dexFor(gen, 'getMove').moves.get(moveToShowdown(name))
     let out: MoveData | undefined
     if (m.exists) {
         const boosts = m.category === 'Status' ? m.boosts ?? m.self?.boosts : m.self?.boosts ?? m.secondary?.self?.boosts ?? m.secondary?.boosts
@@ -185,7 +194,7 @@ export function getMove(name: string): MoveData | undefined {
             nameKo:        API.moves[moveSlug(m.id)]?.ko ?? null,
         }
     }
-    moveCache.set(name, out)
+    moveCache.set(key, out)
     return out
 }
 
@@ -201,19 +210,21 @@ export function listSpecies(): SpeciesData[] {
 }
 
 export function listMoves(): MoveData[] {
-    return Object.keys(API.moves).map(getMove).filter((m): m is MoveData => !!m)
+    return Object.keys(API.moves).map(m => getMove(m)).filter((m): m is MoveData => !!m)
 }
 
-/** 타입 상성표 (공격 타입 → 방어 타입 → 배율) */
-export function getTypeChart(): Record<string, Record<string, number>> {
+/** 타입 상성표 (공격 타입 → 방어 타입 → 배율). gen 을 주면 그 세대에 있는 타입과 그 세대 상성 */
+export function getTypeChart(opts: { gen?: Generation } = {}): Record<string, Record<string, number>> {
+    const dex = dexFor(opts.gen ?? 9, 'getTypeChart')
+    const types = dex.types.all().filter(t => !t.isNonstandard)
     const chart: Record<string, Record<string, number>> = {}
-    for (const atk of Dex.types.all()) {
+    for (const atk of types) {
         const a = atk.id
         chart[a] = {}
-        for (const def of Dex.types.all()) {
-            if (!Dex.getImmunity(atk.name, def.name)) chart[a]![def.id] = 0
+        for (const def of types) {
+            if (!dex.getImmunity(atk.name, def.name)) chart[a]![def.id] = 0
             else {
-                const eff = Dex.getEffectiveness(atk.name, def.name)
+                const eff = dex.getEffectiveness(atk.name, def.name)
                 if (eff !== 0) chart[a]![def.id] = 2 ** eff
             }
         }

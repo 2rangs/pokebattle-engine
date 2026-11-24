@@ -5,7 +5,7 @@ import {
     type BattleRuleOptions, type PokemonSet,
 } from '../../index'
 
-beforeAll(async () => { await preloadData({ gens: [1, 2, 3, 7, 8] }) })
+beforeAll(async () => { await preloadData({ gens: [1, 2, 3, 4, 5, 7, 8] }) })
 
 const FOE = 'Blissey\nLevel: 100\nAbility: Natural Cure\n- Soft-Boiled'
 
@@ -114,5 +114,34 @@ describe('1·2세대 세트 정리', () => {
         const p = e.battle.p1.pokemon[0]!
         expect(p.ability).toBe('intimidate')
         expect(p.storedStats.atk).toBe(383) // 고집 ×1.1
+    })
+})
+
+describe('세대별 데이터 (getSpecies / getMove / getTypeChart 의 gen)', () => {
+    it('종: 1세대 특수 하나, 페어리 이전 타입, 1·2세대 특성 없음, 숨겨진 특성은 5세대부터', async () => {
+        const { getSpecies } = await import('../../index')
+        expect(getSpecies('gengar', { gen: 1 })!.base_stats.special_defense).toBe(130)
+        expect(getSpecies('gengar')!.base_stats.special_defense).toBe(75)
+        expect(getSpecies('clefable', { gen: 5 })!.types).toEqual(['normal'])
+        expect(getSpecies('clefable')!.types).toEqual(['fairy'])
+        expect(getSpecies('gengar', { gen: 2 })!.abilities).toEqual([])
+        expect(getSpecies('ninetales', { gen: 4 })!.abilities.some(a => a.hidden)).toBe(false)
+        expect(getSpecies('ninetales', { gen: 5 })!.abilities.some(a => a.hidden)).toBe(true)
+        expect(getSpecies('garchomp', { gen: 3 })).toBeUndefined()
+    })
+
+    it('기술: 3세대까지 분류는 타입으로', async () => {
+        const { getMove } = await import('../../index')
+        expect(getMove('crunch', { gen: 3 })!.category).toBe('special')
+        expect(getMove('crunch', { gen: 4 })!.category).toBe('physical')
+        expect(getMove('bite', { gen: 1 })!.type).toBe('normal')
+    })
+
+    it('타입 상성표: 1세대 15, 2~5세대 17, 6세대부터 18 타입', async () => {
+        const { getTypeChart } = await import('../../index')
+        expect(Object.keys(getTypeChart({ gen: 1 }))).toHaveLength(15)
+        expect(Object.keys(getTypeChart({ gen: 3 }))).toHaveLength(17)
+        expect(getTypeChart({ gen: 3 }).ghost!.steel).toBe(0.5)
+        expect(getTypeChart({ gen: 7 }).ghost!.steel).toBeUndefined()
     })
 })
