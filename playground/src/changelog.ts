@@ -32,6 +32,15 @@ export const CHANGELOG: readonly ChangeEntry[] = [
   // ─── 2026-11-24 ─────────────────────────────────────────
   {
     date: '2026-11-24',
+    kind: 'fixed',
+    area: 'demo',
+    title: ['3D 모드의 새 메가진화 그림', '3D sprites for the new Mega Evolutions'],
+    points: [
+      ['3D 모드에서 레전즈 Z-A 메가진화(메가루카리오Z 등)가 기본 모습으로 보이던 문제를 고쳤습니다. 45종 모두 메가 모습으로 나옵니다.', 'In 3D mode the Legends Z-A Mega Evolutions (Mega Lucario Z and others) showed their base form; all 45 now show the Mega form.'],
+    ],
+  },
+  {
+    date: '2026-11-24',
     kind: 'new',
     area: 'demo',
     title: ['이로치와 레전즈 Z-A 메가진화', 'Shiny Pokémon and Legends Z-A Mega Evolutions'],
