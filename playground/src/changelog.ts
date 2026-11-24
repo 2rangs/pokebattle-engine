@@ -34,6 +34,39 @@ export const CHANGELOG: readonly ChangeEntry[] = [
     date: '2026-11-24',
     kind: 'new',
     area: 'demo',
+    title: ['이로치와 레전즈 Z-A 메가진화', 'Shiny Pokémon and Legends Z-A Mega Evolutions'],
+    points: [
+      ['세트 편집기에서 이로치를 고를 수 있습니다. 이로치 그림으로 나오고, 배틀에 나올 때 금빛으로 반짝입니다.', 'Mark a Pokémon as shiny in the set editor: it uses its shiny sprite and sparkles in gold when it is sent out.'],
+      ['샌드박스에서 루카리오나이트Z·한카리아스나이트Z·픽시나이트 등 레전즈 Z-A 메가스톤을 쓸 수 있습니다.', 'Legends Z-A Mega Stones such as Lucarionite Z, Garchompite Z and Clefablite work in the sandbox.'],
+      ['메가스톤이 없는 규칙에서는 도구 목록에 어디서 메가진화·Z기술을 쓸 수 있는지 안내합니다.', 'In rules without Mega Stones the item list tells you where Mega Evolution and Z-Moves are available.'],
+    ],
+    link: { href: '#/battle', label: ['배틀 데모 열기', 'Open the battle demo'] },
+  },
+  {
+    date: '2026-11-24',
+    kind: 'fixed',
+    area: 'demo',
+    title: ['메가스톤 목록, 폼 그림, 등장 타이밍', 'Mega Stone list, form sprites and send-out timing'],
+    points: [
+      ['샌드박스 기본 프리셋에서 메가스톤이 도구 목록에 나오지 않던 문제를 고쳤습니다.', 'Mega Stones now show up in the item list with the default sandbox preset.'],
+      ['메테노·오거폰 테라스탈·메가냐오닉스 등이 폼체인지 후에도 기본 모습으로 보이던 문제를 고쳤습니다.', 'Minior, Terastallized Ogerpon, Mega Meowstic and others now show their changed form.'],
+      ['배틀 시작 때 포켓몬이 “내보냈다” 전에 먼저 보이던 문제를 고쳐, 몬스터볼에서 나올 때 나타납니다.', 'Pokémon now appear when they are sent out instead of being visible before it at the start of a battle.'],
+    ],
+  },
+  {
+    date: '2026-11-24',
+    kind: 'improved',
+    area: 'demo',
+    title: ['팀 좌우 배치와 능력치 변화 색', 'Side-by-side teams and stat change colors'],
+    points: [
+      ['넓은 화면에서 내 팀과 상대 팀이 좌우로 나란히 놓입니다.', 'On wide screens your team and the CPU team sit side by side.'],
+      ['능력치 변화 연출이 게임처럼 상승은 빨강, 하락은 파랑으로만 나옵니다.', 'Stat changes look like the games: red for a rise, blue for a drop.'],
+    ],
+  },
+  {
+    date: '2026-11-24',
+    kind: 'new',
+    area: 'demo',
     title: ['5세대풍 도트 기술 연출', 'Gen 5-style pixel move effects'],
     points: [
       ['배틀 화면 도구 모음의 “연출: Showdown | 5세대풍”에서 기술 연출 방식을 고를 수 있습니다. 고른 값은 기억됩니다.', 'Pick how moves look from the battle toolbar (Effects: Showdown | Gen 5 style). Your choice is remembered.'],
