@@ -23,6 +23,7 @@ import { useBT, useSettings, type SpriteStyle } from './state'
 import { AIM, SPOT } from './layout'
 import { SceneEffects } from './SceneEffects'
 import { StatFx } from './statFx'
+import { playGen5MoveAnim } from '../gen5fx/play'
 import { loadStatTiles, statFxDuration, statTileOf, type StatTile } from './statTiles'
 
 type SpriteAnim = 'lunge' | 'hit' | 'crit' | 'enter' | 'heal' | 'shimmer' | 'status'
@@ -312,32 +313,39 @@ const SELF_TARGETS = new Set(['user', 'users-field', 'user-and-allies', 'all-all
  * 되감기·건너뛰기(프레임이 하나씩 나아가지 않을 때)와 움직임 줄이기 설정에서는 돌리지 않는다.
  */
 function useShowdownMoveAnim(frame: Frame, me: PlayerID, speed: number, scene: React.RefObject<HTMLDivElement | null>, fx: React.RefObject<HTMLDivElement | null>, bg: React.RefObject<HTMLDivElement | null>): boolean {
+  const { moveFx } = useSettings()
+  const gen5 = moveFx === 'gen5'
   const [ready, setReady] = useState(!!psModule)
   const last = useRef(frame.index)
   const stop = useRef<(() => void) | null>(null)
   useEffect(() => {
-    if (ready || reducedMotion()) return
+    if (gen5 || ready || reducedMotion()) return
     let alive = true
     loadPs().then(m => { if (alive && m) setReady(true) })
     return () => { alive = false }
-  }, [ready])
+  }, [ready, gen5])
   const e = frame.event
-  const handles = ready && !reducedMotion() && speed >= PS_MIN_SPEED && e.type === 'move_use' && e.move.name !== 'metronome'
+  const handles = (gen5 || ready) && !reducedMotion() && speed >= PS_MIN_SPEED && e.type === 'move_use' && e.move.name !== 'metronome'
   useEffect(() => {
     const prev = last.current
     last.current = frame.index
-    if (!handles || !psModule || frame.index !== prev + 1 || e.type !== 'move_use') return
+    if (!handles || frame.index !== prev + 1 || e.type !== 'move_use') return
     const root = scene.current
     if (!root || !fx.current || !bg.current) return
     stop.current?.()
-    stop.current = psModule.playMoveAnim(e.move.name, sideOfId(e.pokemon_id) !== me, SELF_TARGETS.has(e.move.target), {
+    const targets = {
       fx: fx.current,
       bg: bg.current,
       front: root.querySelector<HTMLElement>('.bd-spot.is-foe .bd-sprite-ps'),
       back: root.querySelector<HTMLElement>('.bd-spot.is-ours .bd-sprite-ps'),
       ground: [...root.querySelectorAll<HTMLElement>('.bd-shadow, .bd-efx-bg')],
-    }, { budget: moveFrameDelay(speed) * 0.95 })
-  }, [frame.index, handles, e, me, speed, scene, fx, bg])
+    }
+    const attackerFront = sideOfId(e.pokemon_id) !== me
+    const self = SELF_TARGETS.has(e.move.target)
+    const budget = moveFrameDelay(speed) * 0.95
+    if (gen5) stop.current = playGen5MoveAnim(e.move, attackerFront, self, targets, { budget })
+    else if (psModule) stop.current = psModule.playMoveAnim(e.move.name, attackerFront, self, targets, { budget })
+  }, [frame.index, handles, e, me, speed, scene, fx, bg, gen5])
   useEffect(() => () => stop.current?.(), [])
   return handles
 }

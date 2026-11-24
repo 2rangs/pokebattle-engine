@@ -373,6 +373,9 @@
 .bd-psfx-bg { z-index: 0; }
 .bd-psfx-el { position: absolute; display: block; max-width: none; opacity: 0; }
 .bd-psfx-bg-el { position: absolute; inset: 0; opacity: 0; }
+/* 5세대풍 연출 (../gen5fx): 저해상도 캔버스를 도트 그대로 확대 */
+.bd-g5fx { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; pointer-events: none; }
+.bd-g5fx-flash, .bd-g5fx-tint { position: absolute; inset: 0; pointer-events: none; }
 .bd-sprite-ps { display: block; transform-origin: 50% 50%; }
 
 /* ─── 결과 오버레이 ───────────────────────────────────── */

@@ -9,7 +9,7 @@ import { decodeReplay, ReplayError, type ReplayData, type ReplayErrorCode } from
 import { Scene, SceneOverlay } from './Scene'
 import { MessageBox } from './Console'
 import { BattleLog, FieldBar, SummaryPanel, TeamsPanel } from './SidePanel'
-import { Credits, SpeedSelect, SpriteToggle, ToolButton } from './common'
+import { Credits, MoveFxToggle, SpeedSelect, SpriteToggle, ToolButton } from './common'
 import { isNarrow, useBattleCries, useDebugHook } from './hooks'
 import { useEngineReady } from './useEngineReady'
 import { SaveHtmlButton } from '../replay-html/SaveHtmlButton'
@@ -151,6 +151,7 @@ function ReplayViewer({ data, sim, encoded }: { data: ReplayData; sim: Simulated
           <span className="bd-replay-title">{players}</span>
           <span className="bd-toolbar-gap" />
           <SpriteToggle />
+          <MoveFxToggle />
           <SpeedSelect value={speed} onChange={v => { setSpeed(v); updateSettings({ speed: v }) }} />
           <ToolButton pressed={settings.sound} onClick={() => updateSettings({ sound: !settings.sound })} label={t('soundTip')}>{t('sound')}</ToolButton>
           <SaveHtmlButton data={data} encoded={encoded.trim()} sim={sim} className="bd-tool" />

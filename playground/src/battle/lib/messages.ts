@@ -130,6 +130,11 @@ const ko = {
   sprites3d: '3D',
   spritesDesc2d: '4·5세대 도트 스타일',
   spritesDesc3d: '6세대 이후 3D 모델 스타일',
+  moveFx: '연출',
+  moveFxShowdown: 'Showdown',
+  moveFxGen5: '5세대풍',
+  moveFxDescShowdown: 'Pokémon Showdown 기술 애니메이션',
+  moveFxDescGen5: '도트 파티클로 새로 만든 5세대풍 연출 (모든 기술)',
   setWarnBadge: '확인 필요',
   setErrorBadge: '고칠 곳 있음',
 
@@ -405,6 +410,11 @@ const en: Record<Key, string> = {
   sprites3d: '3D',
   spritesDesc2d: 'Gen 4–5 pixel style',
   spritesDesc3d: 'Gen 6+ 3D model style',
+  moveFx: 'Effects',
+  moveFxShowdown: 'Showdown',
+  moveFxGen5: 'Gen 5 style',
+  moveFxDescShowdown: 'Pokémon Showdown move animations',
+  moveFxDescGen5: 'Original Gen 5-style pixel particle effects (every move)',
   setWarnBadge: 'Check',
   setErrorBadge: 'Needs fixing',
 

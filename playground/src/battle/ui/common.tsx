@@ -40,6 +40,21 @@ export function SpriteToggle() {
   )
 }
 
+export function MoveFxToggle() {
+  const { t } = useBT()
+  const { moveFx } = useSettings()
+  return (
+    <span className="bd-seg" role="group" aria-label={t('moveFx')}>
+      <span className="bd-seg-label" aria-hidden>{t('moveFx')}</span>
+      {(['showdown', 'gen5'] as const).map(v => (
+        <button key={v} type="button" aria-pressed={moveFx === v} title={t(v === 'gen5' ? 'moveFxDescGen5' : 'moveFxDescShowdown')} onClick={() => updateSettings({ moveFx: v })}>
+          {t(v === 'gen5' ? 'moveFxGen5' : 'moveFxShowdown')}
+        </button>
+      ))}
+    </span>
+  )
+}
+
 export function Credits() {
   const { t } = useBT()
   return (

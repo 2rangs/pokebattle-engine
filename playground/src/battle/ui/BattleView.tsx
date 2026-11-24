@@ -7,7 +7,7 @@ import type { ReplayData } from '../lib/replay'
 import { Scene, SceneOverlay } from './Scene'
 import { ActionConsole, MessageBox } from './Console'
 import { BattleLog, FieldBar, SummaryPanel, TeamsPanel } from './SidePanel'
-import { Credits, SpeedSelect, SpriteToggle, ToolButton } from './common'
+import { Credits, MoveFxToggle, SpeedSelect, SpriteToggle, ToolButton } from './common'
 import { isNarrow, replayHref, replayUrl, useBattleCries, useDebugHook, useEncodedReplay } from './hooks'
 import type { BattleSession } from './useBattleSession'
 import { SaveHtmlButton } from '../replay-html/SaveHtmlButton'
@@ -83,6 +83,7 @@ export function BattleView({ session, onExit, onRematch }: { session: BattleSess
       <div className="bd-main">
         <div className="bd-toolbar">
           <SpriteToggle />
+          <MoveFxToggle />
           <SpeedSelect value={session.speed} onChange={v => { session.setSpeed(v); updateSettings({ speed: v }) }} />
           {spectating && <ToolButton pressed={session.paused} onClick={() => session.setPaused(!session.paused)}>{session.paused ? t('play') : t('pause')}</ToolButton>}
           {!session.allRevealed && <ToolButton onClick={session.skip} label={t('skip')}>{t('skip')} »</ToolButton>}

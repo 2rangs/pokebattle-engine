@@ -13,6 +13,8 @@ export type Rule = 'normal' | 'metronome'
 export type Mode = 'vs-cpu' | 'spectate'
 export type Difficulty = 'easy' | 'normal' | 'hard'
 export type SpriteStyle = '2d' | '3d'
+/** 기술 연출: Showdown 애니메이션 / 5세대풍 도트 연출 (../gen5fx) */
+export type MoveFxStyle = 'showdown' | 'gen5'
 
 export interface MetronomeForm {
   p1Mode: 'random' | 'picked'
@@ -48,6 +50,7 @@ export interface DemoSettings {
   metroSeed: number
   /** 배틀 스프라이트: 2D 도트 / 3D HOME 렌더 */
   sprites: SpriteStyle
+  moveFx: MoveFxStyle
 }
 
 const KEY = 'pokebattle-demo-v1'
@@ -66,6 +69,7 @@ const DEFAULTS: DemoSettings = {
   metronome: { p1Mode: 'random', p2Mode: 'random', p1Pick: [], p2Pick: [], level: 100, stats: {} },
   metroSeed: Math.floor(Math.random() * 1e9),
   sprites: '2d',
+  moveFx: 'showdown',
 }
 
 function load(): DemoSettings {
@@ -82,6 +86,7 @@ function load(): DemoSettings {
       metronome: { ...DEFAULTS.metronome, ...(v.metronome ?? {}) },
       metroSeed: Number.isInteger(v.metroSeed) && v.metroSeed! >= 0 ? v.metroSeed! : DEFAULTS.metroSeed,
       sprites: v.sprites === '3d' ? '3d' : '2d',
+      moveFx: v.moveFx === 'gen5' ? 'gen5' : 'showdown',
       gen: normalizeGen(v.gen),
       otherTeams: otherTeams(v.otherTeams),
     }
