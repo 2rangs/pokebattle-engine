@@ -89,9 +89,30 @@ export const showdownAniUrl = (id: number, back = false, shiny = false) => `${PO
 export function battleSprite3dCandidates(slug: string, back: boolean, shiny = false): string[] {
   const ids = spriteIdsOf(slug)
   if (!ids) return []
-  const uniq = [...new Set([ids.form, ids.num])]
-  const shinyFirst = shiny ? [...uniq.map(id => showdownAniUrl(id, back, true)), ...uniq.map(id => homeSpriteUrl(id, true))] : []
-  return [...shinyFirst, ...uniq.map(id => showdownAniUrl(id, back)), ...uniq.map(id => homeSpriteUrl(id)), ...battleSpriteCandidates(slug, back, shiny)]
+  // 이 모습(폼)의 그림을 모든 출처에서 먼저 찾고, 그다음에 기본 모습 (메가진화 등 새 폼이 기본 모습으로 떨어지지 않게).
+  // 출처: PokeAPI 의 Showdown 3D → Showdown 서버의 3D(PokeAPI 에 아직 없는 새 폼) → HOME 3D 렌더(앞모습)
+  const ofId = (id: number, sid: string | null, sh: boolean) => [
+    showdownAniUrl(id, back, sh),
+    ...(sid ? [psAniUrl(sid, back, sh)] : []),
+    homeSpriteUrl(id, sh),
+  ]
+  const formSid = psSpriteId(slug)
+  const form = [...(shiny ? ofId(ids.form, formSid, true) : []), ...ofId(ids.form, formSid, false)]
+  const base = ids.num !== ids.form ? [...(shiny ? ofId(ids.num, null, true) : []), ...ofId(ids.num, null, false)] : []
+  return [...form, ...base, ...battleSpriteCandidates(slug, back, shiny)]
+}
+
+/** Showdown 서버의 3D 애니메이션 (play.pokemonshowdown.com/sprites/ani, ani-back, ani-shiny, ani-back-shiny) */
+export const psAniUrl = (spriteId: string, back = false, shiny = false) =>
+  `https://play.pokemonshowdown.com/sprites/ani${back ? '-back' : ''}${shiny ? '-shiny' : ''}/${spriteId}.gif`
+
+const toId = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+/** Showdown 스프라이트 id: 기본 종 id + '-' + 폼 id (예: Lucario-Mega-Z → lucario-megaz). 폼이 아니면 null */
+export function psSpriteId(slug: string): string | null {
+  const sp = getSpecies(slug)
+  const base = sp?.species_name ? getSpecies(sp.species_name)?.showdown : undefined
+  if (!sp || !base || sp.showdown === base || !sp.showdown.startsWith(`${base}-`)) return null
+  return `${toId(base)}-${toId(sp.showdown.slice(base.length + 1))}`
 }
 
 /** 작은 아이콘 (팀 빌더·교체 화면): Gen 5 B/W 애니메이션 → 정지 도트 */

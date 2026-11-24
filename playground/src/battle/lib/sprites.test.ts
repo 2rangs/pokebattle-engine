@@ -49,3 +49,21 @@ test('배틀 중 폼체인지 모습은 기본 모습 그림으로 떨어지지 
     .filter(([f, b]) => !pokeRogueKey(f) || pokeRogueKey(f) === pokeRogueKey(b))
   expect(bad).toEqual([])
 })
+
+test('3D: 폼 그림을 모든 출처에서 먼저 찾고 기본 모습은 그 뒤 (새 메가진화)', async () => {
+  const { psSpriteId } = await import('./sprites')
+  expect(psSpriteId('lucario-mega-z')).toBe('lucario-megaz')
+  expect(psSpriteId('charizard-mega-x')).toBe('charizard-megax')
+  expect(psSpriteId('barbaracle-mega')).toBe('barbaracle-mega')
+  expect(psSpriteId('lucario')).toBeNull()
+  expect(psSpriteId('porygon-z')).toBeNull()
+  expect(psSpriteId('ho-oh')).toBeNull()
+  const c = battleSprite3dCandidates('lucario-mega-z', false)
+  // 기본 모습(448) 그림은 폼 그림 세 출처 다음에야 나온다
+  expect(c.findIndex(u => /\/448\.(gif|png)$/.test(u))).toBe(3)
+  expect(c.slice(0, 3)).toEqual([
+    expect.stringContaining('/other/showdown/10310.gif'),
+    'https://play.pokemonshowdown.com/sprites/ani/lucario-megaz.gif',
+    expect.stringContaining('/other/home/10310.png'),
+  ])
+})
