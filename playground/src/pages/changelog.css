@@ -1,0 +1,26 @@
+/* 업데이트 내역 (#/changelog). 레이아웃은 .doc 를 그대로 쓰고, 날짜 묶음·항목만 여기서 정한다. */
+.changelog .doc-lead { max-width: 68ch; }
+.cl-days { display: flex; flex-direction: column; margin-top: 40px; }
+.cl-day { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 32px; padding-block: 32px; border-top: 1px solid var(--rule); }
+.cl-date { margin: 0; font-family: var(--font-family-heading); font-size: 16px; font-weight: 500; color: var(--ink); }
+.cl-date time { position: sticky; top: 80px; display: block; }
+.cl-entries { display: flex; flex-direction: column; gap: 32px; min-width: 0; }
+.cl-entry { display: flex; flex-direction: column; gap: 8px; min-width: 0; word-break: keep-all; overflow-wrap: anywhere; }
+.cl-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cl-kind { display: inline-flex; align-items: center; height: 22px; padding-inline: 8px; border: 1px solid currentColor; border-radius: 999px; font-size: 12px; font-weight: 500; line-height: 1; }
+.cl-kind-new { color: var(--accent); }
+.cl-kind-improved { color: #a8dcb4; }
+.cl-kind-fixed { color: #f0c987; }
+.cl-area { font-size: 13px; color: var(--muted); }
+.cl-title { margin: 4px 0 0; font-family: var(--font-family-heading); font-size: 20px; line-height: 1.3; font-weight: 500; color: var(--ink); }
+.cl-points { margin: 0; padding-left: 20px; list-style: disc; display: flex; flex-direction: column; gap: 6px; line-height: 1.7; color: var(--ink-2); max-width: 72ch; }
+.cl-link { align-self: flex-start; margin-top: 4px; font-size: 14px; font-weight: 500; color: var(--accent); text-decoration: none; }
+.cl-link:hover { text-decoration: underline; }
+
+@media (max-width: 640px) {
+  .cl-day { grid-template-columns: minmax(0, 1fr); gap: 16px; padding-block: 24px; }
+  .cl-date time { position: static; }
+  .cl-entries { gap: 24px; }
+  .cl-title { font-size: 18px; }
+}
+.cl-points li::marker { color: var(--muted); }
