@@ -173,7 +173,8 @@ export function getMove(name: string, opts: { gen?: Generation } = {}): MoveData
     if (moveCache.has(key)) return moveCache.get(key)
     const m = dexFor(gen, 'getMove').moves.get(moveToShowdown(name))
     let out: MoveData | undefined
-    if (m.exists) {
+    // 그 세대 이후에 나온 기술은 없다
+    if (m.exists && !(gen !== 9 && m.isNonstandard === 'Future')) {
         const boosts = m.category === 'Status' ? m.boosts ?? m.self?.boosts : m.self?.boosts ?? m.secondary?.self?.boosts ?? m.secondary?.boosts
         out = {
             id:            m.num,
