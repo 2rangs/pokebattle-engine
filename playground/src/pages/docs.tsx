@@ -43,6 +43,20 @@ export const DOCS: DocPage[] = [
           <>배틀 판정은 전부 Showdown 시뮬레이터(<C>@pkmn/sim</C>)가 합니다. 1~9세대 기술·특성·도구의 상호작용이 Showdown과 똑같이 동작하고, 이 패키지는 그 위에서 Showdown의 느린 부분을 고쳐 더 빠르게 돌리고, 입력을 검증하고, 프로토콜 로그를 이벤트와 한국어·영어·일본어 문장으로 바꿉니다. 같은 시드의 배틀은 Showdown과 프로토콜 로그가 바이트 단위로 같습니다.</>,
           <>Every battle rule is decided by the Showdown simulator (<C>@pkmn/sim</C>), so moves, abilities and items in Gens 1–9 interact exactly as they do on Showdown. On top of it this package fixes Showdown’s slow hot path, validates input, and turns the protocol log into typed events and sentences in Korean, English and Japanese. A battle with the same seed produces a byte-identical protocol log to Showdown’s.</>,
         )}</P>
+        <H2>{t('무엇이 다른가', 'What makes it different')}</H2>
+        <Ul items={t([
+          <><b>Showdown과 같은 결과, 1.6~1.9배 빠르게.</b> 같은 시드·팀·선택이면 프로토콜 로그가 바이트 단위로 같습니다 (싱글 1.001 → 0.622 ms/턴, 성능 문서).</>,
+          <><b>푸시마다 검증.</b> 모든 기술·특성·도구 회귀 스윕, 불변식 8개 퍼징 10,000판, 배포 번들 = 원본 @pkmn/sim 확인이 CI에서 돕니다 (테스트 & 퍼징).</>,
+          <><b>1~9세대, 모든 기믹.</b> 메가진화·Z기술·울트라버스트·다이맥스/거다이맥스·테라스탈, 그리고 Showdown에 없는 로테이션 배틀.</>,
+          <><b>3개 언어 로그.</b> 한국어·영어·일본어 문장(한국어 조사 처리), 이름은 9개 언어.</>,
+          <><b>결정적 리플레이.</b> 같은 시드 + 같은 선택 = 같은 배틀. 배틀 데모의 리플레이는 서버 없이 링크 하나입니다.</>,
+        ], [
+          <><b>Showdown’s results, 1.6–1.9× faster.</b> The same seed, teams and choices give a byte-identical protocol log (singles 1.001 → 0.622 ms/turn; see Performance).</>,
+          <><b>Verified on every push.</b> A regression sweep of every move, ability and item, 10,000 fuzzed battles against 8 invariants, and a check that the published bundle matches the original @pkmn/sim run in CI (see Testing & fuzzing).</>,
+          <><b>Gen 1–9, every gimmick.</b> Mega Evolution, Z-Moves, Ultra Burst, Dynamax/Gigantamax and Tera, plus rotation battles, which Showdown never implemented.</>,
+          <><b>Logs in three languages.</b> Korean, English and Japanese sentences (Korean particles handled); names in 9 languages.</>,
+          <><b>Deterministic replays.</b> Same seed + same choices = the same battle. Battle demo replays are a single link with no server.</>,
+        ])} />
         <H2>{t('구성', 'What’s inside')}</H2>
         <ApiTable
           head={t(['모듈', '하는 일'], ['Module', 'What it does'])}
