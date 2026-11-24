@@ -131,6 +131,7 @@ new BattleEngine({
 | `dynamax: false` | Dynamax Clause | in battle |
 | `megaEvolution: false` | Mega Evolution Clause (engine rule; also blocks Ultra Burst, Primal Reversion stays) | in battle |
 | `zMoves: false` | Z-Move Clause (engine rule) | in battle |
+| `stackGimmicks` | Stack Gimmicks Mod (engine rule) | in battle |
 | `sleepClause` | Sleep Clause Mod | in battle |
 | `endlessBattleClause` | Endless Battle Clause | in battle |
 | `speciesClause` / `itemClause` | Species Clause / Item Clause = 1 | checked at start |
@@ -139,6 +140,7 @@ new BattleEngine({
 - "Checked at start" rules run through Showdown's `TeamValidator`; a violation throws `BattleError` from `start()`.
 - Any other Showdown rule can still go in `config.rules` by name.
 - Showdown has no rule that turns off all Mega Evolution or Z-Moves (only `Mega Rayquaza Clause`), so the engine registers `Mega Evolution Clause` and `Z-Move Clause` at runtime (`src/engine/gimmickrules.ts`); `replayInputLog` registers them too.
+- **Stacking gimmicks** (`stackGimmicks: true`, meant for Gen 9): one Pokémon may Mega Evolve / Ultra Burst, Dynamax and Terastallize, in one turn or across turns (`{ type: 'move', …, mega: true, dynamax: true, terastallize: true }`). Each gimmick is still once per side per battle and the held item still decides Mega / Primal / Z (one item). They resolve in Showdown's queue order: Mega Evolution → Dynamax → Terastallization → move. A Z-Move can go with Terastallization but not with Dynamax (Max Moves replace it). Mega / Primal / Ultra forms Dynamax but don't Gigantamax; Mega Rayquaza (Dragon Ascent) works in Gen 9. The rule patches `Side.choose` / `chooseMove`, `canDynamaxNow`, `getDynamaxRequest` and `formeChange` at runtime, only in battles that have it (`src/engine/gimmickrules.ts`). `getAvailableActions` also lists the combined actions, and `new HeuristicAI({ useGimmicks: true })` (or `createAI(kind, seed, { useGimmicks: true })`) uses Mega / Z / Dynamax, combined when the rule is on.
 - Gen 1–2 sets are cleaned up like Showdown's validator does before the battle: no ability or nature, a single Special (SpD DV / stat exp = SpA), the HP DV follows the other DVs, and no held item in Gen 1 (`adaptSetToGen`).
 - With team preview on, `getRequest` returns `null` and `getTeamPreview(player)` returns `{ team, pick }`. `HeuristicAI`, `RandomAI` and `simulateBattle` get through team preview by themselves; `useBattle` does it for AI-controlled sides.
 

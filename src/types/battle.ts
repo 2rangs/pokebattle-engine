@@ -276,6 +276,11 @@ export interface BattleRuleOptions {
   megaEvolution?: boolean
   /** false 면 Z기술 금지 (엔진 규칙 'Z-Move Clause'). 기본 true */
   zMoves?: boolean
+  /**
+   * 기믹 겹치기 (엔진 규칙 'Stack Gimmicks Mod'): 한 포켓몬이 메가진화(울트라버스트)·Z기술·다이맥스·테라스탈을 함께 쓸 수 있다.
+   * 각 기믹은 그대로 진영당 한 배틀에 한 번, 지닌 도구는 하나 (메가스톤과 Z크리스탈은 함께 못 지닌다). 9세대에서 쓴다.
+   */
+  stackGimmicks?: boolean
   /** 같은 종 1마리 */
   speciesClause?: boolean
   /** 같은 도구 1개 */

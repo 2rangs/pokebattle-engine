@@ -145,3 +145,133 @@ describe('세대별 데이터 (getSpecies / getMove / getTypeChart 의 gen)', ()
         expect(getTypeChart({ gen: 7 }).ghost!.steel).toBeUndefined()
     })
 })
+
+describe('기믹 겹치기 (stackGimmicks)', () => {
+    const FOE9 = 'Blissey\nLevel: 100\nAbility: Natural Cure\nEVs: 252 HP / 252 Def\n- Soft-Boiled'
+    const make = (team: string, options: BattleRuleOptions = { stackGimmicks: true }) => {
+        const e = new BattleEngine({ format: 'singles', gen: 9, seed: 3, options, p1: { name: 'A', team: parseShowdownTeam(team) }, p2: { name: 'B', team: parseShowdownTeam(FOE9) } })
+        const events: { type: string }[] = []
+        e.on('*', ev => events.push(ev))
+        e.start()
+        const turn = (flags: Record<string, boolean> = {}, move: 0 | 1 | 2 | 3 = 0) => {
+            e.submitAction({ type: 'move', player: 'p1', pokemon_id: e.getRequest('p1')!.active.id, move_index: move, ...flags })
+            e.submitAction({ type: 'move', player: 'p2', pokemon_id: 'p2_0', move_index: 0 })
+        }
+        return { e, events, turn }
+    }
+    const ZARD = 'Charizard @ Charizardite Y\nAbility: Blaze\nTera Type: Fire\nGigantamax: Yes\n- Flamethrower\n- Air Slash'
+
+    it('규칙 없이: 9세대 메가스톤 지니면 테라스탈·다이맥스 불가 (Showdown 그대로)', () => {
+        const { e } = make(ZARD, {})
+        const r = moveReq(e)
+        expect(r.can_mega_evolve).toBe(true)
+        expect(r.can_terastallize).toBeFalsy()
+        expect(r.can_dynamax).toBeFalsy()
+    })
+
+    it('한 포켓몬이 한 턴에 메가진화 + 다이맥스 + 테라스탈 (순서: 메가 → 다이맥스 → 테라)', () => {
+        const b = make(ZARD)
+        const r = moveReq(b.e)
+        expect([r.can_mega_evolve, r.can_dynamax, r.can_terastallize]).toEqual([true, true, true])
+        const hp = b.e.getPokemon('p1_0')!.max_hp
+        b.turn({ mega: true, terastallize: true, dynamax: true })
+        const order = b.events.map(ev => ev.type).filter(t => ['mega_evolve', 'volatile_apply', 'terastallize', 'move_use'].includes(t))
+        expect(order.slice(0, 3)).toEqual(['mega_evolve', 'volatile_apply', 'terastallize'])
+        const p = b.e.getPokemon('p1_0')!
+        expect(p.species).toBe('charizard-mega-y')
+        expect(p.terastallized).toBeTruthy()
+        expect(p.max_hp).toBe(hp * 2)
+        // 메가 모습은 거다이맥스하지 않는다 (다이맥스 기술: 다이번)
+        expect(b.events.find(ev => ev.type === 'volatile_apply') as unknown).toMatchObject({ volatile: 'dynamax' })
+        expect((b.events.find(ev => ev.type === 'volatile_apply') as { gmax?: boolean }).gmax).toBeFalsy()
+        expect(b.events.some(ev => ev.type === 'move_use' && (ev as unknown as { move: { name: string } }).move.name === 'max-flare')).toBe(true)
+    })
+
+    it('턴을 나눠서도 (테라 → 메가 → 다이맥스), 각 기믹은 한 번', () => {
+        const b = make(ZARD)
+        b.turn({ terastallize: true })
+        expect(moveReq(b.e).can_terastallize).toBeFalsy()
+        expect(moveReq(b.e).can_mega_evolve).toBe(true)
+        b.turn({ mega: true })
+        expect(moveReq(b.e).can_mega_evolve).toBeFalsy()
+        expect(moveReq(b.e).can_dynamax).toBe(true)
+        b.turn({ dynamax: true })
+        const p = b.e.getPokemon('p1_0')!
+        expect(p.species).toBe('charizard-mega-y')
+        expect(p.terastallized).toBeTruthy()
+        expect(b.events.some(ev => ev.type === 'volatile_apply')).toBe(true)
+    })
+
+    it('Z기술 + 테라스탈은 함께, Z기술 + 다이맥스는 안 된다', () => {
+        const team = 'Pikachu @ Electrium Z\nAbility: Static\nTera Type: Electric\n- Thunderbolt'
+        const ok = make(team)
+        expect(moveReq(ok.e).can_zmove).toBe(true)
+        expect(moveReq(ok.e).can_terastallize).toBe(true)
+        ok.turn({ zmove: true, terastallize: true })
+        expect(ok.events.some(ev => ev.type === 'terastallize')).toBe(true)
+        expect(ok.events.some(ev => ev.type === 'move_use' && (ev as unknown as { move: { name: string } }).move.name.startsWith('gigavolt-havoc'))).toBe(true)
+        const no = make(team)
+        expect(() => no.turn({ zmove: true, dynamax: true })).toThrow(/Z-Move and Dynamax/)
+    })
+
+    it('울트라버스트 + 테라스탈 + 다이맥스', () => {
+        const b = make('Necrozma-Dusk-Mane @ Ultranecrozium Z\nAbility: Prism Armor\nTera Type: Steel\n- Sunsteel Strike')
+        b.turn({ ultra_burst: true, terastallize: true, dynamax: true })
+        const p = b.e.getPokemon('p1_0')!
+        expect(p.species).toBe('necrozma-ultra')
+        expect(p.terastallized).toBeTruthy()
+        expect(b.events.some(ev => ev.type === 'volatile_apply')).toBe(true)
+    })
+
+    it('메가레쿠쟈 (화룡점정) 도 9세대에서', () => {
+        const b = make('Rayquaza\nAbility: Air Lock\nTera Type: Flying\n- Dragon Ascent')
+        expect(moveReq(b.e).can_mega_evolve).toBe(true)
+    })
+
+    it('입력 로그 재생이 같은 배틀을 만든다', () => {
+        const b = make(ZARD)
+        b.turn({ mega: true, terastallize: true, dynamax: true })
+        b.turn()
+        expect(comparableLog(replayInputLog(b.e.battle.inputLog))).toBe(comparableLog(b.e.battle))
+    })
+})
+
+describe('기믹 AI · 겹치기 퍼즈', () => {
+    it('useGimmicks AI 가 7·8세대에서 메가·Z·다이맥스를 쓰고, 겹치기 배틀이 끝까지 돌며 입력 로그로 재현된다', async () => {
+        const { simulateBattle, createAI, generateRandomTeam } = await import('../../index')
+        const used = { mega: 0, zmove: 0, dynamax: 0, terastallize: 0, stacked: 0 }
+        const count = (e: BattleEngine) => {
+            for (const line of e.battle.inputLog) {
+                const m = /^>p[12] move \S+(.*)$/.exec(line)
+                if (!m) continue
+                const flags = m[1]!.trim().split(/\s+/).filter(Boolean)
+                for (const f of flags) if (f in used) used[f as keyof typeof used]++
+                if (flags.length > 1) used.stacked++
+            }
+        }
+        for (const gen of [7, 8] as const) {
+            for (let i = 0; i < 15; i++) {
+                const t = (s: number) => generateRandomTeam({ seed: s, format: `gen${gen}randombattle` })
+                const r = simulateBattle({ format: 'singles', gen, seed: i, p1: { name: 'a', team: t(i * 2 + 1) }, p2: { name: 'b', team: t(i * 2 + 2) } },
+                    { p1: createAI('heuristic', i, { useGimmicks: true }), p2: createAI('strong', i + 1, { useGimmicks: true }) })
+                count(r.engine)
+            }
+        }
+        expect(used.mega).toBeGreaterThan(0)
+        expect(used.dynamax).toBeGreaterThan(0)
+        // 겹치기: 9세대 랜덤 팀 + 메가스톤 지닌 리자몽·Z크리스탈 피카츄를 섞어서
+        const extra = parseShowdownTeam('Charizard @ Charizardite X\nAbility: Blaze\nTera Type: Dragon\n- Flare Blitz\n- Dragon Claw\n- Earthquake\n- Dragon Dance\n\nPikachu @ Pikanium Z\nAbility: Static\nTera Type: Electric\n- Volt Tackle\n- Thunderbolt', 80)
+        for (let i = 0; i < 60; i++) {
+            const t = (s: number) => [...extra, ...generateRandomTeam({ seed: s, size: 4 })]
+            const ai = (k: number) => (i % 3 === 0 ? createAI('random', k) : createAI('heuristic', k, { useGimmicks: true }))
+            const r = simulateBattle({ format: 'singles', gen: 9, seed: i, options: { stackGimmicks: true }, p1: { name: 'a', team: t(i * 2 + 1) }, p2: { name: 'b', team: t(i * 2 + 2) } },
+                { p1: ai(i), p2: ai(i + 7) })
+            expect(r.winner).not.toBeNull()
+            count(r.engine)
+            const nodebug = (s: string) => s.split("\n").filter(l => !l.startsWith("|debug|")).join("\n")
+            if (i % 10 === 0) expect(nodebug(comparableLog(replayInputLog(r.engine.battle.inputLog)))).toBe(nodebug(comparableLog(r.engine.battle)))
+        }
+        expect(used.stacked).toBeGreaterThan(0)
+        expect(used.terastallize).toBeGreaterThan(0)
+    }, 60_000)
+})
