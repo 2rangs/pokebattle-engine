@@ -3,6 +3,7 @@ import { Heading } from '@astryxdesign/core/Heading'
 import { Text } from '@astryxdesign/core/Text'
 import { CodeBlock } from '@astryxdesign/core/CodeBlock'
 import { Table, proportional } from '@astryxdesign/core/Table'
+import { sectionId } from './section-id'
 
 export { Code as C } from '@astryxdesign/core/Code'
 
@@ -10,8 +11,8 @@ export function P({ children }: { children: ReactNode }) {
   return <Text as="p" display="block" color="secondary">{children}</Text>
 }
 
-export function H2({ children }: { children: ReactNode }) {
-  return <div className="h2"><Heading level={2}>{children}</Heading></div>
+export function H2({ children }: { children: string }) {
+  return <div className="h2" id={sectionId(children)} tabIndex={-1}><Heading level={2}>{children}</Heading></div>
 }
 
 export function H3({ children }: { children: ReactNode }) {

@@ -36,7 +36,7 @@ export function LogWindow({ id, title, command, maxHeight = 420 }: {
     <figure className="logwin">
       <figcaption className="logwin-bar">
         <span className="logwin-title">{title}</span>
-        <span className="logwin-meta">{lines ? `${lines.length} lines` : 'running…'}</span>
+        <span className="logwin-meta">{lines ? `${lines.length} lines` : '…'}</span>
       </figcaption>
       <pre className="run-log logwin-body" style={{ maxHeight }} tabIndex={0}>
         <span className="log-prompt">$ {command}{'\n'}</span>
@@ -58,13 +58,18 @@ export function ApiRun({ id, title, maxHeight = 360 }: {
   const [out, setOut] = useState<{ lang: DocLang; lines: Line[] } | null>(null)
   const lines = out?.lang === lang ? out.lines : null
   const [ms, setMs] = useState(0)
+  const [busy, setBusy] = useState(false)
 
   const run = useCallback(async () => {
+    setBusy(true)
     await dataReady
+    // "실행 중" 상태가 한 번 그려진 뒤에 (동기) 실행
+    await new Promise(r => setTimeout(r, 30))
     const t0 = performance.now()
     const result = collect(id, lang)
     setMs(performance.now() - t0)
     setOut({ lang, lines: result })
+    setBusy(false)
   }, [id, lang])
 
   return (
@@ -72,11 +77,11 @@ export function ApiRun({ id, title, maxHeight = 360 }: {
       <CodeBlock code={localizeCode(ex.code, lang)} language="ts" title={title} width="100%" container="section" maxHeight={420} />
       <div className="run-bar">
         <span className="run-label">
-          {lines ? `${t('출력', 'Output')} · ${lines.length} ${t('줄', 'lines')} · ${ms.toFixed(0)} ms` : t('출력', 'Output')}
+          {busy ? t('실행 중…', 'Running…') : lines ? `${t('출력', 'Output')} · ${lines.length} ${t('줄', 'lines')} · ${ms.toFixed(0)} ms` : t('출력', 'Output')}
         </span>
-        <Button label={lines ? t('다시 실행', 'Run again') : t('실행', 'Run')} size="sm" variant={lines ? 'secondary' : 'primary'} onClick={run} />
+        <Button label={lines ? t('다시 실행', 'Run again') : t('실행', 'Run')} size="sm" variant="secondary" onClick={run} isLoading={busy} />
       </div>
-      <pre className="run-log" style={{ maxHeight }} aria-live="polite" tabIndex={0}>
+      <pre className="run-log" style={{ maxHeight }} aria-live="polite" aria-busy={busy} tabIndex={0}>
         {lines === null
           ? <span className="log-dim">{t('실행을 누르면 브라우저에서 엔진이 돌고, 결과가 여기에 텍스트로 찍힙니다.', 'Press Run to execute the engine in your browser. The output prints here as text.')}</span>
           : lines.length === 0
