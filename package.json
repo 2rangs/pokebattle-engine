@@ -1,9 +1,17 @@
 {
   "name": "@kyasi/pokebattle-engine",
   "version": "1.0.0",
-  "description": "Pokémon Showdown 시뮬레이터 기반 배틀 엔진 — PokeAPI 슬러그/한국어 이름, @smogon/calc 데미지 계산, AI, 퍼징 테스트",
+  "description": "Pokémon Showdown-accurate battle engine for JS/TS: typed events, Korean/English/Japanese logs, damage calc (@smogon/calc), AI, random/metronome battles, CLI. Pokémon Showdown 시뮬레이터 기반 배틀 엔진.",
   "author": "kyasi",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/2rangs/pokebattle-engine.git"
+  },
+  "homepage": "https://2rangs.github.io/portfolio/pokebattle-engine/",
+  "bugs": {
+    "url": "https://github.com/2rangs/pokebattle-engine/issues"
+  },
   "type": "module",
   "bin": {
     "pokebattle": "./dist/cli.js"
@@ -13,34 +21,56 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     },
     "./react": {
-      "types": "./dist/react/index.d.ts",
-      "import": "./dist/react/index.js",
-      "require": "./dist/react/index.cjs"
+      "import": {
+        "types": "./dist/react/index.d.ts",
+        "default": "./dist/react/index.js"
+      },
+      "require": {
+        "types": "./dist/react/index.d.cts",
+        "default": "./dist/react/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "react": [
+        "./dist/react/index.d.ts"
+      ]
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "CHANGELOG.md"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsup",
     "build:watch": "tsup --watch",
-    "prepare": "tsup",
+    "prepare": "npm run build",
     "cli": "tsx src/cli/index.ts",
     "simulate": "tsx src/cli/index.ts play",
     "bench": "tsx scripts/bench.ts",
     "bench:compare": "tsx scripts/bench-compare.ts",
-    "check:dist": "tsup && tsx scripts/check-dist.ts",
+    "check:dist": "npm run build && tsx scripts/check-dist.ts",
     "regression": "tsx scripts/regression.ts --strict",
     "test": "vitest",
     "test:run": "vitest run",
     "type-check": "tsc --noEmit -p tsconfig.build.json",
     "fetch-pokeapi": "NODE_USE_ENV_PROXY=1 tsx scripts/fetch-pokeapi.ts",
-    "fuzz": "tsup && node scripts/fuzz.ts"
+    "fuzz": "npm run build && node scripts/fuzz.ts",
+    "lint:package": "publint --strict && attw --pack .",
+    "prepublishOnly": "npm run type-check && npm run test:run && npm run build && npm run lint:package && node scripts/consumer-smoke.mjs",
+    "smoke:pack": "npm run build && node scripts/consumer-smoke.mjs"
   },
   "keywords": [
     "pokemon",
@@ -52,9 +82,11 @@
     "simulator"
   ],
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
     "@pkmn/randoms": "^0.11.0",
     "@types/node": "^25.5.0",
     "@types/react": "^19.2.14",
+    "publint": "^0.3.25",
     "react": "^19.2.4",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
@@ -73,5 +105,12 @@
   "dependencies": {
     "@pkmn/sim": "^0.11.0",
     "@smogon/calc": "^0.12.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   }
 }

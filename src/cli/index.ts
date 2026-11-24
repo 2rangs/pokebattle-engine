@@ -9,8 +9,8 @@ import { createInterface } from 'node:readline/promises'
 import {
     BattleEngine, HeuristicAI, RandomAI, createFormatter, loadNames, preloadData, generateRandomTeam, parseShowdownTeam,
     loadTeam, PRNG, simulateBattle, randomBattleFormatId, createMetronomeBattle,
-} from '../index'
-import type { Action, BattleAI, BattleFormat, BattlePokemon, Formatter, Generation, MetronomeStats, PlayerID, PokemonSet } from '../index'
+} from '@kyasi/pokebattle-engine'
+import type { Action, BattleAI, BattleFormat, BattlePokemon, Formatter, Generation, MetronomeStats, PlayerID, PokemonSet } from '@kyasi/pokebattle-engine'
 
 // ─── 인자 ─────────────────────────────────────────────────────
 const argv = process.argv.slice(2)

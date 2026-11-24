@@ -16,6 +16,8 @@ jobs:
       - run: npm ci
       - run: npm run type-check
       - run: npx vitest run
+      - name: Package lint (publint, are-the-types-wrong)
+        run: npm run lint:package
       - name: Bundle matches original @pkmn/sim (slim build)
         run: npx tsx scripts/check-dist.ts --battles 150
       - name: Regression sweep (every move, ability, item + random battles Gen 1-9 + doubles)
@@ -32,3 +34,54 @@ jobs:
         with:
           name: regression-report
           path: regression-report
+
+  # 저장소 테스트: Node 버전별 (개발 도구 vitest 4 는 Node 20 이상)
+  test-node:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npx vitest run
+
+  # 배포될 패키지를 한 번 만들어서
+  pack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm pack
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-tarball
+          path: '*.tgz'
+
+  # 사용자처럼 설치해서 쓰기: Node 버전별 (패키지는 Node 18 이상 지원)
+  consumer:
+    needs: pack
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [18, 20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: package-tarball
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Install the tarball in a fresh project (ESM, CommonJS, /react, CLI, types)
+        run: node scripts/consumer-smoke.mjs --tarball "$(ls *.tgz)"

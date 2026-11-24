@@ -1,0 +1,31 @@
+name: Release
+
+# v1.2.3 꼴의 태그를 올리면 npm 에 배포한다 (package.json 버전과 같아야 한다).
+# 필요한 것: 저장소 Settings → Secrets → Actions 에 NPM_TOKEN (npm 의 Automation 또는 Granular 토큰).
+# 배포 전에 prepublishOnly 가 타입 검사·테스트·빌드·패키지 검사·설치 테스트를 다시 돌린다.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  id-token: write   # npm provenance (어느 커밋·워크플로에서 만들었는지 npm 에 표시)
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - name: Tag matches package.json version
+        run: |
+          v="$(node -p "require('./package.json').version")"
+          if [ "v$v" != "$GITHUB_REF_NAME" ]; then echo "tag $GITHUB_REF_NAME != package.json v$v"; exit 1; fi
+      - run: npm ci
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

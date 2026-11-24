@@ -47,8 +47,13 @@ In an app build this took the battle page chunk from 8.7 MB to 3.4 MB. `npm run 
 ## Install
 
 ```bash
-npm install github:2rangs/pokebattle-engine
+npm install @kyasi/pokebattle-engine
 ```
+
+- **Node 18 or newer** (tested on 18, 20, 22 and 24), or any modern browser through a bundler (Vite, webpack, Next.js …).
+- ESM and CommonJS both work: `import { BattleEngine } from '@kyasi/pokebattle-engine'` or `require('@kyasi/pokebattle-engine')`. The React hook is `@kyasi/pokebattle-engine/react` (React 18+, optional peer dependency).
+- TypeScript types are included. If your project type-checks library files (`skipLibCheck: false`) without Node types, add `@types/node`: `@pkmn/sim`'s own declarations mention Node's `Buffer`. Vite, Next.js and most templates set `skipLibCheck: true`, which avoids it.
+- The CLI comes with it: `npx pokebattle watch`.
 
 ## Usage
 
@@ -309,11 +314,23 @@ npx pokebattle sim   --battles 500 --vs heuristic --json
 
 ## Scripts
 
+Developing this repository needs Node 20 or newer (the test runner); the published package runs on Node 18+.
+
 ```bash
 npm run bench -- 500                     # HeuristicAI vs RandomAI
 npm run bench:compare                    # Showdown vs this engine, same battles (and checks the logs are identical)
 npm run fetch-pokeapi                    # refresh PokeAPI data (src/data/pokeapi.json)
+npm run lint:package                     # publint + are-the-types-wrong on the packed package
+npm run smoke:pack                       # pack, install into a fresh project, use it like a consumer (ESM, CJS, /react, CLI, types)
 ```
+
+## Releasing
+
+1. Update `version` in `package.json` and add a section to `CHANGELOG.md`.
+2. Commit, then push a tag with the same version: `git tag v1.0.0 && git push origin v1.0.0`.
+3. `.github/workflows/release.yml` publishes to npm with provenance. It needs an `NPM_TOKEN` secret (npm automation or granular token) in the repository settings. `prepublishOnly` re-runs the type check, tests, build, package lint and the install test first.
+
+CI runs the tests on Node 20, 22 and 24, and installs the packed package into a fresh project on Node 18, 20, 22 and 24.
 
 ## License
 
