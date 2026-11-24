@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Button } from '@astryxdesign/core/Button'
 import { CodeBlock } from '@astryxdesign/core/CodeBlock'
-import { examples, localizeCode, type DocLang, type ExampleId, type LogKind } from '../examples'
+import { examples, localizeCode, type DocLang, type ExampleId, type LogKind, type LogLang } from '../examples'
 import { useLang } from '../i18n'
-import { dataReady } from '../engine'
+import { dataReady, loadNames } from '../engine'
 
 interface Line { text: string; kind: LogKind }
 
-function collect(id: ExampleId, lang: DocLang): Line[] {
+function collect(id: ExampleId, lang: LogLang): Line[] {
   const out: Line[] = []
   try {
     examples[id].run((text, kind = 'out') => { out.push({ text, kind }) }, lang)
@@ -17,26 +17,32 @@ function collect(id: ExampleId, lang: DocLang): Line[] {
   return out
 }
 
-/** 출력만 보여주는 창 (랜딩용). 마운트 시 한 번 실행 */
-export function LogWindow({ id, title, command, maxHeight = 420 }: {
+/** 출력만 보여주는 창 (랜딩용). 마운트 시 한 번 실행. logLang 을 주면 그 언어로 (문서 언어와 별개) */
+export function LogWindow({ id, title, command, maxHeight = 420, logLang, toolbar }: {
   id: ExampleId
   title: string
   command: string
   maxHeight?: number
+  logLang?: LogLang
+  /** 제목 줄 오른쪽에 넣을 것 (예: 언어 전환) */
+  toolbar?: ReactNode
 }) {
-  const { lang } = useLang()
+  const { lang: docLang } = useLang()
+  const lang = logLang ?? docLang
   const [lines, setLines] = useState<Line[] | null>(null)
   useEffect(() => {
     let live = true
     // 엔진 데이터(랜덤배틀 세트 등)가 준비되면 실행. 언어를 바꾸면 그 언어로 다시
-    dataReady.then(() => setTimeout(() => { if (live) setLines(collect(id, lang)) }, 0))
+    // 일본어는 이름 팩(포켓몬·기술 이름)을 따로 받는다 (영어·한국어는 내장)
+    const ready = lang === 'ja' ? Promise.all([dataReady, loadNames('ja')]) : dataReady
+    ready.then(() => setTimeout(() => { if (live) setLines(collect(id, lang)) }, 0))
     return () => { live = false }
   }, [id, lang])
   return (
     <figure className="logwin">
       <figcaption className="logwin-bar">
         <span className="logwin-title">{title}</span>
-        <span className="logwin-meta">{lines ? `${lines.length} lines` : '…'}</span>
+        <span className="logwin-meta">{toolbar}{lines ? `${lines.length} lines` : '…'}</span>
       </figcaption>
       <pre className="run-log logwin-body" style={{ maxHeight }} tabIndex={0}>
         <span className="log-prompt">$ {command}{'\n'}</span>
