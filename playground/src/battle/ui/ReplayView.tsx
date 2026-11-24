@@ -12,6 +12,7 @@ import { BattleLog, FieldBar, SummaryPanel, TeamsPanel } from './SidePanel'
 import { Credits, SpeedSelect, SpriteToggle, ToolButton } from './common'
 import { isNarrow, useBattleCries, useDebugHook } from './hooks'
 import { useEngineReady } from './useEngineReady'
+import { SaveHtmlButton } from '../replay-html/SaveHtmlButton'
 import '../battle.css'
 import { updateSettings, useBT, useSettings } from './state'
 
@@ -52,7 +53,7 @@ export default function ReplayPage({ query }: { query: string }) {
   if (current && 'error' in current) return <ReplayFailure code={current.error} />
   if (!sim || !data) return <div className="bd-loading" role="status">{t('replayLoading')}</div>
   if (sim.frames.length === 0) return <ReplayFailure code="mismatch" />
-  return <ReplayViewer key={d} data={data} sim={sim} />
+  return <ReplayViewer key={d} data={data} sim={sim} encoded={d} />
 }
 
 function ReplayFailure({ code }: { code: ReplayErrorCode | 'mismatch' }) {
@@ -67,7 +68,7 @@ function ReplayFailure({ code }: { code: ReplayErrorCode | 'mismatch' }) {
   )
 }
 
-function ReplayViewer({ data, sim }: { data: ReplayData; sim: SimulatedReplay }) {
+function ReplayViewer({ data, sim, encoded }: { data: ReplayData; sim: SimulatedReplay; encoded: string }) {
   const { t, lang } = useBT()
   const settings = useSettings()
   const total = sim.frames.length
@@ -152,6 +153,7 @@ function ReplayViewer({ data, sim }: { data: ReplayData; sim: SimulatedReplay })
           <SpriteToggle />
           <SpeedSelect value={speed} onChange={v => { setSpeed(v); updateSettings({ speed: v }) }} />
           <ToolButton pressed={settings.sound} onClick={() => updateSettings({ sound: !settings.sound })} label={t('soundTip')}>{t('sound')}</ToolButton>
+          <SaveHtmlButton data={data} encoded={encoded.trim()} sim={sim} className="bd-tool" />
           <ToolButton href="#/battle">{t('exit')}</ToolButton>
         </div>
         <div className="bd-game">
@@ -160,6 +162,7 @@ function ReplayViewer({ data, sim }: { data: ReplayData; sim: SimulatedReplay })
               <SceneOverlay title={result}>
                 <button type="button" className="bd-btn is-primary" onClick={() => { setCursor(1); setPlaying(true) }}>{t('replayRestart')}</button>
                 <button type="button" className="bd-btn" onClick={prevTurn}>{t('replayPrevTurn')}</button>
+                <SaveHtmlButton data={data} encoded={encoded.trim()} sim={sim} />
                 <a className="bd-btn is-ghost" href="#/battle">{t('replayToDemo')}</a>
               </SceneOverlay>
             )}

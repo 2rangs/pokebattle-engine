@@ -10,6 +10,7 @@ import { BattleLog, FieldBar, SummaryPanel, TeamsPanel } from './SidePanel'
 import { Credits, SpeedSelect, SpriteToggle, ToolButton } from './common'
 import { isNarrow, replayHref, replayUrl, useBattleCries, useDebugHook, useEncodedReplay } from './hooks'
 import type { BattleSession } from './useBattleSession'
+import { SaveHtmlButton } from '../replay-html/SaveHtmlButton'
 import { updateSettings, useBT, useSettings } from './state'
 
 function ResultOverlay({ result, replay, onRematch, onExit }: { result: string; replay: () => ReplayData | null; onRematch: () => void; onExit: () => void }) {
@@ -31,6 +32,7 @@ function ResultOverlay({ result, replay, onRematch, onExit }: { result: string; 
       <button type="button" className="bd-btn is-primary" onClick={onRematch}>{t('rematch')}</button>
       <button type="button" className="bd-btn" disabled={!encoded} onClick={copy}>{t('copyReplay')}</button>
       <a className={`bd-btn${encoded ? '' : ' is-disabled'}`} href={encoded ? replayHref(encoded) : undefined} aria-disabled={!encoded}>{t('viewReplay')}</a>
+      <SaveHtmlButton data={data} encoded={encoded} />
       <button type="button" className="bd-btn is-ghost" onClick={onExit}>{t('backToTeam')}</button>
       <span className="bd-overlay-note" role="status">{note}</span>
     </SceneOverlay>
