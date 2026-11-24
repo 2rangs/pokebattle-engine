@@ -30,14 +30,22 @@ export function useBattleSession() {
 
   const allRevealed = revealed >= frames.length
 
-  const start = useCallback((s: BattleSetup, opts: SessionOptions) => {
+  /** 시작: 엔진이 거절하면(팀 검사 BattleError 등) 그 문장을 돌려준다 */
+  const start = useCallback((s: BattleSetup, opts: SessionOptions): string | null => {
     const ctrl = { p1: opts.p1, p2: opts.p2 }
-    const e = createEngine(s, ctrl)
-    framesRef.current = []
+    let e: BattleEngine
+    const captured: Frame[] = []
+    try {
+      e = createEngine(s, ctrl)
+      attachFrameCapture(e, f => captured.push(f))
+      e.start()
+    } catch (err) {
+      return (err as Error).message
+    }
+    framesRef.current = captured
     actionsRef.current = []
     forfeitRef.current = undefined
     setupRef.current = { setup: s, ctrl }
-    attachFrameCapture(e, f => framesRef.current.push(f))
     const nextAis: Partial<Record<PlayerID, BattleAI>> = {}
     for (const p of ['p1', 'p2'] as PlayerID[]) {
       const c = opts[p]
@@ -49,10 +57,10 @@ export function useBattleSession() {
     setSpeed(opts.speed)
     setPaused(false)
     setError(null)
-    e.start()
     setFrames([...framesRef.current])
     setRevealed(0)
     setVersion(v => v + 1)
+    return null
   }, [])
 
   const flush = useCallback(() => {
@@ -87,13 +95,14 @@ export function useBattleSession() {
     const e = engine
     if (!e || !allRevealed || paused) return
     if (e.getState().phase === 'ended') return
-    const pending = (['p1', 'p2'] as PlayerID[]).filter(p => ais[p] && e.getRequest(p))
+    const waiting = (p: PlayerID) => !!(e.getRequest(p) || e.getTeamPreview(p))
+    const pending = (['p1', 'p2'] as PlayerID[]).filter(p => ais[p] && waiting(p))
     if (pending.length === 0) return
-    const humanWaiting = (['p1', 'p2'] as PlayerID[]).some(p => !ais[p] && e.getRequest(p))
+    const humanWaiting = (['p1', 'p2'] as PlayerID[]).some(p => !ais[p] && waiting(p))
     const delay = humanWaiting ? 0 : Math.min(400, speed)
     const t = setTimeout(() => {
       for (const p of pending) {
-        if (!e.getRequest(p)) continue
+        if (!waiting(p)) continue
         const action = ais[p]!.chooseAction(e, p) ?? e.getAvailableActions(p)[0]
         if (!action) continue
         e.submitAction(action)
@@ -123,6 +132,10 @@ export function useBattleSession() {
   const request = useCallback((player: PlayerID): BattleRequest | null =>
     engine && allRevealed && !ais[player] ? engine.getRequest(player) : null, [engine, allRevealed, ais])
   const state = engine?.getState()
+  // 팀 프리뷰: 사람 쪽이 고를 차례면 그 요청 (상대 팀도 함께 보여 준다)
+  const human = (['p1', 'p2'] as PlayerID[]).find(p => !ais[p])
+  const preview = engine && human ? engine.getTeamPreview(human) : null
+  const inPreview = !!engine && state?.phase === 'team_preview'
 
   return {
     engine,
@@ -143,6 +156,8 @@ export function useBattleSession() {
     isAI: (p: PlayerID) => !!ais[p],
     controller: (p: PlayerID): ReplayController => setupRef.current?.ctrl[p] ?? 'human',
     phase: state?.phase ?? null,
+    preview,
+    inPreview,
     winner: state?.winner ?? null,
     version,
   }

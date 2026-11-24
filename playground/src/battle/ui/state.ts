@@ -8,8 +8,12 @@ import type { PokemonSet } from '../lib/engine'
 import type { MetronomeSetup } from '../lib/replay'
 import { normalizeSize, type TeamSize } from '../lib/team'
 import { DEFAULT_GEN, GENS, normalizeGen, type Gen } from '../lib/gimmick'
+import { defaultOptions, normalizeOptions, normalizeSandbox, sandboxPreset, type BattleOptions, type SandboxOptions } from '../lib/options'
 
-export type Rule = 'normal' | 'metronome'
+/** 일반 배틀 (세대 규칙) / 샌드박스 (9세대 + 규칙 풀기, 손가락흔들기 포함) */
+export type Rule = 'normal' | 'sandbox'
+/** 팀을 따로 보관하는 칸: 세대마다 + 샌드박스 */
+export type TeamSlot = Gen | 'sb'
 export type Mode = 'vs-cpu' | 'spectate'
 export type Difficulty = 'easy' | 'normal' | 'hard'
 export type SpriteStyle = '2d' | '3d'
@@ -32,13 +36,18 @@ export interface DemoSettings {
   rule: Rule
   /** 일반 배틀의 세대 (규칙·기믹·도감) */
   gen: Gen
-  /** 지금 세대가 아닌 세대의 팀 */
-  otherTeams: Partial<Record<Gen, GenTeams>>
+  /** 지금 칸(세대 / 샌드박스)이 아닌 칸의 팀 */
+  otherTeams: Partial<Record<TeamSlot, GenTeams>>
+  /** 세대마다 배틀 옵션 (프리셋·마릿수·팀 프리뷰·레벨·기믹·클로즈) */
+  options: Partial<Record<Gen, BattleOptions>>
+  /** 샌드박스 설정 */
+  sandbox: SandboxOptions
   mode: Mode
   difficulty: Difficulty
   teamSize: TeamSize
   speed: number
   sound: boolean
+  /** 마릿수 (샌드박스·손가락흔들기. 일반 배틀은 배틀 옵션의 teamSize) */
   /** 내 팀 (자리 순서, 최대 6, 빈 자리 null) */
   myTeam: (PokemonSet | null)[]
   /** 상대(CPU) 팀 (설정 화면에서 시드로 뽑아 두고 자리마다 다시 뽑기·편집, 최대 6) */
@@ -56,6 +65,8 @@ const DEFAULTS: DemoSettings = {
   rule: 'normal',
   gen: DEFAULT_GEN,
   otherTeams: {},
+  options: {},
+  sandbox: sandboxPreset('allGimmicks'),
   mode: 'vs-cpu',
   difficulty: 'normal',
   teamSize: 3,
@@ -72,10 +83,22 @@ function load(): DemoSettings {
   try {
     const raw = localStorage.getItem(KEY)
     if (!raw) return DEFAULTS
-    const v = JSON.parse(raw) as Partial<DemoSettings>
+    const v = JSON.parse(raw) as Omit<Partial<DemoSettings>, 'rule'> & { rule?: string }
+    // 예전 '손가락흔들기' 규칙 → 샌드박스의 손가락흔들기
+    const wasMetronome = v.rule === 'metronome'
+    const options: DemoSettings['options'] = {}
+    for (const g of GENS) {
+      const o = (v.options as Record<string, unknown> | undefined)?.[g]
+      if (o) options[g] = normalizeOptions(o, g)
+    }
+    // 예전 마릿수 설정은 지금 세대의 옵션으로
+    if (!v.options && v.teamSize) options[normalizeGen(v.gen)] = { ...defaultOptions(normalizeGen(v.gen)), teamSize: normalizeSize(v.teamSize) }
     return {
       ...DEFAULTS,
       ...v,
+      rule: wasMetronome || v.rule === 'sandbox' ? 'sandbox' : 'normal',
+      options,
+      sandbox: wasMetronome ? sandboxPreset('metronome') : normalizeSandbox(v.sandbox),
       teamSize: normalizeSize(v.teamSize),
       myTeam: Array.isArray(v.myTeam) ? v.myTeam.slice(0, 6) : [],
       foeTeam: Array.isArray(v.foeTeam) ? v.foeTeam.slice(0, 6) : [],
@@ -93,7 +116,7 @@ function load(): DemoSettings {
 function otherTeams(v: unknown): DemoSettings['otherTeams'] {
   const out: DemoSettings['otherTeams'] = {}
   if (!v || typeof v !== 'object') return out
-  for (const g of GENS) {
+  for (const g of [...GENS, 'sb'] as TeamSlot[]) {
     const t = (v as Record<string, Partial<GenTeams> | undefined>)[g]
     if (t && typeof t === 'object') {
       out[g] = {
@@ -105,16 +128,31 @@ function otherTeams(v: unknown): DemoSettings['otherTeams'] {
   return out
 }
 
-/** 세대 바꾸기: 지금 팀은 그 세대 칸에 넣어 두고, 새 세대의 팀을 꺼낸다 (처음이면 빈 팀 → CPU 팀은 새로 뽑힌다) */
-export function switchGen(gen: Gen) {
-  updateSettings(s => {
-    if (s.gen === gen) return {}
-    const stash = { ...s.otherTeams, [s.gen]: { myTeam: s.myTeam, foeTeam: s.foeTeam } }
-    const next = stash[gen] ?? { myTeam: [], foeTeam: [] }
-    delete stash[gen]
-    return { gen, myTeam: next.myTeam, foeTeam: next.foeTeam, otherTeams: stash }
-  })
+export const teamSlotOf = (s: Pick<DemoSettings, 'rule' | 'gen'>): TeamSlot => (s.rule === 'sandbox' ? 'sb' : s.gen)
+
+/** 팀 칸 바꾸기: 지금 팀은 그 칸에 넣어 두고, 새 칸의 팀을 꺼낸다 (처음이면 빈 팀 → CPU 팀은 새로 뽑힌다) */
+function switchSlot(s: DemoSettings, next: Pick<DemoSettings, 'rule' | 'gen'>): Partial<DemoSettings> {
+  const from = teamSlotOf(s)
+  const to = teamSlotOf(next)
+  if (from === to) return next
+  const stash = { ...s.otherTeams, [from]: { myTeam: s.myTeam, foeTeam: s.foeTeam } }
+  const teams = stash[to] ?? { myTeam: [], foeTeam: [] }
+  delete stash[to]
+  return { ...next, myTeam: teams.myTeam, foeTeam: teams.foeTeam, otherTeams: stash }
 }
+
+/** 세대 바꾸기 (세대마다 팀·배틀 옵션을 따로 기억한다) */
+export function switchGen(gen: Gen) {
+  updateSettings(s => switchSlot(s, { rule: s.rule, gen }))
+}
+
+/** 일반 배틀 ↔ 샌드박스 (샌드박스 팀은 따로) */
+export function switchRule(rule: Rule) {
+  updateSettings(s => switchSlot(s, { rule, gen: s.gen }))
+}
+
+/** 그 세대의 배틀 옵션 */
+export const optionsOf = (s: DemoSettings, gen: Gen = s.gen): BattleOptions => s.options[gen] ?? defaultOptions(gen)
 
 let state: DemoSettings | null = null
 const listeners = new Set<() => void>()

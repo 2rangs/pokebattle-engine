@@ -2,20 +2,22 @@
 // 규칙은 엔진(Showdown 시뮬레이터)이 정한다. 여기서는 팀 빌더·화면에 필요한 것만 묻는다.
 import { getItem, getLearnset, getSpecies, isDataLoaded, listItems, preloadData, type ItemData } from './engine'
 
-export const GENS = [9, 8, 7, 6] as const
+export const GENS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const
 export type Gen = typeof GENS[number]
 export const DEFAULT_GEN: Gen = 9
 
 export const normalizeGen = (g: unknown): Gen => (GENS.includes(g as Gen) ? (g as Gen) : DEFAULT_GEN)
 
-/** 이 세대의 기믹 */
+/** 이 세대의 기믹 (배틀 옵션으로 끈 것은 빼고) */
 export interface GenGimmicks { tera: boolean; mega: boolean; zmove: boolean; dynamax: boolean }
-export const gimmicksOf = (gen: Gen): GenGimmicks => ({
-  tera: gen === 9,
-  mega: gen === 6 || gen === 7,
-  zmove: gen === 7,
-  dynamax: gen === 8,
+export const gimmicksOf = (gen: Gen, off?: Partial<GenGimmicks>): GenGimmicks => ({
+  tera: gen === 9 && off?.tera !== false,
+  mega: (gen === 6 || gen === 7) && off?.mega !== false,
+  zmove: gen === 7 && off?.zmove !== false,
+  dynamax: gen === 8 && off?.dynamax !== false,
 })
+/** 샌드박스 (9세대 메커닉 + 모든 기믹): 기믹 도구는 7세대 목록, 다이맥스·테라는 그대로 */
+export const ALL_GIMMICKS: GenGimmicks = { tera: true, mega: true, zmove: true, dynamax: true }
 
 /** 그 세대 데이터 준비 (9세대는 기술표·랜덤 세트만) */
 export const loadGen = (gen: Gen) => preloadData(gen === 9 ? {} : { gens: [gen] })
@@ -53,6 +55,8 @@ function genItems(gen: Gen): Set<string> {
 // ─── 거다이맥스 ───────────────────────────────────────────────
 /** 거다이맥스할 수 있으면 그 모습의 종 슬러그 (charizard → charizard-gmax, toxtricity-low-key → toxtricity-low-key-gmax) */
 export function gmaxForm(species: string): string | null {
+  // 메가·원시·울트라 모습은 거다이맥스하지 않는다 (기믹 겹치기: 그 모습 그대로 다이맥스)
+  if (/-(mega|primal)(-[xy])?$|^necrozma-ultra$/.test(species)) return null
   const sp = getSpecies(`${species}-gmax`)
   if (sp) return sp.name
   // 폼 이름이 붙은 종 (urshifu → urshifu-single-strike-gmax 처럼 대표 폼)
@@ -74,12 +78,12 @@ const belongs = (item: ItemData, species: string) => {
  * 그 세대에 이 종이 쓸 수 있는 기믹 도구: 메가스톤·원시회귀 구슬(6·7세대), 전용 Z크리스탈 + 기술 타입의 Z크리스탈(7세대).
  * 앞에서부터 그 종 전용 → 타입 Z.
  */
-export function gimmickItemsFor(species: string, moveTypes: readonly string[], gen: Gen): string[] {
-  const g = gimmicksOf(gen)
+export function gimmickItemsFor(species: string, moveTypes: readonly string[], gen: Gen, g: GenGimmicks = gimmicksOf(gen)): string[] {
   if (!g.mega && !g.zmove) return []
   const own: string[] = []
   const typed: string[] = []
-  for (const it of listItems({ gen })) {
+  // 샌드박스(9세대 + 메가·Z): 메가스톤·Z크리스탈은 7세대 목록에서
+  for (const it of listItems({ gen: gen === 9 ? 7 : gen })) {
     const mega = !!it.megaStone || /-orb$/.test(it.name) && !!it.itemUser
     if (g.mega && mega && belongs(it, species)) own.push(it.name)
     else if (g.zmove && it.zCrystal) {

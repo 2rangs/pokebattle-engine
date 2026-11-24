@@ -1,15 +1,14 @@
 // ─── 팀 빌더: 마릿수(1/3/6)만큼의 자리, 종 검색, 랜덤 팀, 세트 편집(기술·특성·도구·성격·테라·노력치), Showdown 가져오기/내보내기 ─────
-import { useId, useMemo, useState } from 'react'
-import { Button } from '@astryxdesign/core/Button'
+import { useId, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { exportShowdownTeam, getMove, getSpecies, type PokemonSet } from '../lib/engine'
-import { abilityName, itemName, moveName, natureName, pokemonLabel, speciesName } from '../lib/names'
-import { iconCandidates, itemIconUrl } from '../lib/sprites'
+import { abilityName, itemName, moveName, pokemonLabel, speciesName, typeName } from '../lib/names'
+import { iconCandidates, itemIconUrl, TYPE_COLOR } from '../lib/sprites'
 import { forGen, importTeam, moveUp, placeAt, searchSpecies, slotsFor, speciesOptions, suggestedSet } from '../lib/team'
-import { hasErrors, validateSet } from '../lib/editor'
+import { hasErrors, validateSet, type TeamRules } from '../lib/editor'
 import { FallbackImg, TypeBadge } from './bits'
 import { SetEditor } from './SetEditor'
 import { useBT } from './state'
-import { DEFAULT_GEN, gimmickItemKind, gimmicksOf, type Gen } from '../lib/gimmick'
+import { DEFAULT_GEN, gimmickItemKind, type Gen } from '../lib/gimmick'
 
 const newSeed = () => Math.floor(Math.random() * 1e9)
 
@@ -60,9 +59,9 @@ export function SpeciesPicker({ onPick, label, gen = DEFAULT_GEN }: { onPick: (s
   )
 }
 
-function SlotCard({ n, set, gen, open, onToggle, onChange, onReroll, onRemove, onUp }: {
+function SlotCard({ n, set, rules, open, onToggle, onChange, onReroll, onRemove, onUp }: {
   n: number
-  gen: Gen
+  rules: TeamRules
   set: PokemonSet
   open: boolean
   onToggle: () => void
@@ -72,46 +71,52 @@ function SlotCard({ n, set, gen, open, onToggle, onChange, onReroll, onRemove, o
   onUp?: () => void
 }) {
   const { t, lang } = useBT()
-  const sp = getSpecies(set.species)
+  const { gen, g } = rules
+  const sp = getSpecies(set.species, gen === 9 ? {} : { gen }) ?? getSpecies(set.species)
   const name = pokemonLabel(set, lang)
   const moves = set.moves.filter(Boolean) as string[]
-  const issues = useMemo(() => validateSet(set, lang, gen), [set, lang, gen])
+  const issues = useMemo(() => validateSet(set, lang, gen, rules), [set, lang, gen, rules])
   const kind = set.item ? gimmickItemKind(set.item) : null
   const editorId = useId()
+  // 한 줄 정보: 특성 · 도구 · (거다이맥스) · (테라) — 그 세대에 있는 것만
+  const meta: ReactNode[] = []
+  if (gen >= 3 && set.ability) meta.push(<span key="a">{abilityName(set.ability, lang)}</span>)
+  if (gen >= 2) {
+    meta.push(
+      <span key="i" className="bd-slot-item">
+        {set.item && <img className="bd-item-icon is-pixel" src={itemIconUrl(set.item)} alt="" onError={e => { e.currentTarget.style.display = 'none' }} />}
+        {set.item ? itemName(set.item, lang) : t('noItem')}
+        {kind && g[kind === 'z' ? 'zmove' : 'mega'] && <small className="bd-item-tag">{t(kind === 'mega' ? 'itemTagMega' : kind === 'z' ? 'itemTagZ' : 'itemTagPrimal')}</small>}
+      </span>,
+    )
+  }
+  if (set.gigantamax && g.dynamax) meta.push(<span key="g">{t('gigantamax')}</span>)
+  if (set.teraType && gen === 9 && g.tera) meta.push(<span key="t" className="bd-slot-tera">{t('tera')} <TypeBadge type={set.teraType} lang={lang} size="xs" tera /></span>)
+  if (set.customStats && rules.freeStats) meta.push(<span key="c">{t('customStats')}</span>)
   return (
     <div className={`bd-slot${open ? ' is-open' : ''}`} aria-label={`${t('slotN', { n })} ${name}`}>
       <div className="bd-slot-head">
-        <span className="bd-slot-n">{n}</span>
         <span className="bd-slot-icon"><FallbackImg sources={iconCandidates(set.species)} alt="" /></span>
         <span className="bd-slot-title">
-          <b>{name}</b>
-          <span className="bd-slot-lv">{t('level', { n: set.level ?? 50 })}</span>
-          <span className="bd-slot-types">{(sp?.types ?? []).map(ty => <TypeBadge key={ty} type={ty} lang={lang} />)}</span>
-          {issues.length > 0 && !open && (
-            <span className={`bd-slot-flag is-${hasErrors(issues) ? 'error' : 'warn'}`}>{t(hasErrors(issues) ? 'setErrorBadge' : 'setWarnBadge')}</span>
-          )}
+          <span className="bd-slot-name"><b>{name}</b> <span className="bd-slot-lv">{t('level', { n: set.level ?? 50 })}</span></span>
+          <span className="bd-slot-types">{(sp?.types ?? []).map(ty => <TypeBadge key={ty} type={ty} lang={lang} size="xs" />)}</span>
         </span>
+        {issues.length > 0 && !open && (
+          <span className={`bd-slot-flag is-${hasErrors(issues) ? 'error' : 'warn'}`}>{t(hasErrors(issues) ? 'setErrorBadge' : 'setWarnBadge')}</span>
+        )}
+        <span className="bd-slot-n" aria-hidden>{n}</span>
       </div>
       {open ? (
-        <div id={editorId}><SetEditor set={set} issues={issues} gen={gen} onChange={onChange} /></div>
+        <div id={editorId}><SetEditor set={set} issues={issues} rules={rules} onChange={onChange} /></div>
       ) : (
         <>
-          <dl className="bd-slot-meta">
-            <div><dt>{t('ability')}</dt><dd>{abilityName(set.ability, lang)}</dd></div>
-            <div>
-              <dt>{t('item')}</dt>
-              <dd>{set.item ? <><img className="bd-item-icon is-pixel" src={itemIconUrl(set.item)} alt="" onError={e => { e.currentTarget.style.display = 'none' }} />{itemName(set.item, lang)}{kind && gimmicksOf(gen)[kind === 'z' ? 'zmove' : 'mega'] && <small className="bd-item-tag">{t(kind === 'mega' ? 'itemTagMega' : kind === 'z' ? 'itemTagZ' : 'itemTagPrimal')}</small>}</> : t('noItem')}</dd>
-            </div>
-            {set.gigantamax && gimmicksOf(gen).dynamax && <div><dt>{t('gigantamax')}</dt><dd>✓</dd></div>}
-            <div><dt>{t('nature')}</dt><dd>{natureName(set.nature ?? 'hardy', lang)}</dd></div>
-            {set.teraType && gen === 9 && <div><dt>{t('tera')}</dt><dd><TypeBadge type={set.teraType} lang={lang} size="sm" tera /></dd></div>}
-          </dl>
+          {meta.length > 0 && <p className="bd-slot-meta">{meta.map((m, i) => <span key={i}>{i > 0 && <span className="bd-dot" aria-hidden>·</span>}{m}</span>)}</p>}
           <ul className="bd-slot-moves">
             {moves.map(m => {
-              const md = getMove(m)
+              const md = getMove(m, gen === 9 ? {} : { gen })
               return (
-                <li key={m}>
-                  {md ? <TypeBadge type={md.type} lang={lang} size="sm" text={moveName(m, lang)} /> : <span className="bd-slot-move-plain">{moveName(m, lang)}</span>}
+                <li key={m} className="bd-move-chip" style={{ '--type': md ? TYPE_COLOR[md.type] : '#888' } as CSSProperties} title={md ? typeName(md.type, lang) : undefined}>
+                  {moveName(m, lang)}
                 </li>
               )
             })}
@@ -121,7 +126,7 @@ function SlotCard({ n, set, gen, open, onToggle, onChange, onReroll, onRemove, o
       <div className="bd-slot-actions">
         <button
           type="button"
-          className={`bd-btn is-small${open ? ' is-primary' : ''}`}
+          className={`bd-btn is-small${open ? ' is-primary' : ' is-quiet'}`}
           aria-expanded={open}
           aria-controls={open ? editorId : undefined}
           aria-label={open ? undefined : t('editSetNamed', { name })}
@@ -129,7 +134,7 @@ function SlotCard({ n, set, gen, open, onToggle, onChange, onReroll, onRemove, o
         >
           {open ? t('doneEdit') : t('editSet')}
         </button>
-        <button type="button" className="bd-btn is-small" onClick={onReroll}>{t('rerollSet')}</button>
+        <button type="button" className="bd-btn is-small is-ghost" onClick={onReroll}>{t('rerollSet')}</button>
         {onUp && <button type="button" className="bd-btn is-small is-ghost" onClick={onUp}>↑ {t('moveUp')}</button>}
         {onRemove && <button type="button" className="bd-btn is-small is-ghost" onClick={onRemove} aria-label={t('removeNamed', { name })}>{t('remove')}</button>}
       </div>
@@ -137,12 +142,13 @@ function SlotCard({ n, set, gen, open, onToggle, onChange, onReroll, onRemove, o
   )
 }
 
-export function TeamBuilder({ team, size, gen = DEFAULT_GEN, level = 50, onChange, onRandom, randomLabel, canClear = true, canRemove = true }: {
+export function TeamBuilder({ team, size, rules, level = 50, onChange, onRandom, randomLabel, canClear = true, canRemove = true }: {
   team: (PokemonSet | null)[]
-  /** 규칙 세대: 고를 수 있는 종·기술·도구, 랜덤 세트 */
-  gen?: Gen
+  /** 규칙: 세대(고를 수 있는 종·기술·도구, 랜덤 세트)·기믹·샌드박스 자유 설정 */
+  rules: TeamRules
   size: number
-  level?: number
+  /** 새로 넣는 포켓몬의 레벨 */
+  level?: number | ((species: string) => number)
   onChange: (team: (PokemonSet | null)[]) => void
   onRandom: () => void
   /** "랜덤 팀" 대신 (상대 팀: "상대 팀 다시 뽑기") */
@@ -152,18 +158,20 @@ export function TeamBuilder({ team, size, gen = DEFAULT_GEN, level = 50, onChang
   canRemove?: boolean
 }) {
   const { t } = useBT()
+  const { gen, g } = rules
   const [editing, setEditing] = useState<number | null>(null)
   const [ioOpen, setIoOpen] = useState(false)
   const [text, setText] = useState('')
   const [ioError, setIoError] = useState<string | null>(null)
   const slots = slotsFor(team, size)
   const filled = slots.filter(Boolean) as PokemonSet[]
+  const lv = (species: string) => (typeof level === 'function' ? level(species) : level)
 
   const importNow = () => {
     try {
       const parsed = importTeam(text, name => t('unknownPokemon', { name }))
       if (parsed.length === 0) throw new Error(t('nothingToImport'))
-      onChange(parsed.map(p => forGen(p, gen)))
+      onChange(parsed.map(p => forGen(p, gen, g)))
       setIoError(null)
       setIoOpen(false)
     } catch (err) {
@@ -174,14 +182,14 @@ export function TeamBuilder({ team, size, gen = DEFAULT_GEN, level = 50, onChang
   return (
     <div className="bd-builder">
       <div className="bd-builder-actions">
-        <Button label={randomLabel ?? t('randomTeam')} onClick={onRandom} />
-        <Button
-          label={t('showdownIO')}
-          variant="ghost"
+        <button type="button" className="bd-btn is-small" onClick={onRandom}>{randomLabel ?? t('randomTeam')}</button>
+        <button
+          type="button"
+          className="bd-btn is-small is-ghost"
           aria-expanded={ioOpen}
           onClick={() => { setText(exportShowdownTeam(filled)); setIoOpen(o => !o); setIoError(null) }}
-        />
-        {filled.length > 0 && canClear && <Button label={t('clearTeam')} variant="ghost" onClick={() => onChange([])} />}
+        >{t('showdownIO')}</button>
+        {filled.length > 0 && canClear && <button type="button" className="bd-btn is-small is-ghost" onClick={() => onChange([])}>{t('clearTeam')}</button>}
       </div>
       {ioOpen && (
         <div className="bd-io">
@@ -196,8 +204,8 @@ export function TeamBuilder({ team, size, gen = DEFAULT_GEN, level = 50, onChang
           />
           {ioError && <p className="bd-error" role="alert">{ioError}</p>}
           <div className="bd-builder-actions">
-            <Button label={t('importTeam')} variant="primary" onClick={importNow} />
-            <Button label={t('copy')} onClick={() => { navigator.clipboard?.writeText(text).catch(() => {}) }} />
+            <button type="button" className="bd-btn is-small is-primary" onClick={importNow}>{t('importTeam')}</button>
+            <button type="button" className="bd-btn is-small" onClick={() => { navigator.clipboard?.writeText(text).catch(() => {}) }}>{t('copy')}</button>
           </div>
         </div>
       )}
@@ -208,22 +216,17 @@ export function TeamBuilder({ team, size, gen = DEFAULT_GEN, level = 50, onChang
               <SlotCard
                 n={i + 1}
                 set={s}
-                gen={gen}
+                rules={rules}
                 open={editing === i}
                 onToggle={() => setEditing(e => (e === i ? null : i))}
                 onChange={next => onChange(placeAt(team, i, next))}
-                onReroll={() => onChange(placeAt(team, i, suggestedSet(s.species, newSeed(), s.level ?? level, gen)))}
+                onReroll={() => onChange(placeAt(team, i, suggestedSet(s.species, newSeed(), s.level ?? lv(s.species), gen, g)))}
                 onRemove={canRemove ? () => { setEditing(null); onChange(placeAt(team, i, null)) } : undefined}
                 onUp={i > 0 ? () => { setEditing(e => (e === i ? i - 1 : e === i - 1 ? i : e)); onChange(moveUp(team, i)) } : undefined}
               />
             ) : (
               <div className="bd-slot is-empty">
-                <div className="bd-slot-head">
-                  <span className="bd-slot-n">{i + 1}</span>
-                  <span className="bd-slot-icon is-empty" aria-hidden />
-                  <span className="bd-slot-title"><b>{t('emptySlot')}</b></span>
-                </div>
-                <SpeciesPicker gen={gen} label={t('addToSlot', { n: i + 1 })} onPick={slug => onChange(placeAt(team, i, suggestedSet(slug, newSeed(), level, gen)))} />
+                <SpeciesPicker gen={rules.free ? 9 : gen} label={t('addToSlot', { n: i + 1 })} onPick={slug => onChange(placeAt(team, i, suggestedSet(slug, newSeed(), lv(slug), gen, g)))} />
               </div>
             )}
           </li>

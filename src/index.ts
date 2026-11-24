@@ -18,7 +18,7 @@ export type { SpeciesData, ItemData } from './data/dex'
 export {
     speciesToShowdown, moveToShowdown, abilityToShowdown, itemToShowdown, natureToShowdown, typeToShowdown, toSlug,
 } from './showdown/ids'
-export { toShowdownSet, fromShowdownSet, SetError } from './showdown/sets'
+export { toShowdownSet, fromShowdownSet, adaptSetToGen, SetError } from './showdown/sets'
 
 // 계산기
 export { calculateDamage, formatKO, toCalcPokemon, toCalcField } from './calc/damage'
@@ -44,6 +44,7 @@ export type { RandomBattleOptions, RandomBattleFormat, RandomBattleSpecies, Rand
 export { createMetronomeBattle, buildMetronomeTeam, metronomeSpeciesPool, METRONOME_MOVE } from './metronome'
 export type { MetronomeBattleOptions, MetronomeSideOptions, MetronomePokemonInput, MetronomeStats, MetronomeFormat } from './metronome'
 export { CUSTOM_STATS_RULE, CUSTOM_STAT_MIN, CUSTOM_STAT_MAX } from './engine/customstats'
+export { MEGA_CLAUSE, ZMOVE_CLAUSE, STACK_GIMMICKS_MOD } from './engine/gimmickrules'
 export { toCustomStats } from './showdown/sets'
 
 // 유틸

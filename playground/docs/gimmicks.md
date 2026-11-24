@@ -11,11 +11,12 @@
 
 | 항목 | 상태 | 어디서 / 테스트 |
 |---|---|---|
-| 설정의 규칙(세대) 9·8·7·6세대, 브라우저 저장, 세대마다 팀 따로 | ✅ | `ui/state.ts` `switchGen` |
+| 설정의 세대 1~9, 브라우저 저장, 세대마다 팀·배틀 옵션 따로 (자세히는 `generations.md`) | ✅ | `ui/state.ts` `switchGen` |
+| 기믹 끄기 (메가·Z·다이맥스·테라) / 기믹 겹치기 (샌드박스, `sandbox.md`) | ✅ | 엔진 `genrules.test.ts`, `lib/options.test.ts` |
 | 엔진 `gen`, 랜덤 팀 `gen{n}randombattle`, 종(그 세대 기술표에 없으면 제외)·기술표·도구 | ✅ | `lib/gimmick.test.ts` 세대별 도감·도구 / 랜덤 팀 |
 | 테라 타입은 9세대만, 거다이맥스 체크는 8세대 + 거다이맥스 폼이 있는 종만 | ✅ | `ui/SetEditor.tsx`, `team.ts` `forGen` |
 | 손가락흔들기 | ☑️ 9세대 고정 | |
-| 6~8세대 데이터는 고를 때 받음 | ✅ | `ui/useEngineReady.ts` |
+| 1~8세대 데이터는 고를 때 받음 | ✅ | `ui/useEngineReady.ts` |
 | 리플레이에 세대 저장 (없으면 9세대) | ✅ | `lib/gimmick.test.ts` 리플레이: 세대 |
 | Lv.100 세트가 리플레이에서 Lv.50 이 되던 문제 (Showdown 내보내기는 `Level: 100` 을 뺌) | ✅ | 같은 파일 |
 

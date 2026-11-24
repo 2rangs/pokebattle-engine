@@ -14,7 +14,7 @@ import type {
 import type { BattlePokemon, PokemonSet, StatStages } from '../types/pokemon'
 import type { FieldCondition, PrimaryStatus, SideCondition, Terrain, Weather } from '../types/effect'
 import type { MoveData, MoveSlot } from '../types/move'
-import { toCustomStats, toShowdownSet } from '../showdown/sets'
+import { adaptSetToGen, toCustomStats, toShowdownSet } from '../showdown/sets'
 import { genLoaded } from '../data/lazy'
 import { getMove, speciesSlug, abilitySlug, itemSlug, moveSlug, STAT_FROM_PS } from '../data/dex'
 import { speciesToShowdown, toSlug } from '../showdown/ids'
@@ -22,6 +22,7 @@ import { PRNG } from '../utils/rng'
 import { calculateDamage, type CalcPokemonInput, type DamageResult } from '../calc/damage'
 import { enableFastPath } from './fastpath'
 import { CUSTOM_STATS_RULE, encodeCustomStats, ensureCustomStatsRule } from './customstats'
+import { ensureGimmickRules, MEGA_CLAUSE, STACK_GIMMICKS_MOD, ZMOVE_CLAUSE } from './gimmickrules'
 import { FOE_FRONT_LOC, FRONT, frontLocked, installRotationPatches } from './rotation'
 
 type AnyEventListener = (event: BattleEvent) => void
@@ -140,6 +141,10 @@ export function optionsToRules(options: BattleRuleOptions = {}): { battle: strin
         if (key !== 'level') validate.push(`${rule} = ${v}`)
     }
     if (options.terastal === false) battle.push('Terastal Clause')
+    if (options.dynamax === false) battle.push('Dynamax Clause')
+    if (options.megaEvolution === false) battle.push(MEGA_CLAUSE)
+    if (options.zMoves === false) battle.push(ZMOVE_CLAUSE)
+    if (options.stackGimmicks) battle.push(STACK_GIMMICKS_MOD)
     flag(options.sleepClause, 'Sleep Clause Mod', battle)
     flag(options.endlessBattleClause, 'Endless Battle Clause', battle)
     flag(options.speciesClause, 'Species Clause', validate)
@@ -174,6 +179,7 @@ function buildFormatId(config: BattleConfig): { formatid: string; validatorid: s
     const opts = config.options ?? {}
     const { battle, validate } = optionsToRules(opts)
     const root = config.formatid ?? base.battle
+    if (opts.megaEvolution === false || opts.zMoves === false || opts.stackGimmicks) ensureGimmickRules(config.gen ?? 9)
     const rootFormat = Dex.formats.get(root)
     if (!rootFormat.exists) throw new BattleError(`알 수 없는 포맷: ${root}`)
     // 팀 프리뷰는 (걷어낼 규칙을 뺀) 포맷 기본값과 다를 때만 규칙을 더한다 (세대·포맷마다 기본값이 다르다)
@@ -289,6 +295,8 @@ export class BattleEngine {
     private validatorFormat: string | null = null
     /** 자유 능력치(Custom Stats Mod) 배틀 여부 → 데미지 미리보기에 실제 실수치를 넘긴다 */
     private customStats = false
+    /** 기믹 겹치기(Stack Gimmicks Mod) 배틀 → getAvailableActions 가 기믹을 함께 쓰는 행동도 낸다 */
+    private stackGimmicks = false
 
     constructor(config: BattleConfig, options: EngineOptions = {}) {
         this.config = config
@@ -309,6 +317,7 @@ export class BattleEngine {
         const { formatid, validatorid } = buildFormatId(config)
         this.validatorFormat = validatorid
         this.customStats = formatid.includes(CUSTOM_STATS_RULE)
+        this.stackGimmicks = formatid.includes(STACK_GIMMICKS_MOD)
         try {
             this.battle = new Battle({ formatid: formatid as never, seed: toPSSeed(this.seed) as never })
         } catch (err) {
@@ -344,7 +353,7 @@ export class BattleEngine {
             const team = this.config[player].team.slice(0, 6).map(set => (level ? { ...set, level } : set))
             const ps = team.map(set => {
                 try {
-                    return toShowdownSet(set)
+                    return adaptSetToGen(toShowdownSet(set), this.gen)
                 } catch (err) {
                     throw new BattleError(`${player}: ${(err as Error).message}`)
                 }
@@ -1016,8 +1025,9 @@ export class BattleEngine {
             nickname: set.nickname ?? set.species,
             level: p.level,
             gender: p.gender === 'M' || p.gender === 'F' ? p.gender : null,
-            ability: abilitySlug(p.ability),
-            base_ability: abilitySlug(p.baseAbility),
+            // 1·2세대는 특성이 없다 ('No Ability' → '')
+            ability: p.ability === 'noability' ? '' : abilitySlug(p.ability),
+            base_ability: p.baseAbility === 'noability' ? '' : abilitySlug(p.baseAbility),
             item: p.item ? itemSlug(p.item) : null,
             types: p.getTypes(false, true).map(t => t.toLowerCase()) as [string, string?],
             original_types: p.baseSpecies.types.map(t => t.toLowerCase()) as [string, string?],
@@ -1296,6 +1306,15 @@ export class BattleEngine {
                 if (req.can_ultra_burst) actions.push({ ...base, ultra_burst: true })
                 if (req.can_dynamax) actions.push({ ...base, dynamax: true })
                 if (req.can_zmove && m.zmove) actions.push({ ...base, zmove: true })
+                // 기믹 겹치기: 쓸 수 있는 기믹(Z기술 제외)을 한꺼번에
+                if (this.stackGimmicks) {
+                    const all = {
+                        ...(req.can_mega_evolve && { mega: true }), ...(req.can_ultra_burst && { ultra_burst: true }),
+                        ...(req.can_dynamax && { dynamax: true }), ...(req.can_terastallize && { terastallize: true }),
+                    }
+                    if (Object.keys(all).length > 1) actions.push({ ...base, ...all })
+                    if (req.can_zmove && m.zmove && req.can_terastallize) actions.push({ ...base, zmove: true, terastallize: true })
+                }
             }
             // 쓸 수 있는 기술이 하나도 없으면(숨은 사용 불가 포함) 발버둥
             if (req.moves.length && req.moves.every(m => m.disabled)) actions.push({ type: 'move', player, pokemon_id: req.active.id, move_index: -1 })

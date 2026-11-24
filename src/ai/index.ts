@@ -33,6 +33,11 @@ export interface HeuristicAIOptions {
     /** 0 = 항상 최선, 1 = 꽤 무작위 (기본 0.15) */
     randomness?: number
     useTera?: boolean
+    /**
+     * 메가진화·울트라버스트·Z기술·다이맥스도 쓴다 (기본 false: 예전 선택 그대로).
+     * 메가진화·울트라버스트는 늘, Z기술·다이맥스는 데미지가 크게 늘 때. 기믹 겹치기 배틀이면 함께 쓴다.
+     */
+    useGimmicks?: boolean
 }
 
 interface Scored { action: Action; score: number }
@@ -42,11 +47,13 @@ export class HeuristicAI implements BattleAI {
     private rng: PRNG
     private randomness: number
     private useTera: boolean
+    private useGimmicks: boolean
 
     constructor(opts: HeuristicAIOptions = {}) {
         this.rng = new PRNG(opts.seed)
         this.randomness = opts.randomness ?? 0.15
         this.useTera = opts.useTera ?? true
+        this.useGimmicks = opts.useGimmicks ?? false
     }
 
     chooseAction(engine: BattleEngine, player: PlayerID): Action | null {
@@ -72,6 +79,7 @@ export class HeuristicAI implements BattleAI {
                     scored.push({ action: { ...base, terastallize: true }, score: teraScore + 2 })
                 }
             }
+            if (this.useGimmicks) this.gimmickOptions(engine, req, player, opt, base, score, scored)
         }
 
         if (req.can_switch && foe && !foe.fainted) {
@@ -92,6 +100,41 @@ export class HeuristicAI implements BattleAI {
 
         if (scored.length === 0) return engine.getAvailableActions(player)[0] ?? null
         return this.pick(scored)
+    }
+
+    /** 메가진화·울트라버스트(늘), Z기술·다이맥스(데미지가 크게 늘 때). 겹치기 배틀이면 한 행동에 함께 */
+    private gimmickOptions(
+        engine: BattleEngine, req: Extract<BattleRequest, { type: 'move' }>, player: PlayerID,
+        opt: Extract<BattleRequest, { type: 'move' }>['moves'][number], base: Extract<Action, { type: 'move' }>, score: number, scored: Scored[],
+    ): void {
+        const stack = !!(engine.battle.ruleTable as { has(id: string): boolean }).has('stackgimmicksmod')
+        const status = opt.move.category === 'status'
+        const better = (s: number) => s > score * 1.3 || (s >= 100 && score < 100)
+        const form = req.can_mega_evolve ? { mega: true } : req.can_ultra_burst ? { ultra_burst: true } : {}
+        const hasForm = Object.keys(form).length > 0
+        if (hasForm) scored.push({ action: { ...base, ...form }, score: this.scoreMove(engine, player, opt.index, form) + 1 })
+        const keep = stack ? form : {}
+        const tera = stack && req.can_terastallize && this.useTera && !status ? { terastallize: true } : {}
+        if (req.can_dynamax && !status) {
+            const flags = { ...keep, dynamax: true }
+            const s = this.scoreMove(engine, player, opt.index, flags)
+            if (better(s)) {
+                scored.push({ action: { ...base, ...flags }, score: s + 3 })
+                if (tera.terastallize) {
+                    const t = this.scoreMove(engine, player, opt.index, { ...flags, ...tera })
+                    if (t > s * 1.2) scored.push({ action: { ...base, ...flags, ...tera }, score: t + 4 })
+                }
+            }
+        }
+        if (req.can_zmove && opt.zmove) {
+            const flags = { zmove: true, ...(stack ? tera : {}) }
+            const s = this.scoreMove(engine, player, opt.index, flags)
+            if (status ? score < 10 : better(s)) scored.push({ action: { ...base, ...flags }, score: (status ? 12 : s) + 3 })
+        }
+        if (stack && hasForm && tera.terastallize) {
+            const s = this.scoreMove(engine, player, opt.index, { ...form, ...tera })
+            if (better(s)) scored.push({ action: { ...base, ...form, ...tera }, score: s + 2 })
+        }
     }
 
     private pick(scored: Scored[]): Action {
@@ -153,7 +196,7 @@ export class HeuristicAI implements BattleAI {
         return Math.max(-1.5, Math.min(1.5, (dealt - taken) / 2 + faster)) * (mine.hp / mine.maxhp)
     }
 
-    private scoreMove(engine: BattleEngine, player: PlayerID, index: number, tera: boolean): number {
+    private scoreMove(engine: BattleEngine, player: PlayerID, index: number, gimmick: boolean | Parameters<BattleEngine['previewDamage']>[2]): number {
         const user = engine.battle[player].active[engine.frontSlot]!
         const foe = engine.battle[engine.foeOf(player)].active[engine.frontSlot]
         const slot = user.moveSlots[index]
@@ -171,7 +214,7 @@ export class HeuristicAI implements BattleAI {
 
         if (move.category !== 'Status') {
             if (!foeAlive) return 0
-            const r = engine.previewDamage(player, index, { terastallize: tera })
+            const r = engine.previewDamage(player, index, typeof gimmick === 'object' ? gimmick : { terastallize: gimmick })
             if (!r) return 0
             const acc = move.accuracy === true ? 1 : move.accuracy / 100
             const avgPct = (r.minPercent + r.maxPercent) / 2 * acc
@@ -306,8 +349,8 @@ function toWeatherId(w: string): string {
     return w.toLowerCase()
 }
 
-export function createAI(kind: 'random' | 'heuristic' | 'strong', seed?: number): BattleAI {
+export function createAI(kind: 'random' | 'heuristic' | 'strong', seed?: number, opts: Pick<HeuristicAIOptions, 'useGimmicks'> = {}): BattleAI {
     if (kind === 'random') return new RandomAI(seed)
-    if (kind === 'strong') return new HeuristicAI({ seed, randomness: 0.03 })
-    return new HeuristicAI({ seed })
+    if (kind === 'strong') return new HeuristicAI({ seed, randomness: 0.03, ...opts })
+    return new HeuristicAI({ seed, ...opts })
 }
