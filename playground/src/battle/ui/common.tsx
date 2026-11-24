@@ -43,13 +43,14 @@ export function SpriteToggle() {
 export function Credits() {
   const { t } = useBT()
   return (
-    <p className="bd-credits">
+    <details className="bd-credits">
+      <summary>{t('moreCredits')}</summary>
       {t('credits')}{' '}
       <a href="https://github.com/PokeAPI/sprites" target="_blank" rel="noreferrer">PokeAPI/sprites</a>{' · '}
       <a href="https://github.com/PokeAPI/sprites/tree/master/sprites/pokemon/other/home" target="_blank" rel="noreferrer">Pokémon HOME renders</a>{' · '}
       <a href="https://github.com/PokeAPI/cries" target="_blank" rel="noreferrer">PokeAPI/cries</a>{' · '}
       <a href="https://github.com/smogon/pokemon-showdown-client" target="_blank" rel="noreferrer">pokemon-showdown-client</a>{' · '}
       <a href="https://github.com/pagefaultgames/pokerogue-assets" target="_blank" rel="noreferrer">pokerogue-assets</a>
-    </p>
+    </details>
   )
 }

@@ -4,14 +4,14 @@ import { getItem, getMove, type PokemonSet } from '../lib/engine'
 import {
   abilityOptions, EV_PRESETS, EV_STAT_MAX, EV_TOTAL_MAX, evTotal, itemOptionsFor, MAX_MOVES, moveOptions, natureLabel,
   natureOptions, presetOf, PRESET_EVS, searchOptions, setEv, STATS, statShort, statsOf, teraOptions, withMove,
-  type EvPreset, type MoveOption, type SetIssue,
+  type EvPreset, type MoveOption, type SetIssue, type TeamRules,
 } from '../lib/editor'
 import { abilityName, itemName, moveName } from '../lib/names'
 import { itemIconUrl, TYPE_COLOR } from '../lib/sprites'
 import type { MessageKey } from '../lib/messages'
 import { CategoryIcon, TypeBadge } from './bits'
 import { useBT } from './state'
-import { gimmickItemKind, gimmicksOf, gmaxForm, type Gen } from '../lib/gimmick'
+import { gimmickItemKind, gmaxForm, type GenGimmicks } from '../lib/gimmick'
 
 const PRESET_KEY: Record<EvPreset, MessageKey> = {
   physical: 'evPhysical', special: 'evSpecial', bulkyPhys: 'evBulkyPhys', bulkySpec: 'evBulkySpec', none: 'evNone',
@@ -88,13 +88,14 @@ function MoveInfo({ m }: { m: Pick<MoveOption, 'type' | 'category' | 'power'> & 
   )
 }
 
-function MoveSlot({ set, i, gen, onChange, issue }: { set: PokemonSet; i: number; gen: Gen; onChange: (s: PokemonSet) => void; issue?: SetIssue }) {
+function MoveSlot({ set, i, rules, onChange, issue }: { set: PokemonSet; i: number; rules: TeamRules; onChange: (s: PokemonSet) => void; issue?: SetIssue }) {
   const { t, lang } = useBT()
   const [open, setOpen] = useState(false)
   const slug = set.moves[i] || ''
-  const options = useMemo(() => moveOptions(set.species, lang, gen), [set.species, lang, gen])
+  const { gen, free } = rules
+  const options = useMemo(() => moveOptions(set.species, lang, gen, !!free), [set.species, lang, gen, free])
   const exclude = useMemo(() => new Set(set.moves.filter((m, k): m is string => !!m && k !== i)), [set.moves, i])
-  const md = slug ? getMove(slug) : undefined
+  const md = slug ? getMove(slug, gen === 9 ? {} : { gen }) : undefined
   const name = slug ? moveName(slug, lang) : ''
   if (open) {
     return (
@@ -129,19 +130,18 @@ function MoveSlot({ set, i, gen, onChange, issue }: { set: PokemonSet; i: number
 }
 
 /** 메가스톤·Z크리스탈 표시 (그 세대에 쓸 수 있을 때만) */
-function ItemTag({ slug, gen }: { slug: string; gen: Gen }) {
+function ItemTag({ slug, g }: { slug: string; g: GenGimmicks }) {
   const { t } = useBT()
   const kind = gimmickItemKind(slug)
-  const g = gimmicksOf(gen)
   if (!kind || !(kind === 'z' ? g.zmove : g.mega)) return null
   return <small className="bd-item-tag">{t(kind === 'mega' ? 'itemTagMega' : kind === 'z' ? 'itemTagZ' : 'itemTagPrimal')}</small>
 }
 
-function ItemField({ set, gen, onChange }: { set: PokemonSet; gen: Gen; onChange: (s: PokemonSet) => void }) {
+function ItemField({ set, rules, onChange }: { set: PokemonSet; rules: TeamRules; onChange: (s: PokemonSet) => void }) {
   const { t, lang } = useBT()
   const [open, setOpen] = useState(false)
   // 이 포켓몬의 메가스톤·Z크리스탈을 맨 위에
-  const options = useMemo(() => itemOptionsFor(set, lang, gen), [set, lang, gen])
+  const options = useMemo(() => itemOptionsFor(set, lang, rules.gen, rules), [set, lang, rules])
   const item = set.item ? getItem(set.item) : undefined
   if (open) {
     return (
@@ -153,7 +153,7 @@ function ItemField({ set, gen, onChange }: { set: PokemonSet; gen: Gen; onChange
           <>
             <img className="bd-item-icon is-pixel" src={itemIconUrl(o.slug)} alt="" loading="lazy" onError={e => { e.currentTarget.style.visibility = 'hidden' }} />
             <span className="bd-ed-item-text">
-              <span>{o.label}{o.gimmick && <ItemTag slug={o.slug} gen={gen} />}</span>
+              <span>{o.label}{o.gimmick && <ItemTag slug={o.slug} g={rules.g} />}</span>
               {lang === 'en' && <small>{o.effect}</small>}
             </span>
           </>
@@ -168,7 +168,7 @@ function ItemField({ set, gen, onChange }: { set: PokemonSet; gen: Gen; onChange
       <button type="button" className="bd-ed-chip is-item" onClick={() => setOpen(true)} title={item?.effect}>
         {set.item && <img className="bd-item-icon is-pixel" src={itemIconUrl(set.item)} alt="" onError={e => { e.currentTarget.style.visibility = 'hidden' }} />}
         <span className="bd-ed-move-name">{set.item ? itemName(set.item, lang) : t('noItem')}</span>
-        {set.item && <ItemTag slug={set.item} gen={gen} />}
+        {set.item && <ItemTag slug={set.item} g={rules.g} />}
       </button>
       {set.item && <button type="button" className="bd-btn is-ghost bd-ed-x" onClick={() => onChange({ ...set, item: undefined })} aria-label={t('clearMove', { move: itemName(set.item, lang) })}>×</button>}
     </div>
@@ -180,17 +180,31 @@ function Issues({ issues }: { issues: readonly SetIssue[] }) {
   if (!issues.length) return null
   return (
     <ul className="bd-ed-issues">
-      {issues.map((x, k) => <li key={k} className={`is-${x.level}`} role={x.level === 'error' ? 'alert' : undefined}>{t(x.key, x.vars)}</li>)}
+      {issues.map((x, k) => (
+        <li key={k} className={`is-${x.level}`} role={x.level === 'error' ? 'alert' : undefined}>
+          {t(x.key, x.key === 'issueGimmickOff' && x.vars ? { ...x.vars, gimmick: t(x.vars.gimmick as MessageKey) } : x.vars)}
+        </li>
+      ))}
     </ul>
   )
 }
 
-export function SetEditor({ set, issues, gen, onChange }: { set: PokemonSet; issues: readonly SetIssue[]; gen: Gen; onChange: (s: PokemonSet) => void }) {
+const CUSTOM_MAX = 9999
+
+export function SetEditor({ set, issues, rules, onChange }: { set: PokemonSet; issues: readonly SetIssue[]; rules: TeamRules; onChange: (s: PokemonSet) => void }) {
   const { t, lang } = useBT()
-  const abilities = abilityOptions(set.species, lang)
+  const { gen, g } = rules
+  const abilities = useMemo(() => abilityOptions(set.species, lang, gen, !!rules.free), [set.species, lang, gen, rules.free])
   const natures = useMemo(() => natureOptions(lang), [lang])
   const teras = useMemo(() => teraOptions(lang), [lang])
-  const stats = statsOf(set)
+  const stats = statsOf(set, gen)
+  const setCustom = (k: typeof STATS[number], v: string) => {
+    const n = Math.round(Number(v))
+    const cs = { ...(set.customStats ?? {}) }
+    if (!v || !Number.isFinite(n)) delete cs[k]
+    else cs[k] = Math.max(1, Math.min(CUSTOM_MAX, n))
+    onChange({ ...set, customStats: Object.keys(cs).length ? cs : undefined })
+  }
   const preset = presetOf(set.evs)
   const total = evTotal(set.evs)
   const of = (f: SetIssue['field']) => issues.filter(x => x.field === f)
@@ -206,39 +220,46 @@ export function SetEditor({ set, issues, gen, onChange }: { set: PokemonSet; iss
         {Array.from({ length: MAX_MOVES }, (_, i) => (
           // 빈 칸은 첫 빈 칸 하나만 "기술 추가"로
           (set.moves[i] || i === set.moves.filter(Boolean).length)
-            ? <MoveSlot key={i} set={set} i={i} gen={gen} onChange={onChange} issue={moveIssue(i)} />
+            ? <MoveSlot key={i} set={set} i={i} rules={rules} onChange={onChange} issue={moveIssue(i)} />
             : null
         ))}
         <Issues issues={of('moves')} />
       </fieldset>
 
       <div className="bd-ed-group bd-ed-fields">
-        <label className="bd-field">
+        {rules.freeLevel && (
+          <label className="bd-field">
+            <span>{t('levelInput')}</span>
+            <input className="bd-input" type="number" inputMode="numeric" min={1} max={100} value={set.level ?? 50}
+              onChange={e => onChange({ ...set, level: Math.max(1, Math.min(100, Math.round(Number(e.target.value)) || 1)) })} />
+          </label>
+        )}
+        {gen >= 3 && <label className="bd-field">
           <span>{t('ability')}</span>
           <select className="bd-input" value={set.ability} onChange={e => onChange({ ...set, ability: e.target.value })}>
             {abilityList.map(a => <option key={a.slug} value={a.slug}>{a.hidden ? `${a.label} (${t('hiddenAbility')})` : a.label}</option>)}
           </select>
-        </label>
+        </label>}
         <Issues issues={of('ability')} />
-        <div className="bd-field">
+        {gen >= 2 && <div className="bd-field">
           <span>{t('item')}</span>
-          <ItemField set={set} gen={gen} onChange={onChange} />
-        </div>
+          <ItemField set={set} rules={rules} onChange={onChange} />
+        </div>}
         <Issues issues={of('item')} />
-        <label className="bd-field">
+        {gen >= 3 && <label className="bd-field">
           <span>{t('nature')}</span>
           <select className="bd-input" value={set.nature ?? 'hardy'} onChange={e => onChange({ ...set, nature: e.target.value as PokemonSet['nature'] })}>
             {natures.map(n => <option key={n.slug} value={n.slug}>{natureLabel(n, lang)}</option>)}
           </select>
-        </label>
-        {gen === 9 && <label className="bd-field">
+        </label>}
+        {gen === 9 && g.tera && <label className="bd-field">
           <span className="bd-ed-tera-head">{t('teraType')}{set.teraType && <TypeBadge type={set.teraType} lang={lang} size="sm" tera />}</span>
           <select className="bd-input" value={set.teraType ?? ''} onChange={e => onChange({ ...set, teraType: e.target.value || undefined })}>
             {!set.teraType && <option value="">—</option>}
             {teras.map(ty => <option key={ty.slug} value={ty.slug}>{ty.label}</option>)}
           </select>
         </label>}
-        {gimmicksOf(gen).dynamax && gmaxForm(set.species) && (
+        {g.dynamax && gmaxForm(set.species) && (
           <label className="bd-field is-check" title={t('gigantamaxHint')}>
             <input type="checkbox" checked={!!set.gigantamax} onChange={e => onChange({ ...set, gigantamax: e.target.checked || undefined })} />
             <span>{t('gigantamax')}</span>
@@ -246,7 +267,9 @@ export function SetEditor({ set, issues, gen, onChange }: { set: PokemonSet; iss
         )}
       </div>
 
-      <fieldset className="bd-ed-group bd-ed-evs">
+      {gen <= 2 ? (
+        <p className="bd-ed-hint bd-ed-evs">{t('dvNote', { n: gen })}</p>
+      ) : <fieldset className="bd-ed-group bd-ed-evs">
         <legend>{t('evs')} <span className={`bd-ed-total${total > EV_TOTAL_MAX ? ' is-over' : ''}`}>{t('evTotal', { n: total, max: EV_TOTAL_MAX })}</span></legend>
         <label className="bd-field">
           <span>{t('evPreset')}</span>
@@ -283,7 +306,21 @@ export function SetEditor({ set, issues, gen, onChange }: { set: PokemonSet; iss
         </div>
         <p className="bd-ed-hint">{t('evHint', { stat: EV_STAT_MAX, total: EV_TOTAL_MAX })}</p>
         <Issues issues={of('evs')} />
-      </fieldset>
+      </fieldset>}
+      {rules.freeStats && (
+        <fieldset className="bd-ed-group bd-ed-evs">
+          <legend>{t('customStats')} <span className="bd-ed-total">{t('customStatsHint')}</span></legend>
+          <div className="bd-ed-evgrid">
+            {STATS.map(s => (
+              <label key={s} className="bd-ed-ev">
+                <span className="bd-ed-ev-label">{statShort(s, lang)}</span>
+                <input className="bd-input" type="number" inputMode="numeric" min={1} max={CUSTOM_MAX} placeholder={String(stats?.[s] ?? '')}
+                  value={set.customStats?.[s] ?? ''} onChange={e => setCustom(s, e.target.value)} />
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
     </div>
   )
 }

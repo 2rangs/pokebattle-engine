@@ -8,7 +8,7 @@ import { Scene, SceneOverlay } from './Scene'
 import { ActionConsole, MessageBox } from './Console'
 import { BattleLog, FieldBar, SummaryPanel, TeamsPanel } from './SidePanel'
 import { Credits, SpeedSelect, SpriteToggle, ToolButton } from './common'
-import { isNarrow, replayHref, replayUrl, useBattleCries, useDebugHook, useEncodedReplay } from './hooks'
+import { replayHref, replayUrl, useBattleCries, useDebugHook, useEncodedReplay } from './hooks'
 import type { BattleSession } from './useBattleSession'
 import { updateSettings, useBT, useSettings } from './state'
 
@@ -52,7 +52,6 @@ export function BattleView({ session, onExit, onRematch }: { session: BattleSess
   const spectating = session.isAI('p1') && session.isAI('p2')
   const ended = session.phase === 'ended' && session.allRevealed
   const rootRef = useRef<HTMLDivElement>(null)
-  const [logOpen] = useState(() => !isNarrow())
 
   // 시작하면 배틀 화면을 맨 위로 (휴대폰에서 장면 + 커맨드가 한 화면에 들어온다)
   useEffect(() => { scrollBelowHeader(rootRef.current) }, [session.setup])
@@ -113,7 +112,7 @@ export function BattleView({ session, onExit, onRematch }: { session: BattleSess
           <FieldBar frame={f} sideName={sideName} />
           <TeamsPanel frame={f} both={spectating} revealFoe={spectating} sideName={sideName} />
           <SummaryPanel frame={f} hideFoe={!spectating} sideName={sideName} />
-          <BattleLog frames={session.frames} revealed={session.revealed} sideName={sideName} defaultOpen={logOpen} />
+          <BattleLog frames={session.frames} revealed={session.revealed} sideName={sideName} defaultOpen />
         </div>
       </aside>
       <Credits />

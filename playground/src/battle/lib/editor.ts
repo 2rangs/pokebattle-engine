@@ -1,12 +1,25 @@
 // ─── 세트 편집기 순수 로직: 기술·특성·도구·성격·테라 타입·노력치, 검증 ─────
 // 기술 목록은 엔진 getLearnset (Showdown 검증기 규칙), 도구는 listItems, 특성은 getSpecies().abilities.
 import {
-  calcAllStats, getItem, getLearnset, getMove, getSpecies, listItems, NATURE_TABLE,
+  calcAllStats, getItem, getLearnset, getMove, getSpecies, listItems, listMoves, listSpecies, NATURE_TABLE,
   type EVs, type Nature, type PokemonSet, type Stats,
 } from './engine'
 import { abilityName, itemName, moveName, natureName, speciesName, typeName } from './names'
 import type { Lang, MessageKey, Vars } from './messages'
-import { DEFAULT_GEN, gimmickItemsFor, gmaxForm, itemInGen, speciesInGen, gimmicksOf, type Gen } from './gimmick'
+import { DEFAULT_GEN, gimmickItemKind, gimmickItemsFor, gmaxForm, itemInGen, speciesInGen, gimmicksOf, type Gen, type GenGimmicks } from './gimmick'
+
+/**
+ * 팀 빌더가 따르는 규칙: 세대, 켜 둔 기믹, 샌드박스의 자유 설정.
+ * free: 기술표·특성·세대 도구 제한 없음 / freeStats: 자유 능력치 / freeLevel: 레벨 직접
+ */
+export interface TeamRules {
+  gen: Gen
+  g: GenGimmicks
+  free?: boolean
+  freeStats?: boolean
+  freeLevel?: boolean
+}
+export const rulesFor = (gen: Gen, g: GenGimmicks = gimmicksOf(gen)): TeamRules => ({ gen, g })
 
 export const STATS = ['hp', 'attack', 'defense', 'special_attack', 'special_defense', 'speed'] as const
 export type StatId = typeof STATS[number]
@@ -38,13 +51,15 @@ export interface MoveOption {
 const moveCache = new Map<string, MoveOption[]>()
 
 /** 이 종이 그 세대에 배울 수 있는 기술 (현재 언어 이름순) */
-export function moveOptions(species: string, lang: Lang, gen: Gen = DEFAULT_GEN): MoveOption[] {
-  const key = `${lang}:${gen}:${species}`
+export function moveOptions(species: string, lang: Lang, gen: Gen = DEFAULT_GEN, free = false): MoveOption[] {
+  const key = free ? `${lang}:free` : `${lang}:${gen}:${species}`
   const hit = moveCache.get(key)
   if (hit) return hit
   const out: MoveOption[] = []
-  for (const slug of getLearnset(species, { gen })) {
-    const m = getMove(slug)
+  // 자유 세트: 모든 기술 (Z·다이맥스 기술 제외 — 그건 기믹으로 쓴다)
+  const slugs = free ? listMoves().filter(m => !/^(max-|g-max-)/.test(m.name) && !/--(physical|special)$/.test(m.name) && m.name !== 'struggle').map(m => m.name) : getLearnset(species, { gen })
+  for (const slug of slugs) {
+    const m = getMove(slug, gen === 9 ? {} : { gen })
     if (!m) continue
     out.push({
       slug, label: moveName(slug, lang), type: m.type, category: m.category as MoveOption['category'],
@@ -83,11 +98,13 @@ export interface ItemOption {
 const itemCache = new Map<string, ItemOption[]>()
 
 /** 그 세대에서 지닐 수 있는 도구 (현재 언어 이름순) */
-export function itemOptions(lang: Lang, gen: Gen = DEFAULT_GEN): ItemOption[] {
-  const key = `${lang}:${gen}`
+export function itemOptions(lang: Lang, gen: Gen = DEFAULT_GEN, free = false): ItemOption[] {
+  const key = `${lang}:${gen}:${free}`
   const hit = itemCache.get(key)
   if (hit) return hit
-  const out = listItems({ gen }).map(it => ({
+  // 자유 세트(샌드박스, 9세대): 7·8세대에만 있던 도구(메가스톤·Z크리스탈 …)도
+  const items = free ? [...new Map([7, 8, 9].flatMap(g => listItems({ gen: g as Gen })).map(it => [it.name, it])).values()] : listItems({ gen })
+  const out = items.map(it => ({
     slug: it.name, label: itemName(it.name, lang), effect: it.effect,
     haystack: [itemName(it.name, 'ko'), itemName(it.name, 'en'), it.name].map(norm).join(' '),
   }))
@@ -97,10 +114,10 @@ export function itemOptions(lang: Lang, gen: Gen = DEFAULT_GEN): ItemOption[] {
 }
 
 /** 도구 목록: 이 포켓몬이 쓸 수 있는 기믹 도구(메가스톤·전용/타입 Z크리스탈)를 맨 위에 */
-export function itemOptionsFor(set: PokemonSet, lang: Lang, gen: Gen): ItemOption[] {
-  const all = itemOptions(lang, gen)
+export function itemOptionsFor(set: PokemonSet, lang: Lang, gen: Gen, rules: TeamRules = rulesFor(gen)): ItemOption[] {
+  const all = itemOptions(lang, gen, !!rules.free)
   const types = set.moves.map(m => (m ? getMove(m)?.type : undefined)).filter((t): t is string => !!t)
-  const order = gimmickItemsFor(set.species, types, gen)
+  const order = gimmickItemsFor(set.species, types, gen, rules.g)
   if (!order.length) return all
   const top = new Set(order)
   const bySlug = new Map(all.map(o => [o.slug, o]))
@@ -111,8 +128,16 @@ export function itemOptionsFor(set: PokemonSet, lang: Lang, gen: Gen): ItemOptio
 // ─── 특성 · 성격 · 테라 타입 ──────────────────────────────────
 export interface AbilityOption { slug: string; label: string; hidden: boolean }
 
-export function abilityOptions(species: string, lang: Lang): AbilityOption[] {
-  return (getSpecies(species)?.abilities ?? []).map(a => ({ slug: a.name, label: abilityName(a.name, lang), hidden: a.hidden }))
+let allAbilities: string[] | null = null
+/** 그 세대에 이 종이 가질 수 있는 특성 (1·2세대는 없음). 자유 세트는 모든 특성 (이 종의 것 먼저) */
+export function abilityOptions(species: string, lang: Lang, gen: Gen = DEFAULT_GEN, free = false): AbilityOption[] {
+  const own = (getSpecies(species, gen === 9 ? {} : { gen })?.abilities ?? []).map(a => ({ slug: a.name, label: abilityName(a.name, lang), hidden: a.hidden }))
+  if (!free) return own
+  allAbilities ??= [...new Set(listSpecies().flatMap(sp => sp.abilities.map(a => a.name)))]
+  const mine = new Set(own.map(a => a.slug))
+  const rest = allAbilities.filter(a => !mine.has(a)).map(a => ({ slug: a, label: abilityName(a, lang), hidden: false }))
+  rest.sort((a, b) => a.label.localeCompare(b.label, lang))
+  return [...own, ...rest]
 }
 
 export interface NatureOption { slug: Nature; label: string; plus: StatId | null; minus: StatId | null }
@@ -170,9 +195,12 @@ export function presetOf(e: EVs | undefined): EvPreset | null {
 }
 
 /** 실수치 (레벨·성격·노력치·개체값) */
-export function statsOf(set: PokemonSet): Stats | null {
-  const sp = getSpecies(set.species)
-  return sp ? calcAllStats(sp.base_stats, set.level ?? 50, set.nature ?? 'hardy', set.evs ?? {}, set.ivs ?? {}) : null
+export function statsOf(set: PokemonSet, gen: Gen = DEFAULT_GEN): Stats | null {
+  const sp = getSpecies(set.species, gen === 9 ? {} : { gen })
+  if (!sp) return null
+  // 1·2세대: 성격 없음, DV 15 (= 개체값 30)
+  const st = calcAllStats(sp.base_stats, set.level ?? 50, gen <= 2 ? 'hardy' : set.nature ?? 'hardy', set.evs ?? {}, gen <= 2 ? { hp: 30, attack: 30, defense: 30, special_attack: 30, special_defense: 30, speed: 30 } : set.ivs ?? {})
+  return set.customStats ? { ...st, ...set.customStats } : st
 }
 
 // ─── 검증 ────────────────────────────────────────────────────
@@ -188,16 +216,17 @@ export interface SetIssue {
 }
 
 /** 세트의 문제 (빈 배열이면 문제 없음) */
-export function validateSet(set: PokemonSet, lang: Lang, gen: Gen = DEFAULT_GEN): SetIssue[] {
+export function validateSet(set: PokemonSet, lang: Lang, gen: Gen = DEFAULT_GEN, rules: TeamRules = rulesFor(gen)): SetIssue[] {
   const issues: SetIssue[] = []
-  if (!speciesInGen(set.species, gen)) {
+  const free = !!rules.free
+  if (!free && !speciesInGen(set.species, gen)) {
     issues.push({ field: 'species', level: 'error', key: 'issueSpeciesGen', vars: { name: speciesName(set.species, lang), gen } })
     return issues
   }
   const moves = set.moves.map(m => m || '')
   if (!moves.some(Boolean)) issues.push({ field: 'moves', level: 'error', key: 'issueNoMoves' })
   let learn: Set<string> | null = null
-  try { learn = new Set(getLearnset(set.species, { gen })) } catch { learn = null }
+  try { learn = free ? null : new Set(getLearnset(set.species, { gen })) } catch { learn = null }
   moves.forEach((m, i) => {
     if (!m) return
     if (moves.indexOf(m) !== i) issues.push({ field: 'moves', level: 'error', key: 'issueDupMove', vars: { move: moveName(m, lang) }, index: i })
@@ -206,15 +235,24 @@ export function validateSet(set: PokemonSet, lang: Lang, gen: Gen = DEFAULT_GEN)
       issues.push({ field: 'moves', level: 'warn', key: 'issueCantLearn', vars: { name: speciesName(set.species, lang), move: moveName(m, lang) }, index: i })
     }
   })
-  const abilities = getSpecies(set.species)?.abilities.map(a => a.name) ?? []
-  if (set.ability && abilities.length && !abilities.includes(set.ability)) {
+  const abilities = getSpecies(set.species, gen === 9 ? {} : { gen })?.abilities.map(a => a.name) ?? []
+  if (!free && gen >= 3 && set.ability && abilities.length && !abilities.includes(set.ability)) {
     issues.push({ field: 'ability', level: 'warn', key: 'issueAbility', vars: { name: speciesName(set.species, lang), ability: abilityName(set.ability, lang) } })
   }
   if (set.item && !getItem(set.item)) issues.push({ field: 'item', level: 'error', key: 'issueUnknownItem', vars: { item: set.item } })
-  else if (set.item && gen !== 9 && !itemInGen(set.item, gen)) issues.push({ field: 'item', level: 'error', key: 'issueItemGen', vars: { item: itemName(set.item, lang), gen } })
-  if (set.gigantamax && gimmicksOf(gen).dynamax && !gmaxForm(set.species)) {
+  else if (set.item && gen !== 9 && !free && !itemInGen(set.item, gen)) issues.push({ field: 'item', level: 'error', key: 'issueItemGen', vars: { item: itemName(set.item, lang), gen } })
+  else if (set.item) {
+    // 켜 둔 기믹이 아니면 그 도구는 쓸모가 없다 (배틀은 시작된다)
+    const kind = gimmickItemKind(set.item)
+    const off = kind === 'mega' && !rules.g.mega ? 'gimmickMega' : kind === 'z' && !rules.g.zmove ? 'gimmickZ' : null
+    if (off && (gen === 9 ? free : gimmicksOf(gen)[kind === 'mega' ? 'mega' : 'zmove'])) {
+      issues.push({ field: 'item', level: 'warn', key: 'issueGimmickOff', vars: { item: itemName(set.item, lang), gimmick: off } })
+    }
+  }
+  if (set.gigantamax && rules.g.dynamax && !gmaxForm(set.species)) {
     issues.push({ field: 'item', level: 'warn', key: 'issueNoGmax', vars: { name: speciesName(set.species, lang) } })
   }
+  if (gen <= 2) return issues
   const over = STATS.find(s => (set.evs?.[s] ?? 0) > EV_STAT_MAX)
   if (over) issues.push({ field: 'evs', level: 'error', key: 'issueEvStat', vars: { max: EV_STAT_MAX } })
   if (evTotal(set.evs) > EV_TOTAL_MAX) issues.push({ field: 'evs', level: 'error', key: 'issueEvTotal', vars: { n: evTotal(set.evs), max: EV_TOTAL_MAX } })

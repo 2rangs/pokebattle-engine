@@ -2,7 +2,7 @@
 // 실시간 배틀(useBattleSession)과 리플레이(simulateReplay)가 같은 코드를 쓴다 (Pokestra 에서 옮김).
 // 로그 문장은 프레임에 저장하지 않고 화면을 그릴 때 현재 언어로 만든다 (frameText).
 import {
-  BattleEngine, createAI, getSpecies, createMetronomeBattle, exportShowdownTeam, parseShowdownTeam,
+  BattleEngine, createAI, getSpecies, getTypeChart, type BattleRuleOptions, type Stats, createMetronomeBattle, exportShowdownTeam, parseShowdownTeam,
   type Action, type BattleAI, type BattleEvent, type BattlePokemon, type FormatContext, type PlayerID,
   type PokemonSet, type Side, type MetronomeBattleOptions,
 } from './engine'
@@ -211,10 +211,42 @@ export const metronomeAI: BattleAI = {
   },
 }
 
-/** 규칙·난이도별 CPU (시드 고정: 배틀 시드 + 진영별 오프셋) */
+/**
+ * 팀 프리뷰에서 CPU 가 고르는 순서: 상대 팀 전체에 대한 상성(받는 배율·주는 배율)이 좋은 순.
+ * 쉬움은 파티 순서 그대로. 같은 시드·같은 팀이면 같은 선택.
+ */
+export function previewPick(engine: BattleEngine, player: PlayerID, smart: boolean): Action | null {
+  const req = engine.getTeamPreview(player)
+  if (!req) return null
+  const foe = engine.getTeamPreview(player === 'p1' ? 'p2' : 'p1')?.team ?? engine.getState().sides[player === 'p1' ? 'p2' : 'p1'].team
+  if (!smart || !foe.length) return { type: 'team', player, order: req.team.slice(0, req.pick).map(p => p.id) }
+  let chart: Record<string, Record<string, number>>
+  try { chart = getTypeChart({ gen: engine.gen }) } catch { chart = getTypeChart() }
+  const eff = (atk: string, def: readonly string[]) => def.reduce((m, d) => m * (chart[atk]?.[d] ?? 1), 1)
+  const score = (p: BattlePokemon) => {
+    const mine = p.types.filter(Boolean) as string[]
+    const moveTypes = p.moves.filter(m => m && m.move.category !== 'status').map(m => m!.move.type)
+    let sum = 0
+    for (const f of foe) {
+      const theirs = f.types.filter(Boolean) as string[]
+      const dealt = Math.max(1, ...moveTypes.map(t => eff(t, theirs) * (mine.includes(t) ? 1.5 : 1)))
+      const taken = Math.max(...theirs.map(t => eff(t, mine)))
+      sum += Math.log2(dealt) - Math.log2(taken || 0.25)
+    }
+    return sum
+  }
+  const ranked = req.team.map((p, i) => ({ id: p.id, s: score(p), i })).sort((a, b) => b.s - a.s || a.i - b.i)
+  return { type: 'team', player, order: ranked.slice(0, req.pick).map(r => r.id) }
+}
+
+/** 규칙·난이도별 CPU (시드 고정: 배틀 시드 + 진영별 오프셋). 보통·어려움은 메가·Z·다이맥스도 쓰고, 팀 프리뷰는 상성으로 고른다 */
 export function controllerAI(rule: BattleRule, difficulty: Exclude<ReplayController, 'human'>, battleSeed: number, player: PlayerID): BattleAI {
   if (rule === 'metronome') return metronomeAI
-  return createAI(DIFFICULTY_AI[difficulty], battleSeed + (player === 'p1' ? 11 : 23))
+  const base = createAI(DIFFICULTY_AI[difficulty], battleSeed + (player === 'p1' ? 11 : 23), { useGimmicks: true })
+  return {
+    name: base.name,
+    chooseAction: (engine, p) => previewPick(engine, p, difficulty !== 'easy') ?? base.chooseAction(engine, p),
+  }
 }
 
 /** 엔진에 넘기는 진영 이름 (화면에는 언어별 이름을 따로 그린다) */
@@ -226,7 +258,7 @@ export function engineSideNames(p1: ReplayController, p2: ReplayController): { p
 // ─── 배틀 준비 ───────────────────────────────────────────────
 
 export type BattleSetup =
-  | { rule: 'normal'; seed: number; p1Team: PokemonSet[]; p2Team: PokemonSet[]; gen?: ReplayGen }
+  | { rule: 'normal'; seed: number; p1Team: PokemonSet[]; p2Team: PokemonSet[]; gen?: ReplayGen; options?: BattleRuleOptions }
   | { rule: 'metronome'; seed: number; metronome: MetronomeSetup }
 
 export interface Controllers { p1: ReplayController; p2: ReplayController }
@@ -253,6 +285,7 @@ export function createEngine(setup: BattleSetup, ctrl: Controllers): BattleEngin
     format: 'singles',
     seed: setup.seed,
     ...(setup.gen && setup.gen !== 9 ? { gen: setup.gen } : {}),
+    ...(setup.options && Object.keys(setup.options).length ? { options: setup.options } : {}),
     p1: { name: names.p1, team: setup.p1Team },
     p2: { name: names.p2, team: setup.p2Team },
   })
@@ -266,22 +299,37 @@ export function buildReplayData(setup: BattleSetup, ctrl: Controllers, actions: 
     seed: setup.seed,
     ...(setup.rule === 'normal' && setup.gen && setup.gen !== 9 ? { gen: setup.gen } : {}),
     format: 'singles',
-    p1: { team: setup.rule === 'normal' ? exportShowdownTeam(setup.p1Team) : '', ctrl: ctrl.p1 },
-    p2: { team: setup.rule === 'normal' ? exportShowdownTeam(setup.p2Team) : '', ctrl: ctrl.p2 },
+    p1: replaySide(setup, 'p1', ctrl.p1),
+    p2: replaySide(setup, 'p2', ctrl.p2),
     actions: [...actions],
   }
+  if (setup.rule === 'normal' && setup.options && Object.keys(setup.options).length) data.options = setup.options
   if (setup.rule === 'metronome') data.metronome = setup.metronome
   if (forfeit) data.forfeit = forfeit
   return data
 }
+
+/** 진영 → 리플레이 (Showdown 텍스트 + 자유 능력치는 따로: 텍스트에 실리지 않는다) */
+function replaySide(setup: BattleSetup, p: PlayerID, ctrl: ReplayController): ReplayData['p1'] {
+  if (setup.rule !== 'normal') return { team: '', ctrl }
+  const team = p === 'p1' ? setup.p1Team : setup.p2Team
+  const out: ReplayData['p1'] = { team: exportShowdownTeam(team), ctrl }
+  if (team.some(s => s.customStats && Object.keys(s.customStats).length)) out.stats = team.map(s => s.customStats ?? null)
+  return out
+}
+
+const withStats = (team: PokemonSet[], stats?: (Partial<Stats> | null)[]) =>
+  stats ? team.map((s, i) => (stats[i] ? { ...s, customStats: stats[i]! } : s)) : team
 
 /** 리플레이 데이터 → 설정 */
 export function replaySetup(data: ReplayData): BattleSetup {
   if (data.rule === 'metronome' && data.metronome) return { rule: 'metronome', seed: data.seed, metronome: data.metronome }
   // Showdown 내보내기는 Lv.100 이면 Level 줄을 뺀다 → 줄이 없으면 100 (Lv.50 등은 늘 줄이 있다)
   return {
-    rule: 'normal', seed: data.seed, p1Team: parseShowdownTeam(data.p1.team, 100), p2Team: parseShowdownTeam(data.p2.team, 100),
+    rule: 'normal', seed: data.seed,
+    p1Team: withStats(parseShowdownTeam(data.p1.team, 100), data.p1.stats), p2Team: withStats(parseShowdownTeam(data.p2.team, 100), data.p2.stats),
     ...(data.gen && data.gen !== 9 ? { gen: data.gen } : {}),
+    ...(data.options ? { options: data.options } : {}),
   }
 }
 

@@ -129,6 +129,8 @@ export interface ActionConsoleProps {
   lastCalled?: { move: string; type: string } | null
 }
 
+const NONE: Partial<Record<FormGimmick | 'zmove', boolean>> = {}
+
 export function ActionConsole({ session, player, message, more, team, lastCalled }: ActionConsoleProps) {
   const { t, lang } = useBT()
   const { request, version, engine } = session
@@ -136,25 +138,35 @@ export function ActionConsole({ session, player, message, more, team, lastCalled
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const req = useMemo(() => request(player), [request, player, version])
   const [view, setView] = useState<View>('command')
-  // 고른 기믹 (요청이 바뀌면 = 다음 선택이면 초기화)
-  const [picked, setPicked] = useState<{ req: BattleRequest | null; form: FormGimmick | null; z: boolean }>({ req: null, form: null, z: false })
-  const form = picked.req === req ? picked.form : null
-  const zOn = picked.req === req ? picked.z : false
-  const setForm = (f: FormGimmick | null) => setPicked({ req, form: f, z: f === 'ultra_burst' ? zOn : false })
-  const setZ = (z: boolean) => setPicked({ req, form: z && form !== 'ultra_burst' ? null : form, z })
-  const tera = form === 'terastallize'
+  // 고른 기믹 (요청이 바뀌면 = 다음 선택이면 초기화). 기믹 겹치기 배틀이면 여러 개를 함께 켤 수 있다 (Z기술 ↔ 다이맥스만 함께 안 됨)
+  const stack = !!(engine?.battle.ruleTable as { has?(id: string): boolean } | undefined)?.has?.('stackgimmicksmod')
+  const [picked, setPicked] = useState<{ req: BattleRequest | null; on: Partial<Record<FormGimmick | 'zmove', boolean>> }>({ req: null, on: {} })
+  const on = picked.req === req ? picked.on : NONE
+  const toggle = (k: FormGimmick | 'zmove') => {
+    const v = !on[k]
+    let next: typeof on
+    if (stack) {
+      next = { ...on, [k]: v }
+      if (v && k === 'zmove') next.dynamax = false
+      if (v && k === 'dynamax') next.zmove = false
+    } else if (k === 'zmove') next = { ...(on.ultra_burst ? { ultra_burst: true } : {}), zmove: v }
+    else next = { [k]: v, ...(k === 'ultra_burst' && on.zmove ? { zmove: true } : {}) }
+    setPicked({ req, on: next })
+  }
+  const zOn = !!on.zmove
+  const tera = !!on.terastallize
 
   // 다이맥스 중이거나 다이맥스를 골랐으면 다이맥스 기술 (Showdown 요청의 maxMoves)
   const moveReq = req?.type === 'move' ? req : null
   const raw = (moveReq?.raw as { active?: { maxMoves?: { maxMoves?: { move: string }[] } }[] } | undefined)?.active?.[0]
   const dynamaxed = !!moveReq && !moveReq.can_dynamax && !!raw?.maxMoves
-  const maxing = form === 'dynamax' || dynamaxed
+  const maxing = !!on.dynamax || dynamaxed
 
   const { previews, alts } = useMemo(() => {
     const previews: Record<number, MovePreview> = {}
     const alts: Record<number, AltMove> = {}
     if (!engine || !moveReq) return { previews, alts }
-    const flags = { terastallize: tera, mega: form === 'mega', ultra_burst: form === 'ultra_burst', dynamax: form === 'dynamax', zmove: zOn }
+    const flags = { terastallize: tera, mega: !!on.mega, ultra_burst: !!on.ultra_burst, dynamax: !!on.dynamax, zmove: zOn }
     for (const opt of moveReq.moves) {
       if (opt.index < 0) continue
       const status = opt.move.category === 'status'
@@ -176,7 +188,7 @@ export function ActionConsole({ session, player, message, more, team, lastCalled
       previews[opt.index] = { text: `${pct(r.minPercent)}–${pct(r.maxPercent)}%`, eff: r.effectiveness, ko: koLabel(r, lang) }
     }
     return { previews, alts }
-  }, [engine, moveReq, raw, player, form, tera, zOn, maxing, lang])
+  }, [engine, moveReq, raw, player, on, tera, zOn, maxing, lang])
 
   if (!req) {
     return (
@@ -233,7 +245,7 @@ export function ActionConsole({ session, player, message, more, team, lastCalled
               extra={metronome && lastCalled ? <span className="bd-move-last">{t('metroLast', { move: moveName(lastCalled.move, lang) })}</span> : undefined}
               onPick={() => {
                 const a: Extract<Action, { type: 'move' }> = { type: 'move', player, pokemon_id: active.id, move_index: opt.index }
-                if (form) a[form] = true
+                for (const k of ['mega', 'ultra_burst', 'dynamax', 'terastallize'] as FormGimmick[]) if (on[k]) a[k] = true
                 if (zOn && opt.zmove) a.zmove = true
                 session.submit(a)
               }}
@@ -248,21 +260,21 @@ export function ActionConsole({ session, player, message, more, team, lastCalled
                 className={`bd-tera${tera ? ' is-on' : ''}`}
                 aria-pressed={tera}
                 style={{ '--type': TYPE_COLOR[active.tera_type] ?? '#888' } as CSSProperties}
-                onClick={() => setForm(tera ? null : 'terastallize')}
+                onClick={() => toggle('terastallize')}
               >
                 {t('terastallize')}
                 <TypeBadge type={active.tera_type} lang={lang} size="sm" tera />
               </button>
             )}
-            {req.can_mega_evolve && <GimmickButton label={t('megaEvolve')} on={form === 'mega'} onClick={() => setForm(form === 'mega' ? null : 'mega')} />}
-            {req.can_ultra_burst && <GimmickButton label={t('ultraBurst')} on={form === 'ultra_burst'} onClick={() => setForm(form === 'ultra_burst' ? null : 'ultra_burst')} />}
-            {req.can_zmove && <GimmickButton label={t('zMove')} on={zOn} onClick={() => setZ(!zOn)} />}
+            {req.can_mega_evolve && <GimmickButton label={t('megaEvolve')} on={!!on.mega} onClick={() => toggle('mega')} />}
+            {req.can_ultra_burst && <GimmickButton label={t('ultraBurst')} on={!!on.ultra_burst} onClick={() => toggle('ultra_burst')} />}
+            {req.can_zmove && <GimmickButton label={t('zMove')} on={zOn} onClick={() => toggle('zmove')} />}
             {req.can_dynamax && (
               <GimmickButton
                 label={t(active.set.gigantamax && gmaxForm(active.species) ? 'gigantamaxBtn' : 'dynamaxBtn')}
-                on={form === 'dynamax'}
+                on={!!on.dynamax}
                 tone="dmax"
-                onClick={() => setForm(form === 'dynamax' ? null : 'dynamax')}
+                onClick={() => toggle('dynamax')}
               />
             )}
           </span>
