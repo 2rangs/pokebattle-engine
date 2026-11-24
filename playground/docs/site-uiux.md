@@ -70,6 +70,29 @@ The docs **Introduction** gained a matching "What makes it different" list (5 po
 - Playwright on the `vite preview` build: landing, intro, install, engine, damage, data, cli, metronome and battle at 1280 and 390, ko and en. No horizontal scroll anywhere, and the right title on every page.
 - Docs menu navigation works, a TOC click scrolls and focuses the section, and Run prints output (7 lines). Tab order: skip link → brand → Docs → Battle demo → language → GitHub → side nav.
 
+## Proof pass: "how can anyone trust it from numbers alone?"
+
+Feedback: the landing stated claims (1.6–1.9× faster, byte-identical to Showdown, CI fuzzing) as static numbers. Each key claim now comes with a check the visitor runs in their own browser, or with a link to the primary source.
+
+**1. Verify it now (right under the hero, primary button).** `src/components/VerifyNow.tsx` starts a web worker (`src/proof/verify.worker.ts`) that runs `src/proof/compare.ts`, a browser port of the singles part of `scripts/bench-compare.ts`:
+- It records N battles (10/20/50/100) from random seeds, which are shown on the page, so the results can't be precomputed. The engine plays each battle with the fast path off, and the exact strings passed to `choose()` become the Showdown input log.
+- **Showdown directly**: that input log is replayed into Showdown's `Battle`. The default is the `@pkmn/sim` copy in the engine bundle with `fast: false` (`replayInputLog`, the original code path; `check-dist.ts` checks in CI that this bundle matches npm `@pkmn/sim`). The **npm @pkmn/sim** toggle instead lazy-loads the unmodified npm package (about 1 MB gzipped, no engine code involved) and runs a 20-line replay loop over the same input log (`src/proof/upstream.ts`).
+- **Engine**: `BattleEngine` with default options runs the same config and the same choices.
+- Each protocol log is hashed with SHA-256 through WebCrypto. The page shows `n/n byte-identical`, ms/turn for each side and the ratio measured on this device: one warm-up, then the best of 3 alternating rounds. A fine-print line names the browser, OS and core count, the seeds and the turn count, and says this is not the Node 22 benchmark. Behind a disclosure is a table of every battle's two hashes, plus a side-by-side diff of any battle (line numbers, differing lines highlighted, ←/→ to step through battles). Progress shows the phase and time left, Cancel terminates the worker, and controls are disabled while a run is going.
+- Headless Chrome 157 (4 cores) measured 1.33–1.47× here, 20/20 identical every run. That is lower than the Node figure, and the page says the browser number is what it is.
+
+**2. Tests on every push.** There is a live CI badge (`ci.yml/badge.svg?branch=main`) linking to the runs, plus links to `src/tests`, the regression snapshot, `scripts/regression.ts`, the fuzz invariant lines in `scripts/fuzz.ts`, `ci.yml` (whose steps upload the fuzz and regression reports as artifacts) and the manual sharded fuzz workflow. The counts are not hand-written. `vite.config.ts` computes `__REPO_STATS__` at build time: the test count from `vitest list --json` at the repo root (271 tests in 12 files at the time of writing), with a fallback to counting `it(`/`test(` (also used by the dev server), plus snapshot entries, fuzz invariant lines and the commit. The page shows which source and commit were used. Note that the badge is honest: it showed **failing** at the time of writing, because the regression sweep on main reports `request`, `silent` and `untranslated` items for gen8 dynamax heal/damage.
+
+**3. Deterministic replays.** `src/components/ReplayProof.tsx` / `src/proof/replay-proof.ts` use the battle demo's own code (`createEngine`, `controllerAI`, `buildReplayData`, `encodeReplay` → `decodeReplay` → `replaySetup`). One CPU-vs-CPU battle becomes a link, the link alone is re-simulated in a fresh engine with no AI, and the page shows both SHA-256 hashes, the link length and a link that opens the battle in `#/battle/replay`. `|debug|` lines are excluded, and the page says so: the AI's look-ahead appends them only to the live battle (for example "natural status immunity"), and Showdown emits them only in debug mode. Every other line is compared byte for byte.
+
+**4. Multilingual logs.** The quickstart output window has a 한국어 / EN / 日本語 switch that re-runs the same seed-42 battle in that language (Japanese lazy-loads its name pack via `loadNames('ja')`). The code pane changes with it.
+
+**Removed or softened.** The hero no longer puts "1.6–1.9×" in the headline ("…faster, don't take our numbers for it"); the Node figure is kept only as the labelled reference in the fine print and the docs. The landing no longer shows the static speed bars (they are still on the Performance doc page). "10M battles in sharded runs" was dropped, because that workflow is manual and there is no public run to point to; it is linked as a manual workflow instead. The gimmick and format claims shrank to one line that links to `gimmicks.test.ts` / `formats.test.ts` and the demo. The six equal-weight claim cards became one primary check plus three claim cards.
+
+**Tests.** `src/proof/compare.test.ts` checks: a known SHA-256 vector; the same N battles give identical hashes on both sides; re-running the same seeds gives the same hashes; a tampered log is caught; and the npm `@pkmn/sim` reference matches. `src/proof/replay-proof.test.ts` checks that a replay link re-simulates to the same log for 3 seeds.
+
+Screenshots: `docs/screenshots/site/proof-*.png` (hero, result at 1280/390, ko 390, npm mode, hash table, diff at 1280/390, replay card, replay viewer, CI card, ja logs, full pages).
+
 ## Battle demo: what feels unintuitive or cluttered (not edited, for the battle agent)
 
 Seen in `before-battle-*` and the live setup and battle screens:
