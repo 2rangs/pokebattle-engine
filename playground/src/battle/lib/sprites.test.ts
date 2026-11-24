@@ -59,11 +59,18 @@ test('3D: 폼 그림을 모든 출처에서 먼저 찾고 기본 모습은 그 �
   expect(psSpriteId('porygon-z')).toBeNull()
   expect(psSpriteId('ho-oh')).toBeNull()
   const c = battleSprite3dCandidates('lucario-mega-z', false)
-  // 기본 모습(448) 그림은 폼 그림 세 출처 다음에야 나온다
-  expect(c.findIndex(u => /\/448\.(gif|png)$/.test(u))).toBe(3)
-  expect(c.slice(0, 3)).toEqual([
+  // 메가 모습: Showdown 3D → 챔피언스·레전즈 Z-A 모델 애니메이션 → HOME, 기본 모습(448)은 그 다음
+  expect(c.slice(0, 5)).toEqual([
     expect.stringContaining('/other/showdown/10310.gif'),
     'https://play.pokemonshowdown.com/sprites/ani/lucario-megaz.gif',
+    expect.stringContaining('/generation-ix/champions/10310.webp'),
+    expect.stringContaining('/generation-ix/legends-za/10310.webp'),
     expect.stringContaining('/other/home/10310.png'),
   ])
+  expect(c.findIndex(u => /\/448\.(gif|png)$/.test(u))).toBe(5)
+  // 뒷모습은 진짜 뒷모습 파일, 이로치는 shiny/ 먼저
+  expect(battleSprite3dCandidates('lucario-mega-z', true)[2]).toContain('/generation-ix/champions/back/10310.webp')
+  expect(battleSprite3dCandidates('lucario-mega-z', true, true)[2]).toContain('/generation-ix/champions/back/shiny/10310.webp')
+  // 메가가 아니면 모델 애니메이션(무거움)은 넣지 않는다
+  expect(battleSprite3dCandidates('lucario', false).some(u => u.includes('generation-ix'))).toBe(false)
 })

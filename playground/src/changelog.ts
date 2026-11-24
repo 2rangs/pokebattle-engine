@@ -32,6 +32,16 @@ export const CHANGELOG: readonly ChangeEntry[] = [
   // ─── 2026-11-24 ─────────────────────────────────────────
   {
     date: '2026-11-24',
+    kind: 'improved',
+    area: 'demo',
+    title: ['새 메가진화가 3D로 움직입니다', 'New Mega Evolutions move in 3D'],
+    points: [
+      ['3D 모드에서 레전즈 Z-A 메가진화가 앞모습·뒷모습 모두 움직이는 3D 모델로 나옵니다 (메가루카리오Z의 진짜 뒷모습 등).', 'In 3D mode the Legends Z-A Mega Evolutions are animated 3D models from both front and back — Mega Lucario Z shows its real back, for example.'],
+      ['메가스톤을 든 포켓몬은 메가 모습 그림을 미리 받아 두어, 메가진화할 때 늦게 바뀌지 않습니다.', 'The Mega form is fetched ahead of time for Pokémon holding a Mega Stone, so it appears right away when they Mega Evolve.'],
+    ],
+  },
+  {
+    date: '2026-11-24',
     kind: 'fixed',
     area: 'demo',
     title: ['3D 모드의 새 메가진화 그림', '3D sprites for the new Mega Evolutions'],

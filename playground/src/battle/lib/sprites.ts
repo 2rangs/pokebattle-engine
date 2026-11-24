@@ -91,9 +91,12 @@ export function battleSprite3dCandidates(slug: string, back: boolean, shiny = fa
   if (!ids) return []
   // 이 모습(폼)의 그림을 모든 출처에서 먼저 찾고, 그다음에 기본 모습 (메가진화 등 새 폼이 기본 모습으로 떨어지지 않게).
   // 출처: PokeAPI 의 Showdown 3D → Showdown 서버의 3D(PokeAPI 에 아직 없는 새 폼) → HOME 3D 렌더(앞모습)
+  // 메가 모습: Showdown 에 없으면 챔피언스 → 레전즈 Z-A 3D 모델 애니메이션 (진짜 뒷모습까지, 무거워서 HOME 앞에 이때만)
+  const mega = /-mega(-|$)/.test(slug)
   const ofId = (id: number, sid: string | null, sh: boolean) => [
     showdownAniUrl(id, back, sh),
     ...(sid ? [psAniUrl(sid, back, sh)] : []),
+    ...(mega && id === ids.form ? [modelRenderUrl(id, 'champions', back, sh), modelRenderUrl(id, 'legends-za', back, sh)] : []),
     homeSpriteUrl(id, sh),
   ]
   const formSid = psSpriteId(slug)
@@ -101,6 +104,11 @@ export function battleSprite3dCandidates(slug: string, back: boolean, shiny = fa
   const base = ids.num !== ids.form ? [...(shiny ? ofId(ids.num, null, true) : []), ...ofId(ids.num, null, false)] : []
   return [...form, ...base, ...battleSpriteCandidates(slug, back, shiny)]
 }
+
+/** 9세대 게임 3D 모델 애니메이션 (PokeAPI 의 versions/generation-ix/champions · legends-za, 512×512 움직이는 WebP, 앞·뒤·이로치) */
+export const modelRenderUrl = (id: number, game: 'champions' | 'legends-za', back = false, shiny = false) =>
+  `${POKEMON}/versions/generation-ix/${game}/${back ? 'back/' : ''}${shiny ? 'shiny/' : ''}${id}.webp`
+export const isModelRender = (url: string) => /\/generation-ix\/(champions|legends-za)\//.test(url)
 
 /** Showdown 서버의 3D 애니메이션 (play.pokemonshowdown.com/sprites/ani, ani-back, ani-shiny, ani-back-shiny) */
 export const psAniUrl = (spriteId: string, back = false, shiny = false) =>

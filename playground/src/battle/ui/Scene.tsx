@@ -4,14 +4,14 @@
 //   우리 = 아래 왼쪽(뒷모습), 우리 데이터박스 = 아래 오른쪽 (HP 숫자)
 // 연출은 transform/opacity/filter 애니메이션만 써서 레이아웃이 움직이지 않는다 (prefers-reduced-motion 이면 끔).
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import type { MoveData, PlayerID } from '../lib/engine'
+import { getItem, type MoveData, type PlayerID } from '../lib/engine'
 import { foeOf, sideOfId, type Frame, type PokeView, type SideView } from '../lib/frame'
 import { hasEntered, moveFrameDelay, pctOf, stageMultiplier } from '../lib/hud'
 import type { Lang } from '../lib/messages'
 import { pokemonLabel, statLabel, statusLongName, typeName, volatileName } from '../lib/names'
 import { volatileDesc } from '../lib/status'
 import {
-  battleSprite3dCandidates, battleSpriteCandidates, fxUrl, gimmickFxUrl, isHomeSprite, showdownAniUrl, moveFx, POKE_BALL,
+  battleSprite3dCandidates, battleSpriteCandidates, fxUrl, gimmickFxUrl, isHomeSprite, isModelRender, showdownAniUrl, moveFx, POKE_BALL,
   spriteIdsOf, TYPE_COLOR, type FxSprite,
 } from '../lib/sprites'
 import { pokeRogueAtlas } from '../lib/pokerogue'
@@ -114,7 +114,10 @@ function BattleSprite({ p, back, frame, stat, unit, sceneH, lang, style, psMove 
   const k = (back ? 1.5 : 1.1) * unit
   const max = (back ? 185 : 140) * unit
   // HOME 렌더는 512px 정사각형 (여백 포함) → 장면 크기에 맞춘 고정 크기 (우리 쪽이 더 크게)
-  const home = !!size && isHomeSprite(size.src)
+  // HOME 렌더(정지, 앞모습만 → 우리 쪽은 반전)와 9세대 모델 애니메이션(앞·뒤가 따로 있음)은 512px 캔버스 → 고정 크기
+  const homeStill = !!size && isHomeSprite(size.src)
+  const home = homeStill || (!!size && isModelRender(size.src))
+  const mirrored = homeStill && back
   const scale = !size ? 0 : home ? ((back ? 215 : 155) * unit) / size.h : Math.min(k, max / size.h)
   const statFx = useStatFx(stat)
   const status = p.fainted ? null : p.status
@@ -134,7 +137,7 @@ function BattleSprite({ p, back, frame, stat, unit, sceneH, lang, style, psMove 
           atlas={style === '2d' ? pokeRogueAtlas(species, back, p.gender, p.shiny) : null}
           sources={sources}
           alt={pokemonLabel(p, lang)}
-          className={`bd-sprite-img${home ? ` is-home${back ? ' is-mirrored' : ''}` : ''}${status ? ` tint-${status}` : ''}`}
+          className={`bd-sprite-img${home ? ` is-home${homeStill ? '' : ' is-anim'}${mirrored ? ' is-mirrored' : ''}` : ''}${status ? ` tint-${status}` : ''}`}
           style={size ? { width: Math.round(size.w * scale), height: Math.round(size.h * scale) } : { opacity: 0 }}
           onLoad={img => setSize(s => (s?.src === img.src ? s : { src: img.src, w: img.naturalWidth, h: img.naturalHeight }))}
         />
@@ -144,7 +147,7 @@ function BattleSprite({ p, back, frame, stat, unit, sceneH, lang, style, psMove 
             stages={statFx.stages}
             tile={statFx.tile}
             src={size.src}
-            mirrored={home && back}
+            mirrored={mirrored}
             tilePx={Math.round(32 * (home ? 1.6 : Math.max(1, scale)) )}
           />
         )}
@@ -375,6 +378,36 @@ function useShinySparkle(frame: Frame, me: PlayerID, scene: React.RefObject<HTML
 
 /** 3D: 지금 두 팀의 3D 애니메이션(앞·뒤)을 미리 받아 둔다 (교체 때 늦게 뜨지 않게) */
 const preloaded = new Set<string>()
+/** 앞에서부터 받아 보고, 처음 받아진 것에서 멈춘다 (무거운 모델 애니메이션을 둘 다 받지 않게) */
+function preloadFirst(urls: string[]) {
+  const key = urls.join('|')
+  if (!urls.length || preloaded.has(key)) return
+  preloaded.add(key)
+  const next = (i: number) => {
+    if (i >= urls.length) return
+    const img = new Image()
+    img.decoding = 'async'
+    img.onerror = () => next(i + 1)
+    img.src = urls[i]!
+  }
+  next(0)
+}
+/** 3D: 메가스톤을 든 포켓몬의 메가 모습 (메가진화하는 순간 늦게 바뀌지 않게). 앞 = 상대, 뒤 = 우리 */
+function usePreloadMega3d(enabled: boolean, ours: readonly PokeView[], foes: readonly PokeView[]) {
+  const list = enabled ? [...ours.map(p => [p, true] as const), ...foes.map(p => [p, false] as const)]
+    .flatMap(([p, back]) => {
+      const mega = p.item ? getItem(p.item)?.megaStone : undefined
+      return mega && /-mega(-|$)/.test(mega) ? [`${mega}|${back ? 1 : 0}|${p.shiny ? 1 : 0}`] : []
+    }) : []
+  const key = [...new Set(list)].sort().join(',')
+  useEffect(() => {
+    if (!key) return
+    for (const k of key.split(',')) {
+      const [mega, back, shiny] = k.split('|')
+      preloadFirst(battleSprite3dCandidates(mega!, back === '1', shiny === '1').filter(u => !u.includes('/other/home/')).slice(0, 4))
+    }
+  }, [key])
+}
 function usePreloadHome(species: string[]) {
   const key = [...new Set(species)].sort().join('|')
   useEffect(() => {
@@ -435,6 +468,7 @@ export function Scene({ frames, frame, me = 'p1', revealFoe, speed = 650, childr
   const mineIn = hasEntered(frames, frame.index, mine.active.id)
   useEffect(() => { void loadStatTiles() }, [])
   usePreloadHome(sprites === '3d' ? [...frame.p1.team, ...frame.p2.team].map(spriteSpeciesOf) : [])
+  usePreloadMega3d(sprites === '3d', mine.team, foe.team)
   usePreloadPokeRogue(sprites === '2d', mine.team, foe.team)
 
   return (
