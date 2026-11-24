@@ -32,6 +32,18 @@ export const CHANGELOG: readonly ChangeEntry[] = [
   // ─── 2026-11-24 ─────────────────────────────────────────
   {
     date: '2026-11-24',
+    kind: 'new',
+    area: 'demo',
+    title: ['HTML로 저장한 리플레이가 인터넷 없이도 애니메이션으로 재생됩니다', 'Saved HTML replays now play animated offline'],
+    points: [
+      ['저장한 파일 하나에 재생기와 스프라이트가 들어 있어, 오프라인에서도 기술 연출·HP 변화·교체·기절까지 그대로 볼 수 있습니다.', 'The saved file carries its own player and sprites, so moves, HP changes, switches and faints all play without a connection.'],
+      ['재생·일시정지, 이전·다음 턴, 0.5~4배속, 재생 위치 막대를 쓸 수 있습니다.', 'Play/pause, previous/next turn, 0.5–4x speed and a position slider.'],
+      ['기술 연출은 5세대풍 연출을 씁니다. 저장할 때 스프라이트를 받아 넣으므로 저장은 온라인에서 해 주세요.', 'Moves use the gen-5 style effects. Sprites are embedded when you save, so save while online.'],
+    ],
+    link: { href: '#/battle', label: ['배틀 데모', 'Battle demo'] },
+  },
+  {
+    date: '2026-11-24',
     kind: 'improved',
     area: 'demo',
     title: ['팀 설정 화면 정리: 좌우 배치와 하나로 통일한 랜덤 버튼', 'Tidier team setup: side-by-side teams and one Randomize button'],
