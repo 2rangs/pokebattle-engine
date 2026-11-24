@@ -36,3 +36,16 @@ test('기술 연출: 접촉은 충격, 원거리는 타입 탄, 변화는 없음
   expect(moveFx({ type: 'fire', category: 'physical', flags: ['contact'] })).toEqual({ projectile: null, impact: 'impact' })
   expect(moveFx({ type: 'normal', category: 'status' })).toBeNull()
 })
+
+test('배틀 중 폼체인지 모습은 기본 모습 그림으로 떨어지지 않는다 (2D 아틀라스 키)', async () => {
+  const { Dex } = await import('@pkmn/sim')
+  const { speciesSlug } = await import('./engine')
+  const { pokeRogueKey } = await import('./pokerogue')
+  const forms = Dex.species.all().filter(s => s.exists && s.num > 0 && s.forme && !/Gmax|Totem/.test(s.forme)
+    && (s.battleOnly || s.isMega || s.isPrimal || /Mega|Primal|Ultra|Zen|Blade|Busted|School|Hero|Hangry|Gulping|Gorging|Noice|Pirouette|Sunshine|Meteor|Complete|Terastal|Stellar|Crowned|Eternamax/.test(s.forme)))
+  expect(forms.length).toBeGreaterThan(100)
+  const bad = forms
+    .map(s => [speciesSlug(s.id), speciesSlug(Dex.species.get(s.baseSpecies).id)] as const)
+    .filter(([f, b]) => !pokeRogueKey(f) || pokeRogueKey(f) === pokeRogueKey(b))
+  expect(bad).toEqual([])
+})

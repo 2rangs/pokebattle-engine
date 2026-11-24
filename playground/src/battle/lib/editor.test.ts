@@ -1,9 +1,9 @@
 import { beforeAll, describe, expect, test } from 'vitest'
 import {
-  abilityOptions, evTotal, itemOptions, moveOptions, natureLabel, natureOptions, presetOf, PRESET_EVS, searchOptions,
+  abilityOptions, evTotal, itemHint, itemOptions, itemOptionsFor, moveOptions, natureLabel, natureOptions, presetOf, PRESET_EVS, searchOptions,
   setEv, statsOf, teraOptions, validateSet, withMove, hasErrors,
 } from './editor'
-import type { PokemonSet } from './engine'
+import { preloadData, type PokemonSet } from './engine'
 import { ready } from './setup.test-util'
 
 beforeAll(ready)
@@ -90,5 +90,36 @@ describe('검증', () => {
     expect(withMove(chomp(), 1, 'outrage').moves).toEqual(['earthquake', 'outrage', 'stone-edge', 'fire-fang'])
     expect(withMove(chomp(), 1, null).moves).toEqual(['earthquake', 'stone-edge', 'fire-fang'])
     expect(withMove(chomp({ moves: ['earthquake'] }), 1, 'outrage').moves).toEqual(['earthquake', 'outrage'])
+  })
+})
+
+describe('기믹 도구 목록과 안내', () => {
+  beforeAll(() => preloadData({ gens: [7] }))
+  const zard = { species: 'charizard', level: 50, gender: null, ability: 'blaze', nature: 'hardy', moves: ['flamethrower'] } as PokemonSet
+  const lucario = { ...zard, species: 'lucario', moves: ['aura-sphere'] } as PokemonSet
+  const ALL = { tera: true, mega: true, zmove: true, dynamax: true }
+  test('샌드박스(자유 세트 아님)에도 메가스톤이 있고 이 포켓몬 것이 맨 위', () => {
+    const o = itemOptionsFor(zard, 'ko', 9, { gen: 9, g: ALL })
+    expect(o.slice(0, 2).map(x => x.slug)).toEqual(['charizardite-x', 'charizardite-y'])
+    expect(searchOptions(o, '나이트', 200).length).toBeGreaterThan(80)
+  })
+  test('레전즈 Z-A 메가스톤 (루카리오나이트Z) 과 한국어 이름', () => {
+    const o = itemOptionsFor(lucario, 'ko', 9, { gen: 9, g: ALL })
+    const top = o.filter(x => x.gimmick).map(x => x.slug)
+    expect(top).toContain('lucarionite')
+    expect(top).toContain('lucarionite-z')
+    expect(o.find(x => x.slug === 'lucarionite-z')!.label).toBe('루카리오나이트Z')
+    expect(searchOptions(o, '루카리오나이트Z').map(x => x.slug)).toContain('lucarionite-z')
+    // 6·7세대 규칙에는 없다 (그 게임에 없던 도구)
+    expect(itemOptionsFor(lucario, 'ko', 7).some(x => x.slug === 'lucarionite-z')).toBe(false)
+  })
+  test('9세대 일반 규칙: 메가스톤 없음 + 안내', () => {
+    const o = itemOptionsFor(zard, 'ko', 9)
+    expect(searchOptions(o, '나이트').length).toBe(0)
+    expect(itemHint('', 'ko', { gen: 9, g: { tera: true, mega: false, zmove: false, dynamax: false } })).toBe('gimmickItems')
+    expect(itemHint('나이트', 'ko', { gen: 9, g: ALL })).toBeNull()
+    expect(itemHint('', 'ko', { gen: 7, g: { tera: false, mega: true, zmove: true, dynamax: false } })).toBeNull()
+    expect(itemHint('불꽃Z', 'ko', { gen: 6, g: { tera: false, mega: true, zmove: false, dynamax: false } })).toBe('zItems')
+    expect(itemHint('리자몽', 'ko', { gen: 6, g: { tera: false, mega: true, zmove: false, dynamax: false } })).toBeNull()
   })
 })

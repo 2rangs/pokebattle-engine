@@ -6,7 +6,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { MoveData, PlayerID } from '../lib/engine'
 import { foeOf, sideOfId, type Frame, type PokeView, type SideView } from '../lib/frame'
-import { moveFrameDelay, pctOf, stageMultiplier } from '../lib/hud'
+import { hasEntered, moveFrameDelay, pctOf, stageMultiplier } from '../lib/hud'
 import type { Lang } from '../lib/messages'
 import { pokemonLabel, statLabel, statusLongName, typeName, volatileName } from '../lib/names'
 import { volatileDesc } from '../lib/status'
@@ -23,7 +23,8 @@ import { useBT, useSettings, type SpriteStyle } from './state'
 import { AIM, SPOT } from './layout'
 import { SceneEffects } from './SceneEffects'
 import { StatFx } from './statFx'
-import { playGen5MoveAnim } from '../gen5fx/play'
+import { playGen5MoveAnim, playRecipe } from '../gen5fx/play'
+import { shinyRecipe } from '../gen5fx/recipes'
 import { loadStatTiles, statFxDuration, statTileOf, type StatTile } from './statTiles'
 
 type SpriteAnim = 'lunge' | 'hit' | 'crit' | 'enter' | 'heal' | 'shimmer' | 'status'
@@ -92,7 +93,7 @@ function useStatFx(stat: StatEv | null): StatEv | null {
 function BattleSprite({ p, back, frame, stat, unit, sceneH, lang, style, psMove }: { p: PokeView; back: boolean; frame: Frame; stat: StatEv | null; unit: number; sceneH: number; lang: Lang; style: SpriteStyle; psMove: boolean }) {
   const [size, setSize] = useState<{ src: string; w: number; h: number } | null>(null)
   const species = spriteSpeciesOf(p)
-  const sources = style === '3d' ? battleSprite3dCandidates(species, back) : battleSpriteCandidates(species, back)
+  const sources = style === '3d' ? battleSprite3dCandidates(species, back, p.shiny) : battleSpriteCandidates(species, back, p.shiny)
   const gfx = gimmickFxFor(frame, p)
   const own = spriteAnimFor(frame, p)
   // Showdown 애니메이션이 공격자를 직접 움직일 때는 우리 돌진 연출을 끈다
@@ -130,7 +131,7 @@ function BattleSprite({ p, back, frame, stat, unit, sceneH, lang, style, psMove 
       <span ref={ref} className={`bd-sprite-anim${anim ? ` anim-${anim}${anim === 'lunge' && !back ? '-foe' : ''}` : ''}`}>
         <span className="bd-sprite-ps">
         <PokeRogueSprite
-          atlas={style === '2d' ? pokeRogueAtlas(species, back, p.gender) : null}
+          atlas={style === '2d' ? pokeRogueAtlas(species, back, p.gender, p.shiny) : null}
           sources={sources}
           alt={pokemonLabel(p, lang)}
           className={`bd-sprite-img${home ? ` is-home${back ? ' is-mirrored' : ''}` : ''}${status ? ` tint-${status}` : ''}`}
@@ -350,6 +351,28 @@ function useShowdownMoveAnim(frame: Frame, me: PlayerID, speed: number, scene: R
   return handles
 }
 
+/** 이로치가 나오는 프레임(switch)이 차례대로 드러날 때 반짝임 (게임처럼 몬스터볼에서 나온 직후) */
+function useShinySparkle(frame: Frame, me: PlayerID, scene: React.RefObject<HTMLDivElement | null>, fx: React.RefObject<HTMLDivElement | null>, bg: React.RefObject<HTMLDivElement | null>) {
+  const last = useRef(frame.index)
+  const stop = useRef<(() => void) | null>(null)
+  const e = frame.event
+  const inId = e.type === 'switch' ? e.in_id : null
+  const incoming = inId ? [frame.p1.active, frame.p2.active].find(p => p.id === inId) : undefined
+  useEffect(() => {
+    const prev = last.current
+    last.current = frame.index
+    if (!incoming?.shiny || frame.index !== prev + 1 || reducedMotion()) return
+    const root = scene.current
+    if (!root || !fx.current || !bg.current) return
+    const front = sideOfId(incoming.id) !== me
+    stop.current?.()
+    stop.current = playRecipe(shinyRecipe(), front, true, {
+      fx: fx.current, bg: bg.current, front: null, back: null, ground: [],
+    }, { budget: 1400 })
+  }, [frame.index, incoming, me, scene, fx, bg])
+  useEffect(() => () => stop.current?.(), [])
+}
+
 /** 3D: 지금 두 팀의 3D 애니메이션(앞·뒤)을 미리 받아 둔다 (교체 때 늦게 뜨지 않게) */
 const preloaded = new Set<string>()
 function usePreloadHome(species: string[]) {
@@ -406,6 +429,10 @@ export function Scene({ frames, frame, me = 'p1', revealFoe, speed = 650, childr
   const psFxRef = useRef<HTMLDivElement>(null)
   const psBgRef = useRef<HTMLDivElement>(null)
   const psMove = useShowdownMoveAnim(frame, me, speed, ref, psFxRef, psBgRef)
+  useShinySparkle(frame, me, ref, psFxRef, psBgRef)
+  // "내보냈다" 문장 전에는 그 포켓몬(과 데이터박스)을 숨긴다 (그림은 미리 받아 둔다)
+  const foeIn = hasEntered(frames, frame.index, foe.active.id)
+  const mineIn = hasEntered(frames, frame.index, mine.active.id)
   useEffect(() => { void loadStatTiles() }, [])
   usePreloadHome(sprites === '3d' ? [...frame.p1.team, ...frame.p2.team].map(spriteSpeciesOf) : [])
   usePreloadPokeRogue(sprites === '2d', mine.team, foe.team)
@@ -420,18 +447,18 @@ export function Scene({ frames, frame, me = 'p1', revealFoe, speed = 650, childr
     >
       <SceneEffects frame={frame} me={me} />
       <div className="bd-psfx-bg" ref={psBgRef} aria-hidden />
-      <span className="bd-spot is-foe" style={{ left: `${SPOT.foe.x}%`, top: `${SPOT.foe.y}%` }}>
+      <span className={`bd-spot is-foe${foeIn ? '' : ' is-unrevealed'}`} style={{ left: `${SPOT.foe.x}%`, top: `${SPOT.foe.y}%` }}>
         <span className="bd-shadow" />
         <BattleSprite key={`${foe.active.id}-${sprites}`} p={foe.active} back={false} frame={frame} stat={statEventOf(frames, frame, foe.active.id)} unit={unit} sceneH={height} lang={lang} style={sprites} psMove={psMove} />
       </span>
-      <span className="bd-spot is-ours" style={{ left: `${SPOT.ours.x}%`, top: `${SPOT.ours.y}%` }}>
+      <span className={`bd-spot is-ours${mineIn ? '' : ' is-unrevealed'}`} style={{ left: `${SPOT.ours.x}%`, top: `${SPOT.ours.y}%` }}>
         <span className="bd-shadow" />
         <BattleSprite key={`${mine.active.id}-${sprites}`} p={mine.active} back frame={frame} stat={statEventOf(frames, frame, mine.active.id)} unit={unit} sceneH={height} lang={lang} style={sprites} psMove={psMove} />
       </span>
       <FxLayer frames={frames} frame={frame} me={me} psMove={psMove} />
       <div className="bd-psfx" ref={psFxRef} aria-hidden />
-      <Databox side={foe} ours={false} showNumbers={revealFoe} lang={lang} />
-      <Databox side={mine} ours showNumbers lang={lang} />
+      {foeIn && <Databox side={foe} ours={false} showNumbers={revealFoe} lang={lang} />}
+      {mineIn && <Databox side={mine} ours showNumbers lang={lang} />}
       {children}
     </div>
   )

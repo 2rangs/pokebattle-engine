@@ -141,6 +141,14 @@
 /* 팀 */
 .bd-team { display: flex; flex-direction: column; gap: 12px; }
 .bd-team + .bd-team { padding-top: 24px; border-top: 1px solid var(--rule); }
+.bd-slot-shiny { color: #ffd76a; }
+.bd-team-pair { display: flex; flex-direction: column; gap: 24px; }
+/* 넓은 화면: 내 팀 | 상대 팀 을 좌우로 (자리는 한 줄에 하나씩, 같은 높이로 마주 보게) */
+@media (min-width: 1000px) {
+  .bd-team-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; align-items: start; }
+  .bd-team-pair .bd-team + .bd-team { padding-top: 0; border-top: 0; padding-left: 32px; border-left: 1px solid var(--rule); margin-left: -16px; }
+  .bd-team-pair .bd-slots, .bd-team-pair .bd-slots.is-1 { grid-template-columns: minmax(0, 1fr); }
+}
 .bd-team-title { margin: 0; font: 500 18px/1.3 var(--font-family-heading); }
 .bd-rule-issues { margin: 0; padding: 10px 14px 10px 30px; border-radius: 8px; border: 1px solid #5a2a26; color: #ffb4ab; font-size: 13px; line-height: 1.6; }
 .bd-builder { display: flex; flex-direction: column; gap: 12px; }
@@ -236,6 +244,7 @@
 .bd-picker-icon img { max-width: 40px; max-height: 40px; }
 .bd-picker-num { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
 .bd-picker-empty { padding: 12px; color: var(--muted); }
+.bd-picker-hint { margin: 6px 0 0; padding: 8px 10px; border-radius: 6px; background: var(--fill); color: var(--ink-2); font-size: 12.5px; line-height: 1.5; }
 
 .bd-metro-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; margin-block: 8px; }
 .bd-field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--ink-2); }
@@ -354,6 +363,8 @@ button.bd-tp-mon:hover { border-color: var(--rule-2); }
 /* 능력치 변화 (PokéRogue battle_stats.png): 그 능력치의 32×32 무늬를 스프라이트 실루엣(mask)에만 깔고
    상승 = 위로, 하락 = 아래로(무늬 뒤집음) 흘린다. 스프라이트 색조는 상승 빨강 / 하락 파랑 */
 .bd-sprite-ps { position: relative; }
+/* 아직 내보내기 전 (배틀 시작 직후): 그림은 받아 두고 보이지 않게 */
+.bd-spot.is-unrevealed .bd-sprite { visibility: hidden; }
 .bd-statfx {
   position: absolute; inset: 0; pointer-events: none; opacity: .6;
   background-image: var(--tile); background-repeat: repeat; background-size: var(--ts) var(--ts); image-rendering: pixelated;

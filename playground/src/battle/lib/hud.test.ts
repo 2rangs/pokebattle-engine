@@ -1,6 +1,6 @@
 import { beforeAll, expect, test } from 'vitest'
 import type { BattleEvent } from './engine'
-import { calledMoveIndexes, effectivenessLabel, fieldItems, groupLogByTurn, hpTone, koLabel, lastCalledMoves, messageFrameIndex, pctOf, stageMultiplier } from './hud'
+import { calledMoveIndexes, effectivenessLabel, fieldItems, groupLogByTurn, hpTone, koLabel, lastCalledMoves, messageFrameIndex, pctOf, stageMultiplier , hasEntered } from './hud'
 import { statusShort } from './names'
 import { ready } from './setup.test-util'
 
@@ -49,4 +49,16 @@ test('필드 줄 순서: 날씨 → 필드 → 상대 → 우리', () => {
   const side = (id: 'p1' | 'p2', c: string) => ({ id, conditions: [{ id: c, layers: 1, turns: 3 }] }) as never
   const items = fieldItems({ weather: 'rain', weatherTurns: 4, terrain: null, terrainTurns: null, field: [], p1: side('p1', 'reflect'), p2: side('p2', 'spikes') })
   expect(items.map(i => i.id)).toEqual(['rain', 'spikes', 'reflect'])
+})
+
+test('hasEntered: "내보냈다" 프레임부터 보인다', () => {
+  const ev = (type: string, in_id?: string) => ({ event: { type, in_id } })
+  const frames = [ev('battle_start'), ev('switch', 'p1_0'), ev('switch', 'p2_0'), ev('turn_start'), ev('faint'), ev('switch', 'p2_1')]
+  expect(hasEntered(frames, 0, 'p1_0')).toBe(false)
+  expect(hasEntered(frames, 1, 'p1_0')).toBe(true)
+  expect(hasEntered(frames, 1, 'p2_0')).toBe(false)
+  expect(hasEntered(frames, 2, 'p2_0')).toBe(true)
+  expect(hasEntered(frames, 4, 'p2_1')).toBe(false)
+  expect(hasEntered(frames, 5, 'p2_1')).toBe(true)
+  expect(hasEntered([ev('turn_start')], 0, 'p1_0')).toBe(true)
 })

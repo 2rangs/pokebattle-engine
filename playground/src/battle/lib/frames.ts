@@ -31,6 +31,7 @@ function viewPokemon(p: BattlePokemon, slept: ReadonlyMap<string, number>, dmax:
   return {
     id: p.id, species: p.species, setSpecies: p.set?.species ?? p.species, nickname: p.nickname, level: p.level,
     gender: p.gender === 'M' || p.gender === 'F' ? p.gender : null,
+    shiny: !!p.set?.shiny,
     hp: p.hp, max_hp: p.max_hp, status: p.status, statusTurns, types: p.types.filter(Boolean) as string[],
     tera_type: p.tera_type ?? null, terastallized: !!p.terastallized, stages,
     item: p.item, ability: p.ability, fainted: p.fainted,

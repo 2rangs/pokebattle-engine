@@ -366,3 +366,14 @@ export function recipeFor(m: MoveInfo): Recipe {
   if (m.category === 'special') return special(m, k)
   return projectile(m, k)
 }
+
+/** 이로치가 나올 때의 반짝임 (몬스터볼에서 나온 직후, 포켓몬 둘레로 별이 터진다) */
+export function shinyRecipe(): Recipe {
+  const pal = TYPE_PALETTE.shiny!
+  return { template: 'shiny', pal, frames: 30, steps: [
+    { kind: 'burst', at: 10, anchor: 'att', p: { tex: 'star', count: 6, spread: 6, speed: [1.6, 2.4], life: [10, 14], scale: [1, 0.5], fade: 0.5 } },
+    { kind: 'burst', at: 13, anchor: 'att', p: { tex: 'spark', count: 6, spread: 22, speed: [0, 0.4], life: [8, 12], fade: 0.4 } },
+    { kind: 'burst', at: 17, anchor: 'att', p: { tex: 'star', count: 5, spread: 10, speed: [1.2, 2], life: [8, 12], scale: [0.8, 0.4], fade: 0.5 } },
+    { kind: 'ring', at: 10, anchor: 'att', dur: 10, r0: 6, r1: 26, thick: 1 },
+  ] }
+}

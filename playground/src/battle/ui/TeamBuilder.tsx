@@ -90,13 +90,14 @@ function SlotCard({ n, set, rules, open, onToggle, onChange, onReroll, onRemove,
       </span>,
     )
   }
+  if (set.shiny && gen >= 2) meta.push(<span key="s" className="bd-slot-shiny">✦ {t('shinyMark')}</span>)
   if (set.gigantamax && g.dynamax) meta.push(<span key="g">{t('gigantamax')}</span>)
   if (set.teraType && gen === 9 && g.tera) meta.push(<span key="t" className="bd-slot-tera">{t('tera')} <TypeBadge type={set.teraType} lang={lang} size="xs" tera /></span>)
   if (set.customStats && rules.freeStats) meta.push(<span key="c">{t('customStats')}</span>)
   return (
     <div className={`bd-slot${open ? ' is-open' : ''}`} aria-label={`${t('slotN', { n })} ${name}`}>
       <div className="bd-slot-head">
-        <span className="bd-slot-icon"><FallbackImg sources={iconCandidates(set.species)} alt="" /></span>
+        <span className="bd-slot-icon"><FallbackImg sources={iconCandidates(set.species, !!set.shiny)} alt="" /></span>
         <span className="bd-slot-title">
           <span className="bd-slot-name"><b>{name}</b> <span className="bd-slot-lv">{t('level', { n: set.level ?? 50 })}</span></span>
           <span className="bd-slot-types">{(sp?.types ?? []).map(ty => <TypeBadge key={ty} type={ty} lang={lang} size="xs" />)}</span>

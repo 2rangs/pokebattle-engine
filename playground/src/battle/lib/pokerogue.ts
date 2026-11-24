@@ -19,6 +19,17 @@ const REGION_OFFSET: Record<string, number> = { alola: 2000, galar: 4000, hisui:
 
 /** PokeAPI 슬러그 → PokéRogue 키 (규칙으로 안 맞는 것) */
 const ALIAS: Record<string, string> = {
+  // 배틀 중 폼체인지 (기본 모습으로 떨어지지 않게)
+  'meowstic-m-mega': '678-mega',
+  // Showdown 의 메테노 기본형은 코어, Minior-Meteor 가 껍질 (PokeAPI 는 반대로 껍질이 기본).
+  // 엔진은 Showdown 기본형을 PokeAPI 기본 이름(minior-red-meteor)으로 부르므로 그 이름도 코어로
+  'minior': '774-red',
+  'minior-red-meteor': '774-red',
+  'minior-meteor': '774-red-meteor',
+  'ogerpon-teal-tera': '1017-teal-mask-tera',
+  'ogerpon-wellspring-tera': '1017-wellspring-mask-tera',
+  'ogerpon-hearthflame-tera': '1017-hearthflame-mask-tera',
+  'ogerpon-cornerstone-tera': '1017-cornerstone-mask-tera',
   'greninja-battle-bond': '2658',
   'greninja-ash': '2658-ash',
   'floette-eternal': '2670',
@@ -143,11 +154,12 @@ export interface AtlasUrls {
  * 앞·뒷모습 아틀라스 URL. 암컷이고 암컷 그림이 있으면 female/,
  * 본 그림이 정지 한 장이면 exp/ 의 애니메이션 (PokéRogue 설정의 실험용 스프라이트와 같은 파일).
  */
-export function pokeRogueAtlas(slug: string, back: boolean, gender?: 'M' | 'F' | null): AtlasUrls | null {
+export function pokeRogueAtlas(slug: string, back: boolean, gender?: 'M' | 'F' | null, shiny = false): AtlasUrls | null {
   const key = pokeRogueKey(slug)
   if (!key) return null
   const female = gender === 'F' && FEMALE_SET.has(key)
-  const exp = !female && (back ? EXP_BACK : EXP_FRONT).has(key)
-  const dir = `${exp ? 'exp/' : ''}${back ? 'back/' : ''}${female ? 'female/' : ''}`
+  // 이로치는 shiny/ (exp/ 에는 이로치가 없다)
+  const exp = !female && !shiny && (back ? EXP_BACK : EXP_FRONT).has(key)
+  const dir = `${exp ? 'exp/' : ''}${back ? 'back/' : ''}${shiny ? 'shiny/' : ''}${female ? 'female/' : ''}`
   return { key, json: `${POKEROGUE_BASE}/${dir}${key}.json`, png: `${POKEROGUE_BASE}/${dir}${key}.png` }
 }

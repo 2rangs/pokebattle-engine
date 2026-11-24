@@ -2,7 +2,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { getItem, getMove, type PokemonSet } from '../lib/engine'
 import {
-  abilityOptions, EV_PRESETS, EV_STAT_MAX, EV_TOTAL_MAX, evTotal, itemOptionsFor, MAX_MOVES, moveOptions, natureLabel,
+  abilityOptions, EV_PRESETS, EV_STAT_MAX, EV_TOTAL_MAX, evTotal, itemHint, itemOptionsFor, MAX_MOVES, moveOptions, natureLabel,
   natureOptions, presetOf, PRESET_EVS, searchOptions, setEv, STATS, statShort, statsOf, teraOptions, withMove,
   type EvPreset, type MoveOption, type SetIssue, type TeamRules,
 } from '../lib/editor'
@@ -18,8 +18,10 @@ const PRESET_KEY: Record<EvPreset, MessageKey> = {
 }
 
 /** 검색 + 목록 (열려 있는 동안만 그린다). 빈 검색어면 전체 목록을 보여 준다 */
-function SearchSelect<T extends { slug: string; label: string; haystack: string }>({ label, placeholder, options, exclude, render, onPick, onClose }: {
+function SearchSelect<T extends { slug: string; label: string; haystack: string }>({ label, placeholder, options, exclude, render, onPick, onClose, hint }: {
   label: string
+  /** 검색어에 따라 목록 위에 띄우는 안내 */
+  hint?: (query: string) => ReactNode
   placeholder: string
   options: readonly T[]
   exclude?: ReadonlySet<string>
@@ -61,6 +63,7 @@ function SearchSelect<T extends { slug: string; label: string; haystack: string 
           else if (e.key === 'Escape') { e.preventDefault(); onClose() }
         }}
       />
+      {hint?.(q) && <p className="bd-picker-hint" role="status">{hint(q)}</p>}
       <ul className="bd-picker-list" id={listId} role="listbox" aria-label={label} ref={list}>
         {results.length === 0 && <li className="bd-picker-empty">—</li>}
         {results.map((o, i) => (
@@ -160,6 +163,7 @@ function ItemField({ set, rules, onChange }: { set: PokemonSet; rules: TeamRules
         )}
         onPick={s => { onChange({ ...set, item: s }); setOpen(false) }}
         onClose={() => setOpen(false)}
+        hint={q => { const h = itemHint(q, lang, rules); return h ? t(h === 'zItems' ? 'itemHintZ' : 'itemHintGimmick') : null }}
       />
     )
   }
@@ -259,6 +263,12 @@ export function SetEditor({ set, issues, rules, onChange }: { set: PokemonSet; i
             {teras.map(ty => <option key={ty.slug} value={ty.slug}>{ty.label}</option>)}
           </select>
         </label>}
+        {gen >= 2 && (
+          <label className="bd-field is-check" title={t('shinyHint')}>
+            <input type="checkbox" checked={!!set.shiny} onChange={e => onChange({ ...set, shiny: e.target.checked || undefined })} />
+            <span>{t('shiny')}</span>
+          </label>
+        )}
         {g.dynamax && gmaxForm(set.species) && (
           <label className="bd-field is-check" title={t('gigantamaxHint')}>
             <input type="checkbox" checked={!!set.gigantamax} onChange={e => onChange({ ...set, gigantamax: e.target.checked || undefined })} />

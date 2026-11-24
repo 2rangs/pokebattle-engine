@@ -97,13 +97,29 @@ export interface ItemOption {
 
 const itemCache = new Map<string, ItemOption[]>()
 
-/** 그 세대에서 지닐 수 있는 도구 (현재 언어 이름순) */
-export function itemOptions(lang: Lang, gen: Gen = DEFAULT_GEN, free = false): ItemOption[] {
-  const key = `${lang}:${gen}:${free}`
+/** 메가스톤·원시회귀 구슬 / Z크리스탈 */
+const isMegaItem = (it: { name: string; megaStone?: unknown; itemUser?: unknown }) => !!it.megaStone || (/-orb$/.test(it.name) && !!it.itemUser)
+const isZItem = (it: { zCrystal?: unknown }) => !!it.zCrystal
+
+/**
+ * 그 세대에서 지닐 수 있는 도구 (현재 언어 이름순).
+ * gimmicks: 9세대(샌드박스)에서 켠 기믹의 도구(7세대에만 있던 메가스톤·Z크리스탈)를 더한다.
+ */
+export function itemOptions(lang: Lang, gen: Gen = DEFAULT_GEN, free = false, gimmicks: Pick<GenGimmicks, 'mega' | 'zmove'> = { mega: false, zmove: false }): ItemOption[] {
+  const extraMega = gen === 9 && !free && gimmicks.mega
+  const extraZ = gen === 9 && !free && gimmicks.zmove
+  const key = `${lang}:${gen}:${free}:${extraMega}:${extraZ}`
   const hit = itemCache.get(key)
   if (hit) return hit
   // 자유 세트(샌드박스, 9세대): 7·8세대에만 있던 도구(메가스톤·Z크리스탈 …)도
-  const items = free ? [...new Map([7, 8, 9].flatMap(g => listItems({ gen: g as Gen })).map(it => [it.name, it])).values()] : listItems({ gen })
+  // 자유 세트와 메가진화를 켠 샌드박스는 레전즈 Z-A 의 새 메가스톤(루카리오나이트Z 등)도
+  const future = gen === 9 && (free || extraMega) ? listItems({ include: ['Future'] }).filter(isMegaItem) : []
+  let items = free ? [...new Map([7, 8, 9].flatMap(g => listItems({ gen: g as Gen })).map(it => [it.name, it])).values()] : listItems({ gen })
+  if (extraMega || extraZ || future.length) {
+    const have = new Set(items.map(it => it.name))
+    const extra = [...listItems({ gen: 7 }).filter(it => (extraMega && isMegaItem(it)) || (extraZ && isZItem(it))), ...future]
+    items = [...items, ...extra.filter(it => !have.has(it.name) && have.add(it.name))]
+  }
   const out = items.map(it => ({
     slug: it.name, label: itemName(it.name, lang), effect: it.effect,
     haystack: [itemName(it.name, 'ko'), itemName(it.name, 'en'), it.name].map(norm).join(' '),
@@ -115,7 +131,7 @@ export function itemOptions(lang: Lang, gen: Gen = DEFAULT_GEN, free = false): I
 
 /** 도구 목록: 이 포켓몬이 쓸 수 있는 기믹 도구(메가스톤·전용/타입 Z크리스탈)를 맨 위에 */
 export function itemOptionsFor(set: PokemonSet, lang: Lang, gen: Gen, rules: TeamRules = rulesFor(gen)): ItemOption[] {
-  const all = itemOptions(lang, gen, !!rules.free)
+  const all = itemOptions(lang, gen, !!rules.free, rules.g)
   const types = set.moves.map(m => (m ? getMove(m)?.type : undefined)).filter((t): t is string => !!t)
   const order = gimmickItemsFor(set.species, types, gen, rules.g)
   if (!order.length) return all
@@ -123,6 +139,27 @@ export function itemOptionsFor(set: PokemonSet, lang: Lang, gen: Gen, rules: Tea
   const bySlug = new Map(all.map(o => [o.slug, o]))
   const first = order.map(slug => bySlug.get(slug)).filter((o): o is ItemOption => !!o).map(o => ({ ...o, gimmick: true }))
   return [...first, ...all.filter(o => !top.has(o.slug))]
+}
+
+/**
+ * 도구 목록 위의 안내: 이 규칙에서 쓸 수 없는 기믹 도구.
+ * - 'gimmickItems': 메가진화·Z기술이 둘 다 없는 규칙 (항상)
+ * - 'zItems': 메가진화만 있는 규칙(6세대)에서 Z크리스탈을 찾을 때
+ */
+export function itemHint(query: string, lang: Lang, rules: TeamRules): 'gimmickItems' | 'zItems' | null {
+  if (rules.free || rules.g.mega || rules.g.zmove) {
+    if (!rules.g.zmove && !rules.free && query.trim()) {
+      try {
+        const z = itemOptions(lang, 7).filter(o => isZItem(getItem(o.slug) ?? {}))
+        if (searchOptions(z, query, 1).length) return 'zItems'
+      } catch {
+        // 7세대 데이터가 아직 없으면 이름 꼴로만 본다
+        if (/(^|\s)z$|z크리스탈|z-?crystal|ium-?z$/i.test(query.trim())) return 'zItems'
+      }
+    }
+    return null
+  }
+  return 'gimmickItems'
 }
 
 // ─── 특성 · 성격 · 테라 타입 ──────────────────────────────────

@@ -3,7 +3,7 @@
 // 스프라이트 돌진·흔들림·깜빡임, 화면 번쩍임·색조·흔들림은 스타일로 직접 준다.
 import { AIM } from '../ui/layout'
 import { TEX, rgba, type Palette, type Rgb, type TexName } from './art'
-import { recipeFor, type MoveInfo } from './recipes'
+import { recipeFor, type MoveInfo, type Recipe } from './recipes'
 import { FxSim, type Draw, type ScreenFx } from './sim'
 
 export interface PlayTargets {
@@ -100,7 +100,11 @@ const shadeColor = (pal: Palette, s: NonNullable<ScreenFx['flash']>['shade']): R
  * 반환: 중간에 멈추는 함수 (스타일을 원래대로 돌린다).
  */
 export function playGen5MoveAnim(move: MoveInfo, attackerFront: boolean, selfTarget: boolean, t: PlayTargets, opts: PlayOptions): () => void {
-  const recipe = recipeFor(move)
+  return playRecipe(recipeFor(move), attackerFront, selfTarget, t, opts)
+}
+
+/** 레시피 하나를 재생 (기술 연출, 이로치 반짝임 등). 'att' = attackerFront 쪽 포켓몬 */
+export function playRecipe(recipe: Recipe, attackerFront: boolean, selfTarget: boolean, t: PlayTargets, opts: PlayOptions): () => void {
   const cw = t.fx.clientWidth || 640
   const ch = t.fx.clientHeight || 360
   const lowH = Math.round((LOW_W * ch) / cw)

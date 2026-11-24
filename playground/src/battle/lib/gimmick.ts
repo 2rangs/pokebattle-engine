@@ -82,8 +82,9 @@ export function gimmickItemsFor(species: string, moveTypes: readonly string[], g
   if (!g.mega && !g.zmove) return []
   const own: string[] = []
   const typed: string[] = []
-  // 샌드박스(9세대 + 메가·Z): 메가스톤·Z크리스탈은 7세대 목록에서
-  for (const it of listItems({ gen: gen === 9 ? 7 : gen })) {
+  // 9세대(샌드박스)는 7세대 메가스톤·Z크리스탈 + 레전즈 Z-A 의 새 메가스톤
+  const pool = gen === 9 ? [...listItems({ gen: 7 }), ...listItems({ include: ['Future'] }).filter(it => it.megaStone)] : listItems({ gen })
+  for (const it of pool) {
     const mega = !!it.megaStone || /-orb$/.test(it.name) && !!it.itemUser
     if (g.mega && mega && belongs(it, species)) own.push(it.name)
     else if (g.zmove && it.zCrystal) {

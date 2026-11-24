@@ -202,6 +202,7 @@ export const TYPE_PALETTE: Record<string, Palette> = {
   fairy: P('#a03870', '#f090c8', '#fff0f8'),
   stellar: P('#305890', '#f0c860', '#ffffff'),
   heal: P('#287838', '#78e070', '#f0fff0'),
+  shiny: P('#c08a20', '#ffe070', '#ffffff'),
   white: P('#c0c0c0', '#f0f0f0', '#ffffff'),
 }
 

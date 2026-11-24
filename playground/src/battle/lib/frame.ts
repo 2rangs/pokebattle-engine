@@ -10,6 +10,8 @@ export interface PokeView {
   nickname: string
   level: number
   gender: 'M' | 'F' | null
+  /** 이로치 */
+  shiny: boolean
   hp: number
   max_hp: number
   status: string | null

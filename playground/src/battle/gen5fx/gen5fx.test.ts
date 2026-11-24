@@ -88,3 +88,15 @@ test('도트 텍스처와 팔레트', () => {
   }
   for (const pal of Object.values(TYPE_PALETTE)) for (const c of pal) expect(c.every(v => v >= 0 && v <= 255)).toBe(true)
 })
+
+test('이로치 반짝임: 등장 포켓몬 둘레에 별이 그려지고 끝난다', async () => {
+  const { shinyRecipe } = await import('./recipes')
+  const sim = new FxSim(shinyRecipe(), LAYOUT, 1)
+  let stars = 0
+  while (!sim.done && sim.frame < sim.maxFrames) {
+    sim.step()
+    for (const d of sim.draws()) if (d.t === 'tex' && d.tex === 'star') { stars++; expect(Math.hypot(d.x - LAYOUT.att[0], d.y - LAYOUT.att[1])).toBeLessThan(60) }
+  }
+  expect(sim.done).toBe(true)
+  expect(stars).toBeGreaterThan(0)
+})

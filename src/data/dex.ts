@@ -69,17 +69,38 @@ export function itemSlug(psIdOrName: string): string {
 }
 
 // ─── 한국어 이름 ─────────────────────────────────────────────
+// PokeAPI 에 아직 없는 메가진화(레전즈 Z-A 등)의 한국어 이름: 게임의 이름 규칙대로 만든다
+//   메가스톤 = 포켓몬 이름 + '나이트' (+ X/Y/Z), 메가 모습 = '메가' + 포켓몬 이름 (+ X/Y/Z)
+const baseKo = (name: string): string | null => {
+    const sp = Dex.species.get(name)
+    const base = sp.exists ? sp.baseSpecies : name
+    return SPECIES_BY_SLUG.get(speciesSlug(toID(base)))?.ko ?? null
+}
+function megaStoneKo(slug: string): string | null {
+    const it = Dex.items.get(itemToShowdown(slug))
+    const user = it.exists && it.megaStone ? Object.keys(it.megaStone)[0] : undefined
+    const ko = user ? baseKo(user) : null
+    return ko ? `${ko}나이트${/ ([XYZ])$/.exec(it.name)?.[1] ?? ''}` : null
+}
+function megaFormKo(slug: string): string | null {
+    const m = /^(.+)-mega(?:-([xyz]))?$/.exec(slug)
+    const ko = m ? baseKo(m[1]!) : null
+    return ko ? `메가${ko}${m![2]?.toUpperCase() ?? ''}` : null
+}
+
 export const koName = {
     /** 폼이면 폼 이름 (rotom-wash → 워시로토무), 아니면 종 이름 */
     species: (slug: string): string | null => {
         const form = API.forms[slug]
         if (form) return form
+        const mega = megaFormKo(slug)
+        if (mega) return mega
         const s = SPECIES_BY_SLUG.get(slug) ?? SPECIES_BY_SLUG.get(speciesSlug(speciesToShowdown(slug)))
         return (s && API.forms[s.slug]) ?? s?.ko ?? null
     },
     move:    (slug: string): string | null => API.moves[slug]?.ko ?? API.moves[moveSlug(moveToShowdown(slug))]?.ko ?? null,
     ability: (slug: string): string | null => API.abilities[slug]?.ko ?? API.abilities[abilitySlug(slug)]?.ko ?? null,
-    item:    (slug: string): string | null => API.items[slug]?.ko ?? API.items[itemSlug(slug)]?.ko ?? null,
+    item:    (slug: string): string | null => API.items[slug]?.ko ?? API.items[itemSlug(slug)]?.ko ?? megaStoneKo(slug),
     type:    (slug: string): string | null => slug === 'stellar' ? '스텔라' : API.types[slug] ?? null,
     nature:  (slug: string): string | null => API.natures[slug.toLowerCase()] ?? null,
 }
@@ -323,22 +344,25 @@ export function getItem(name: string): ItemData | undefined {
     return out
 }
 
-const itemListCache = new Map<number, ItemData[]>()
+const itemListCache = new Map<string, ItemData[]>()
 
 /**
  * 배틀에서 지니게 할 수 있는 도구 (그 세대에 있는 것: isNonstandard 제외, 몬스터볼 제외). 이름(영어)순.
  * 9세대는 바로 쓸 수 있고, 1~8세대는 `preloadData({ gens: [n] })` 가 필요하다 (메가스톤·Z크리스탈 등).
+ * include: 이 isNonstandard 분류도 넣는다. 예: ['Future'] → 레전즈 Z-A 의 새 메가스톤 (루카리오나이트Z 등)
  */
-export function listItems(opts: { gen?: Generation } = {}): ItemData[] {
+export function listItems(opts: { gen?: Generation; include?: ('Past' | 'Future')[] } = {}): ItemData[] {
     const gen = opts.gen ?? 9
-    const hit = itemListCache.get(gen)
+    const include = [...new Set(opts.include ?? [])].sort()
+    const key = `${gen}:${include.join(',')}`
+    const hit = itemListCache.get(key)
     if (hit) return [...hit]
     const dex = dexFor(gen, 'listItems')
     const out = dex.items.all()
-        .filter(it => it.exists && !it.isNonstandard && !it.isPokeball && it.num > 0)
+        .filter(it => it.exists && (!it.isNonstandard || include.includes(it.isNonstandard as 'Past' | 'Future')) && !it.isPokeball && it.num > 0)
         .map(toItemData)
         .sort((a, b) => a.showdown.localeCompare(b.showdown))
-    itemListCache.set(gen, out)
+    itemListCache.set(key, out)
     return [...out]
 }
 

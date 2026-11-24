@@ -205,3 +205,16 @@ export const SPEEDS = [
   { value: 300, label: 'speedFast' },
   { value: 60, label: 'speedVeryFast' },
 ] as const
+
+/**
+ * 이 포켓몬이 지금 프레임까지 나왔는지 (그 포켓몬을 내보낸 switch 이벤트가 이미 지났는지).
+ * 배틀 시작 직후 상태에는 양쪽 선두가 이미 들어 있지만, 게임처럼 "내보냈다" 문장 때 나타나게 한다.
+ */
+export function hasEntered(frames: readonly { event: { type: string; in_id?: string } }[], index: number, id: string): boolean {
+  for (let i = Math.min(index, frames.length - 1); i >= 0; i--) {
+    const e = frames[i]!.event
+    if (e.type === 'switch' && e.in_id === id) return true
+  }
+  // switch 이벤트가 하나도 없는 프레임 목록(테스트·간이 재생)은 그대로 보여 준다
+  return !frames.some(f => f.event.type === 'switch')
+}

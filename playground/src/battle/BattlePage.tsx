@@ -514,7 +514,7 @@ export default function BattlePage() {
       <section className="bd-step" aria-labelledby="bd-step-teams">
         <h2 className="bd-step-title" id="bd-step-teams"><span className="bd-step-n">2</span>{t('stepTeams')}</h2>
         {!metro ? (
-          <>
+          <div className="bd-team-pair">
             <div className="bd-team">
               <h3 className="bd-team-title">{spectate ? t('cpuTeam', { name: t('cpu1') }) : t('myTeam')}</h3>
               {issueList(myIssues)}
@@ -543,7 +543,7 @@ export default function BattlePage() {
                 onRandom={() => updateSettings(st => ({ foeTeam: fit([...newRandom(size), ...st.foeTeam.slice(size)].slice(0, 6)) }))}
               />
             </div>
-          </>
+          </div>
         ) : (
           <MetronomeForm s={s} />
         )}

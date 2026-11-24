@@ -23,8 +23,21 @@ const idCache = new Map<string, SpriteIds | null>()
  * 3) 뒤에서부터 폼 표기를 떼어 가며 (vivillon-fancy → vivillon, ogerpon-wellspring → 기본형)
  * 4) 같은 전국도감 번호의 기본 폼
  */
-export function spriteIdsOf(slug: string): SpriteIds | null {
-  if (idCache.has(slug)) return idCache.get(slug)!
+/** 엔진 슬러그 → PokeAPI 이름 (배틀 중 폼체인지가 기본 모습으로 떨어지지 않게). 테라스탈 오거폰은 탈 모습으로 */
+const API_ALIAS: Record<string, string> = {
+  'meowstic-m-mega': 'meowstic-male-mega',
+  'minior': 'minior-red',
+  'minior-red-meteor': 'minior-red',
+  'minior-meteor': 'minior-red-meteor',
+  'ogerpon-teal-tera': 'ogerpon',
+  'ogerpon-wellspring-tera': 'ogerpon-wellspring-mask',
+  'ogerpon-hearthflame-tera': 'ogerpon-hearthflame-mask',
+  'ogerpon-cornerstone-tera': 'ogerpon-cornerstone-mask',
+}
+
+export function spriteIdsOf(input: string): SpriteIds | null {
+  if (idCache.has(input)) return idCache.get(input)!
+  const slug = API_ALIAS[input] ?? input
   const sp = getSpecies(slug)
   const num = sp?.id ?? getPokeApiSpecies(slug)?.num ?? 0
   let api = getPokeApiSpecies(slug) ?? (sp ? getPokeApiSpecies(sp.name) : undefined)
@@ -37,7 +50,7 @@ export function spriteIdsOf(slug: string): SpriteIds | null {
   }
   if (!api && num) api = listPokeApiSpecies().find(s => s.num === num && s.default)
   const out = api ? { form: api.id, num: api.num } : num ? { form: num, num } : null
-  idCache.set(slug, out)
+  idCache.set(input, out)
   return out
 }
 
@@ -47,41 +60,48 @@ const BW_ANIM = `${POKEMON}/versions/generation-v/black-white/animated`
  * 2D 배틀 스프라이트 (4·5세대 도트 스타일), 앞에서부터 시도:
  * 5세대 블랙·화이트 애니메이션 gif(649번까지, 폼 → 기본) → 정지 도트 png(전 세대, 폼 → 기본) → 공식 일러스트.
  */
-export function battleSpriteCandidates(slug: string, back: boolean): string[] {
+export function battleSpriteCandidates(slug: string, back: boolean, shiny = false): string[] {
   const ids = spriteIdsOf(slug)
   if (!ids) return []
   const uniq = [...new Set([ids.form, ids.num])]
   const dir = back ? 'back/' : ''
+  // 이로치: 이로치 그림 먼저 (같은 폴더의 shiny/), 없으면 보통 그림
+  const shinyFirst = shiny ? [...uniq.map(id => `${BW_ANIM}/${dir}shiny/${id}.gif`), ...uniq.map(id => `${POKEMON}/${dir}shiny/${id}.png`)] : []
   return [
+    ...shinyFirst,
     ...uniq.map(id => `${BW_ANIM}/${dir}${id}.gif`),
     ...uniq.map(id => `${POKEMON}/${dir}${id}.png`),
-    `${POKEMON}/other/official-artwork/${ids.form}.png`,
+    `${POKEMON}/other/official-artwork/${shiny ? 'shiny/' : ''}${ids.form}.png`,
+    ...(shiny ? [`${POKEMON}/other/official-artwork/${ids.form}.png`] : []),
   ]
 }
 
 /** Pokémon HOME 3D 렌더 (512×512 정지 그림, 앞모습만) — 3D 애니메이션이 없을 때의 대체 */
-export const homeSpriteUrl = (id: number) => `${POKEMON}/other/home/${id}.png`
+export const homeSpriteUrl = (id: number, shiny = false) => `${POKEMON}/other/home/${shiny ? 'shiny/' : ''}${id}.png`
 export const isHomeSprite = (url: string) => url.includes('/other/home/')
 /** 3D 애니메이션 (6세대 이후 3D 모델, Pokémon Showdown 'ani' 스프라이트를 PokeAPI 가 보관) */
-export const showdownAniUrl = (id: number, back = false) => `${POKEMON}/other/showdown/${back ? 'back/' : ''}${id}.gif`
+export const showdownAniUrl = (id: number, back = false, shiny = false) => `${POKEMON}/other/showdown/${back ? 'back/' : ''}${shiny ? 'shiny/' : ''}${id}.gif`
 
 /**
  * 3D 배틀 스프라이트 (6세대 이후 3D 모델 스타일), 앞에서부터 시도:
  * 3D 애니메이션 gif(앞·뒷모습, 폼 → 기본) → HOME 3D 렌더(앞모습, 우리 쪽은 좌우 반전) → 2D 후보.
  */
-export function battleSprite3dCandidates(slug: string, back: boolean): string[] {
+export function battleSprite3dCandidates(slug: string, back: boolean, shiny = false): string[] {
   const ids = spriteIdsOf(slug)
   if (!ids) return []
   const uniq = [...new Set([ids.form, ids.num])]
-  return [...uniq.map(id => showdownAniUrl(id, back)), ...uniq.map(homeSpriteUrl), ...battleSpriteCandidates(slug, back)]
+  const shinyFirst = shiny ? [...uniq.map(id => showdownAniUrl(id, back, true)), ...uniq.map(id => homeSpriteUrl(id, true))] : []
+  return [...shinyFirst, ...uniq.map(id => showdownAniUrl(id, back)), ...uniq.map(id => homeSpriteUrl(id)), ...battleSpriteCandidates(slug, back, shiny)]
 }
 
 /** 작은 아이콘 (팀 빌더·교체 화면): Gen 5 B/W 애니메이션 → 정지 도트 */
-export function iconCandidates(slug: string): string[] {
+export function iconCandidates(slug: string, shiny = false): string[] {
   const ids = spriteIdsOf(slug)
   if (!ids) return []
   const uniq = [...new Set([ids.form, ids.num])]
   return [
+    ...(shiny ? uniq.map(id => `${POKEMON}/versions/generation-v/black-white/animated/shiny/${id}.gif`) : []),
+    ...(shiny ? uniq.map(id => `${POKEMON}/shiny/${id}.png`) : []),
     ...uniq.map(id => `${POKEMON}/versions/generation-v/black-white/animated/${id}.gif`),
     ...uniq.map(id => `${POKEMON}/${id}.png`),
   ]
