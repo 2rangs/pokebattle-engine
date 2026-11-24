@@ -135,7 +135,7 @@ function SlotCard({ n, set, rules, open, onToggle, onChange, onReroll, onRemove,
         >
           {open ? t('doneEdit') : t('editSet')}
         </button>
-        <button type="button" className="bd-btn is-small is-ghost" onClick={onReroll}>{t('rerollSet')}</button>
+        <button type="button" className="bd-btn is-small is-ghost" onClick={onReroll} aria-label={t('randomSlotNamed', { name })}>{t('randomTeam')}</button>
         {onUp && <button type="button" className="bd-btn is-small is-ghost" onClick={onUp}>↑ {t('moveUp')}</button>}
         {onRemove && <button type="button" className="bd-btn is-small is-ghost" onClick={onRemove} aria-label={t('removeNamed', { name })}>{t('remove')}</button>}
       </div>
@@ -143,7 +143,7 @@ function SlotCard({ n, set, rules, open, onToggle, onChange, onReroll, onRemove,
   )
 }
 
-export function TeamBuilder({ team, size, rules, level = 50, onChange, onRandom, randomLabel, canClear = true, canRemove = true }: {
+export function TeamBuilder({ team, size, rules, level = 50, onChange, onRandom, canClear = true, canRemove = true }: {
   team: (PokemonSet | null)[]
   /** 규칙: 세대(고를 수 있는 종·기술·도구, 랜덤 세트)·기믹·샌드박스 자유 설정 */
   rules: TeamRules
@@ -152,8 +152,6 @@ export function TeamBuilder({ team, size, rules, level = 50, onChange, onRandom,
   level?: number | ((species: string) => number)
   onChange: (team: (PokemonSet | null)[]) => void
   onRandom: () => void
-  /** "랜덤 팀" 대신 (상대 팀: "상대 팀 다시 뽑기") */
-  randomLabel?: string
   /** 비우기·빼기 (상대 팀은 늘 다 차 있게 숨긴다) */
   canClear?: boolean
   canRemove?: boolean
@@ -183,7 +181,7 @@ export function TeamBuilder({ team, size, rules, level = 50, onChange, onRandom,
   return (
     <div className="bd-builder">
       <div className="bd-builder-actions">
-        <button type="button" className="bd-btn is-small" onClick={onRandom}>{randomLabel ?? t('randomTeam')}</button>
+        <button type="button" className="bd-btn is-small" onClick={onRandom}>{t('randomTeam')}</button>
         <button
           type="button"
           className="bd-btn is-small is-ghost"

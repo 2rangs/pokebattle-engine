@@ -144,10 +144,13 @@
 .bd-slot-shiny { color: #ffd76a; }
 .bd-team-pair { display: flex; flex-direction: column; gap: 24px; }
 /* 넓은 화면: 내 팀 | 상대 팀 을 좌우로 (자리는 한 줄에 하나씩, 같은 높이로 마주 보게) */
-@media (min-width: 1000px) {
+@media (min-width: 860px) {
   .bd-team-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; align-items: start; }
   .bd-team-pair .bd-team + .bd-team { padding-top: 0; border-top: 0; padding-left: 32px; border-left: 1px solid var(--rule); margin-left: -16px; }
   .bd-team-pair .bd-slots, .bd-team-pair .bd-slots.is-1 { grid-template-columns: minmax(0, 1fr); }
+  .bd-team-pair .bd-preview { grid-template-columns: minmax(0, 1fr); }
+  /* 4·6마리만 두 칸씩, 나머지는 한 줄에 하나 */
+  .bd-team-pair .bd-slots.is-4, .bd-team-pair .bd-slots.is-6, .bd-team-pair .bd-preview.is-4, .bd-team-pair .bd-preview.is-6 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 .bd-team-title { margin: 0; font: 500 18px/1.3 var(--font-family-heading); }
 .bd-rule-issues { margin: 0; padding: 10px 14px 10px 30px; border-radius: 8px; border: 1px solid #5a2a26; color: #ffb4ab; font-size: 13px; line-height: 1.6; }

@@ -49,7 +49,7 @@ function Setting({ label, hint, children }: { label: string; hint?: ReactNode; c
 function MetroPreview({ mons }: { mons: PreviewMon[] }) {
   const { t, lang } = useBT()
   return (
-    <ul className="bd-preview">
+    <ul className={`bd-preview is-${mons.length}`}>
       {mons.map((p, i) => (
         <li key={`${p.species}-${i}`}>
           <span className="bd-slot-n">{i + 1}</span>
@@ -108,29 +108,29 @@ function MetronomeForm({ s }: { s: DemoSettings }) {
   )
   const side = (p: 'p1' | 'p2', title: string) => {
     const mode = p === 'p1' ? m.p1Mode : m.p2Mode
+    const setMode = (v: 'random' | 'picked') => set(p === 'p1' ? { p1Mode: v } : { p2Mode: v })
     return (
-      <section className="bd-section">
+      <div className="bd-team">
         <div className="bd-section-head">
-          <Heading level={3}>{title}</Heading>
+          <h3 className="bd-team-title">{title}</h3>
           <span className="bd-builder-actions">
-            {mode === 'random' && <button type="button" className="bd-btn is-small" onClick={() => updateSettings({ metroSeed: newSeed() })}>{t('metroReroll')}</button>}
-            <SegmentedControl label={`${title} ${t('metroTeam')}`} size="sm" value={mode} onChange={v => set(p === 'p1' ? { p1Mode: v as 'random' | 'picked' } : { p2Mode: v as 'random' | 'picked' })}>
-              <SegmentedControlItem value="random" label={t('metroRandom')} />
-              <SegmentedControlItem value="picked" label={t('metroPicked')} />
-            </SegmentedControl>
+            <button type="button" className="bd-btn is-small" onClick={() => { updateSettings({ metroSeed: newSeed() }); setMode('random') }}>{t('randomTeam')}</button>
+            {mode === 'random' && <button type="button" className="bd-btn is-small is-ghost" onClick={() => setMode('picked')}>{t('metroPicked')}</button>}
           </span>
         </div>
         {mode === 'random'
           ? <><p className="bd-section-hint">{t('metroPreviewHint')}</p><MetroPreview mons={preview[p]} /></>
           : <SpeciesSlots picks={p === 'p1' ? m.p1Pick : m.p2Pick} size={s.teamSize} onChange={pick => set(p === 'p1' ? { p1Pick: pick } : { p2Pick: pick })} />}
-      </section>
+      </div>
     )
   }
   const spectate = s.mode === 'spectate'
   return (
     <>
-      {side('p1', spectate ? t('cpuTeam', { name: t('cpu1') }) : t('myTeam'))}
-      {side('p2', spectate ? t('cpuTeam', { name: t('cpu2') }) : t('foeTeam'))}
+      <div className="bd-team-pair">
+        {side('p1', spectate ? t('cpuTeam', { name: t('cpu1') }) : t('myTeam'))}
+        {side('p2', spectate ? t('cpuTeam', { name: t('cpu2') }) : t('foeTeam'))}
+      </div>
       <section className="bd-section">
         <div className="bd-metro-grid">
           <label className="bd-field">
@@ -536,7 +536,6 @@ export default function BattlePage() {
                 team={s.foeTeam}
                 size={size}
                 level={sandbox ? 50 : lvOf}
-                randomLabel={t('rerollFoe')}
                 canClear={false}
                 canRemove={false}
                 onChange={team => updateSettings({ foeTeam: team.slice(0, 6) })}
