@@ -157,9 +157,10 @@ body { font-family: var(--font-family-body); -webkit-font-smoothing: antialiased
   .footer-brand { grid-column: 1 / -1; }
 }
 @media (max-width: 640px) {
-  .hdr-row { gap: 12px; min-height: 56px; }
+  .hdr-row { gap: 8px; min-height: 56px; }
   .hdr-row .brand > span:not(.emblem) { display: none; }
-  .hdr-nav a { padding: 8px 10px; }
+  .hdr-nav { gap: 0; }
+  .hdr-nav a { padding: 8px 7px; }
   .hdr-end { gap: 12px; }
   .hdr-link { display: none; }
   .hero { grid-template-columns: minmax(0, 1fr); padding-block: 40px 48px; gap: 0; }
@@ -177,6 +178,8 @@ body { font-family: var(--font-family-body); -webkit-font-smoothing: antialiased
   .doc-pager a.next { grid-column: 1; }
   .footer-top { grid-template-columns: 1fr 1fr; gap: 24px; }
 }
+/* 아주 좁은 폰(≤400px): 메뉴 세 개와 언어 전환이 한 줄에 들어가게 */
+@media (max-width: 400px) { .hdr-nav a { padding: 8px 6px; font-size: 13px; } }
 
 /* ─── Showdown 비교 (수치) ─────────────────────────────── */
 .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0; }

@@ -8,6 +8,7 @@ import { Emblem } from './components/Emblem'
 import { DocsMenu, DocToc } from './components/DocNav'
 import { useRoute } from './router'
 import { Landing } from './pages/Landing'
+import { Changelog } from './pages/Changelog'
 import { DOCS, DOC_GROUPS, docLead, docTitle, groupLabel } from './pages/docs'
 import { LANGS, useLang, type Lang } from './i18n'
 
@@ -22,6 +23,7 @@ export default function App() {
   const { lang, setLang, t } = useLang()
   const [path, query = ''] = route.split('?')
   const battle = path === '/battle' || path === '/battle/replay' ? path : null
+  const changelog = path === '/changelog'
   const slug = route.startsWith('/docs/') ? route.slice(6) : null
   const doc = slug ? DOCS.find(d => d.slug === slug) ?? DOCS[0]! : null
   const idx = doc ? DOCS.indexOf(doc) : -1
@@ -30,6 +32,7 @@ export default function App() {
   const nav = [
     { label: t('문서', 'Docs'), href: '#/docs/introduction', on: !!doc },
     { label: t('배틀 데모', 'Battle demo'), href: '#/battle', on: !!battle },
+    { label: t('업데이트', 'Changelog'), href: '#/changelog', on: changelog },
   ]
 
   // 페이지마다 문서 제목. 배틀 화면은 BattlePage 가 직접 정한다
@@ -37,8 +40,10 @@ export default function App() {
     if (battle) return
     document.title = doc
       ? `${docTitle(doc, lang)} - pokebattle-engine`
+      : changelog
+      ? `${t('업데이트 내역', 'Changelog')} - pokebattle-engine`
       : t('pokebattle-engine — Showdown과 같은 결과, 더 빠른 배틀 엔진', 'pokebattle-engine — Showdown-identical battles, faster')
-  }, [battle, doc, lang, t])
+  }, [battle, doc, changelog, lang, t])
 
   const header = (
     <header className="site-header">
@@ -99,6 +104,8 @@ export default function App() {
             {next && <a className="next" href={`#/docs/${next.slug}`}><span>{t('다음', 'Next')} →</span>{docTitle(next, lang)}</a>}
           </nav>
         </article>
+      ) : changelog ? (
+        <Changelog />
       ) : (
         <Landing />
       )}
@@ -115,6 +122,7 @@ function Footer({ lang }: { lang: Lang }) {
     [t('시작하기', 'Get started'), [...pick('introduction', 'installation', 'engine', 'performance'), [t('배틀 데모', 'Battle demo'), '#/battle']]],
     [t('가이드', 'Guides'), pick('events', 'logs', 'random', 'damage', 'cli')],
     [t('프로젝트', 'Project'), [
+      [t('업데이트 내역', 'Changelog'), '#/changelog'],
       ['GitHub', REPO],
       [t('이슈', 'Issues'), `${REPO}/issues`],
       ['CI', `${REPO}/actions`],
