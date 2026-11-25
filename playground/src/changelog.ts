@@ -29,6 +29,19 @@ export interface ChangeEntry {
 }
 
 export const CHANGELOG: readonly ChangeEntry[] = [
+  // ─── 2026-11-25 ─────────────────────────────────────────
+  {
+    date: '2026-11-25',
+    kind: 'improved',
+    area: 'engine',
+    title: ['패키지 의존성 정리: 설치되는 의존성은 하나', 'Leaner install: one runtime dependency'],
+    points: [
+      ['Showdown 시뮬레이터는 필요한 부분만 패키지 안에 들어 있어, 중복으로 설치되던 @pkmn/sim·@pkmn/randoms 를 의존성에서 뺐습니다. 이제 설치되는 의존성은 @smogon/calc 하나입니다.', 'The needed parts of Showdown’s simulator are bundled, so the duplicate @pkmn/sim and @pkmn/randoms installs are gone. @smogon/calc is now the only runtime dependency.'],
+      ['브라우저 앱의 첫 로딩은 그대로 약 3.3 MB(gzip 708 KB)이고 eval 경고도 없습니다.', 'Browser apps still load about 3.3 MB up front (708 KB gzipped) with no eval warning.'],
+      ['engine.battle 같은 원본 Showdown 객체는 ShowdownBattle 등 이 패키지의 타입으로 나옵니다. 자세한 타입이 필요하면 @pkmn/sim 을 선택해서 설치하세요.', 'Raw Showdown objects such as engine.battle are typed with this package’s ShowdownBattle and friends; install @pkmn/sim optionally for its full types.'],
+    ],
+    link: { href: '#/docs/installation', label: ['설치 문서', 'Installation docs'] },
+  },
   // ─── 2026-11-24 ─────────────────────────────────────────
   {
     date: '2026-11-24',
