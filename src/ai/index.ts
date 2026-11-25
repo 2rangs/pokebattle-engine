@@ -64,8 +64,8 @@ export class HeuristicAI implements BattleAI {
         if (req.type === 'switch') return this.chooseSwitch(engine, req, player)
 
         const foePlayer = engine.foeOf(player)
-        const user = engine.getShowdownPokemon(req.active.id)!
-        const foe = engine.battle[foePlayer].active[engine.frontSlot]
+        const user = engine.psPokemon(req.active.id)!
+        const foe = engine.ps[foePlayer].active[engine.frontSlot]
         const scored: Scored[] = []
 
         for (const opt of req.moves) {
@@ -89,7 +89,7 @@ export class HeuristicAI implements BattleAI {
             const inDanger = threat >= user.hp / user.maxhp && !(outspeeds && best >= 100)
             for (const p of req.switches) {
                 const m = this.matchup(engine, p.id, player)
-                let score = m * 40 - 25 - entryCost(engine.getShowdownPokemon(p.id), engine.battle[player]) * 80
+                let score = m * 40 - 25 - entryCost(engine.psPokemon(p.id), engine.ps[player]) * 80
                 if (inDanger) score += 30
                 if (best < 25) score += 15
                 if ((user.boosts.atk ?? 0) <= -2 || (user.boosts.spa ?? 0) <= -2) score += 20
@@ -107,7 +107,7 @@ export class HeuristicAI implements BattleAI {
         engine: BattleEngine, req: Extract<BattleRequest, { type: 'move' }>, player: PlayerID,
         opt: Extract<BattleRequest, { type: 'move' }>['moves'][number], base: Extract<Action, { type: 'move' }>, score: number, scored: Scored[],
     ): void {
-        const stack = !!(engine.battle.ruleTable as { has(id: string): boolean }).has('stackgimmicksmod')
+        const stack = !!(engine.ps.ruleTable as { has(id: string): boolean }).has('stackgimmicksmod')
         const status = opt.move.category === 'status'
         const better = (s: number) => s > score * 1.3 || (s >= 100 && score < 100)
         const form = req.can_mega_evolve ? { mega: true } : req.can_ultra_burst ? { ultra_burst: true } : {}
@@ -150,10 +150,10 @@ export class HeuristicAI implements BattleAI {
 
     private chooseSwitch(engine: BattleEngine, req: Extract<BattleRequest, { type: 'switch' }>, player: PlayerID): Action | null {
         if (req.switches.length === 0) return null
-        const side = engine.battle[player]
+        const side = engine.ps[player]
         const leaving = side.active[engine.frontSlot]
         const scored = req.switches.map(p => {
-            const mon = engine.getShowdownPokemon(p.id)
+            const mon = engine.psPokemon(p.id)
             let score = this.matchup(engine, p.id, player) * 50 + p.hp / p.max_hp * 20 - entryCost(mon, side) * 80
             // 배턴터치: 넘겨받는 랭크를 가장 잘 쓰는 포켓몬 / 꼬리자르기: 대타 뒤에서 능력을 올릴 포켓몬
             if (mon && leaving && req.source?.id === 'baton-pass') score += batonValue(leaving, mon) * 12
@@ -165,7 +165,7 @@ export class HeuristicAI implements BattleAI {
 
     /** 상대 현재 포켓몬 → 우리 현재 포켓몬 최대 데미지 비율 */
     private threat(engine: BattleEngine, attacker: PlayerID, _defender: PlayerID): number {
-        const a = engine.battle[attacker].active[engine.frontSlot]
+        const a = engine.ps[attacker].active[engine.frontSlot]
         if (!a) return 0
         let best = 0
         a.moveSlots.forEach((_, i) => {
@@ -177,8 +177,8 @@ export class HeuristicAI implements BattleAI {
 
     /** 벤치 포켓몬과 상대 현재 포켓몬의 상성 (대략 -1~1) */
     private matchup(engine: BattleEngine, benchId: string, player: PlayerID): number {
-        const mine = engine.getShowdownPokemon(benchId)
-        const foe = engine.battle[engine.foeOf(player)].active[engine.frontSlot]
+        const mine = engine.psPokemon(benchId)
+        const foe = engine.ps[engine.foeOf(player)].active[engine.frontSlot]
         if (!mine || !foe || foe.fainted) return 0
         let dealt = 0
         let taken = 0
@@ -197,15 +197,15 @@ export class HeuristicAI implements BattleAI {
     }
 
     private scoreMove(engine: BattleEngine, player: PlayerID, index: number, gimmick: boolean | Parameters<BattleEngine['previewDamage']>[2]): number {
-        const user = engine.battle[player].active[engine.frontSlot]!
-        const foe = engine.battle[engine.foeOf(player)].active[engine.frontSlot]
+        const user = engine.ps[player].active[engine.frontSlot]!
+        const foe = engine.ps[engine.foeOf(player)].active[engine.frontSlot]
         const slot = user.moveSlots[index]
         if (!slot) return 0
         const move = Dex.moves.get(slot.id)
         const hpRatio = user.hp / user.maxhp
         const foeAlive = !!foe && !foe.fainted
-        const foeSide = engine.battle[engine.foeOf(player)]
-        const mySide = engine.battle[player]
+        const foeSide = engine.ps[engine.foeOf(player)]
+        const mySide = engine.ps[player]
         const foeBench = foeSide.pokemon.filter(p => !p.fainted && !p.isActive).length
         const myBench = mySide.pokemon.filter(p => !p.fainted && !p.isActive).length
         // 끌어내기(날려버리기·드래곤테일 등)가 통하는지: 흡반·파수견·뿌리박기·다이맥스는 버틴다
@@ -243,9 +243,9 @@ export class HeuristicAI implements BattleAI {
             return (move.sideCondition === 'stealthrock' ? 45 : 30) * (foeBench / 5 + 0.4)
         }
         if (move.sideCondition) return mySide.sideConditions[move.sideCondition] ? 0 : (move.id === 'auroraveil' && engine.effectiveWeather() !== 'snow' ? 0 : 30)
-        if (move.weather) return engine.battle.field.weather === toWeatherId(move.weather) ? 0 : 22
-        if (move.terrain) return engine.battle.field.terrain === move.terrain ? 0 : 22
-        if (move.pseudoWeather === 'trickroom') return engine.battle.field.pseudoWeather['trickroom'] ? 0 : (foeAlive && user.getActionSpeed() < foe!.getActionSpeed() ? 40 : 0)
+        if (move.weather) return engine.ps.field.weather === toWeatherId(move.weather) ? 0 : 22
+        if (move.terrain) return engine.ps.field.terrain === move.terrain ? 0 : 22
+        if (move.pseudoWeather === 'trickroom') return engine.ps.field.pseudoWeather['trickroom'] ? 0 : (foeAlive && user.getActionSpeed() < foe!.getActionSpeed() ? 40 : 0)
         if (move.heal || move.flags.heal || move.id === 'rest' || move.id === 'strengthsap') return hpRatio > 0.75 ? 0 : (1 - hpRatio) * 90
         if (move.id === 'wish') return (1 - hpRatio) * 60
         if (move.id === 'substitute') return hpRatio > 0.5 && !user.volatiles['substitute'] ? 20 : 0

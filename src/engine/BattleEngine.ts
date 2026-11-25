@@ -6,6 +6,7 @@
 // 를 담당한다.
 import { Battle, Dex, TeamValidator, toID } from '@pkmn/sim'
 import type { Pokemon as PSPokemon, Side as PSSide } from '@pkmn/sim'
+import type { ShowdownBattle, ShowdownPokemon } from '../types/showdown'
 import type {
     Generation,
     Action, BattleConfig, BattleEvent, BattleEventType, BattleFormat, BattleRequest, BattleRuleOptions, BattleState,
@@ -253,7 +254,12 @@ const kwArg = (kw: string[], name: string) => kw.find(k => k.startsWith(`[${name
 const stripPrefix = (s: string | undefined) => (s ?? '').replace(/^(move|ability|item):\s*/, '')
 
 export class BattleEngine {
-    readonly battle: Battle
+    /** @internal Showdown 원본 Battle (엔진 안에서 쓰는 정확한 타입) */
+    readonly ps: Battle
+    /** Showdown 원본 Battle (@pkmn/sim). 자세한 타입은 @pkmn/sim 을 설치해 캐스팅한다 */
+    get battle(): ShowdownBattle {
+        return this.ps as unknown as ShowdownBattle
+    }
     readonly seed: number
     readonly maxTurns: number
     /** 로테이션 배틀 여부 (앞 = 슬롯 1) */
@@ -319,23 +325,23 @@ export class BattleEngine {
         this.customStats = formatid.includes(CUSTOM_STATS_RULE)
         this.stackGimmicks = formatid.includes(STACK_GIMMICKS_MOD)
         try {
-            this.battle = new Battle({ formatid: formatid as never, seed: toPSSeed(this.seed) as never })
+            this.ps = new Battle({ formatid: formatid as never, seed: toPSSeed(this.seed) as never })
         } catch (err) {
             throw new BattleError(`포맷/규칙 오류: ${(err as Error).message}`)
         }
-        if (this.rotation) (this.battle as unknown as { rotation: boolean }).rotation = true
-        if (options.fast !== false) enableFastPath(this.battle)
+        if (this.rotation) (this.ps as unknown as { rotation: boolean }).rotation = true
+        if (options.fast !== false) enableFastPath(this.ps)
         // 로그가 쓰이는 즉시 이벤트로 변환 (상태가 그 시점과 정확히 일치)
         // eslint-disable-next-line @typescript-eslint/no-this-alias
         const self = this
         // 생성자에서 이미 쓰인 줄(|gametype| 등)은 그대로 유지
-        const log: string[] = [...(this.battle as unknown as { log: string[] }).log]
+        const log: string[] = [...(this.ps as unknown as { log: string[] }).log]
         log.push = function (...lines: string[]) {
             const n = Array.prototype.push.apply(this, lines)
             if (self.ready) for (const line of lines) self.parseLine(line)
             return n
         }
-        ;(this.battle as unknown as { log: string[] }).log = log
+        ;(this.ps as unknown as { log: string[] }).log = log
     }
 
     /** 하위 호환 (데이터가 이미 동기 로드됨) */
@@ -367,8 +373,8 @@ export class BattleEngine {
         })
         this.emit({ type: 'battle_start', p1: this.config.p1.name, p2: this.config.p2.name, seed: this.seed })
         for (const { player, team, ps } of teams) {
-            this.battle.setPlayer(player, { name: this.config[player].name, team: ps })
-            this.battle[player].pokemon.forEach((p, i) => {
+            this.ps.setPlayer(player, { name: this.config[player].name, team: ps })
+            this.ps[player].pokemon.forEach((p, i) => {
                 const id = `${player}_${i}`
                 this.ids.set(p, id)
                 this.byId.set(id, p)
@@ -376,14 +382,14 @@ export class BattleEngine {
             })
         }
         // 이벤트 기준선 = start() 직후 상태 (두 번째 setPlayer 에서 등장 특성까지 이미 처리됨)
-        for (const player of SIDES) for (const p of this.battle[player].pokemon) {
+        for (const player of SIDES) for (const p of this.ps[player].pokemon) {
             this.lastHp.set(this.idOf(p), p.hp)
             this.lastStatus.set(this.idOf(p), p.status)
         }
         // 두 번째 setPlayer 에서 배틀이 시작되며 쓰인 로그를 ID 연결 후 처리
         this.ready = true
         this.replaying = true
-        for (const line of [...this.battle.log]) this.parseLine(line)
+        for (const line of [...this.ps.log]) this.parseLine(line)
         this.replaying = false
     }
 
@@ -409,7 +415,7 @@ export class BattleEngine {
 
     /** Showdown 원본 프로토콜 로그 */
     get protocolLog(): readonly string[] {
-        return this.battle.log
+        return this.ps.log
     }
 
     /** 처리하지 못한 프로토콜 메시지 종류 (테스트에서 0 이어야 함) */
@@ -422,7 +428,7 @@ export class BattleEngine {
         if (!ref) return undefined
         const m = ref.match(/^(p[1-4])([a-c])?:\s*(.*)$/)
         if (!m) return undefined
-        const side = this.battle[m[1] as PlayerID]
+        const side = this.ps[m[1] as PlayerID]
         if (!side) return undefined
         if (m[2]) {
             const p = side.active[m[2].charCodeAt(0) - 97]
@@ -461,15 +467,15 @@ export class BattleEngine {
     }
 
     private reconcileAll(reason: string): void {
-        for (const player of SIDES) for (const p of this.battle[player].pokemon) this.reconcile(p, reason)
+        for (const player of SIDES) for (const p of this.ps[player].pokemon) this.reconcile(p, reason)
     }
 
     /** -supereffective / -resisted 의 실제 배율 (Showdown 로그는 2배·4배를 구분하지 않는다). 순수 타입 상성만 본다 */
     private effectiveness(superEffective: boolean, target: PSPokemon | undefined): number {
-        const move = (this.battle as unknown as { activeMove?: { type: string } | null }).activeMove
+        const move = (this.ps as unknown as { activeMove?: { type: string } | null }).activeMove
         let mod = superEffective ? 1 : -1
         if (move && target) {
-            const m = this.battle.dex.getEffectiveness(move.type, target.getTypes())
+            const m = this.ps.dex.getEffectiveness(move.type, target.getTypes())
             mod = superEffective ? Math.max(1, m) : Math.min(-1, m)
         }
         return 2 ** mod
@@ -505,7 +511,7 @@ export class BattleEngine {
                     this.emit({ type: 'turn_end', turn, state: this.options.turnSnapshots === false ? (null as unknown as BattleState) : this.snapshot() })
                 }
                 this.emit({ type: 'turn_start', turn })
-                if (turn > this.maxTurns && !this.battle.ended) this.battle.tie()
+                if (turn > this.maxTurns && !this.ps.ended) this.ps.tie()
                 return
             }
             case 'switch':
@@ -621,7 +627,7 @@ export class BattleEngine {
             case '-clearnegativeboost': case '-invertboost': case '-swapboost': case '-copyboost': {
                 this.emit({ type: 'activate', pokemon_id: this.idOf(this.resolve(pos[0])) || undefined, effect: cmd.slice(1) + (kw.includes('[zeffect]') ? '-z' : '') })
                 // 바뀐 랭크는 숫자가 로그에 없다 → 다음 줄에서 stat_set 으로 알린다
-                const touched = cmd === '-clearallboost' ? SIDES.flatMap(s => this.battle[s].active)
+                const touched = cmd === '-clearallboost' ? SIDES.flatMap(s => this.ps[s].active)
                     : cmd === '-swapboost' || cmd === '-copyboost' ? [this.resolve(pos[0]), this.resolve(pos[1])] : [this.resolve(pos[0])]
                 for (const t of touched) if (t) this.pendingStages.add(t)
                 return
@@ -654,7 +660,7 @@ export class BattleEngine {
                 const cond = SIDE_FROM_PS[id]
                 if (!cond) { this.emit({ type: 'activate', effect: toSlug(stripPrefix(pos[1])) }); return }
                 if (cmd === '-sidestart') {
-                    const layers = (this.battle[player]?.sideConditions[id] as { layers?: number } | undefined)?.layers
+                    const layers = (this.ps[player]?.sideConditions[id] as { layers?: number } | undefined)?.layers
                     this.emit({ type: 'side_start', player, condition: cond, layers })
                 } else {
                     // 독타입이 독압정을 밟아 없앤 경우 [of] 로 그 포켓몬이 온다
@@ -850,7 +856,7 @@ export class BattleEngine {
                 return
             case 'win':
                 this.reconcileAll('sync')
-                this.emit({ type: 'battle_end', winner: this.battle.p1.name === pos[0] ? 'p1' : 'p2' })
+                this.emit({ type: 'battle_end', winner: this.ps.p1.name === pos[0] ? 'p1' : 'p2' })
                 return
             case 'tie':
                 this.emit({ type: 'battle_end', winner: 'draw' })
@@ -863,9 +869,9 @@ export class BattleEngine {
     // ─── 상태 조회 ──────────────────────────────────────────────
     get phase(): BattleState['phase'] {
         if (!this.ready) return 'waiting_action'
-        if (this.battle.ended) return 'ended'
-        if (SIDES.some(p => this.battle[p].requestState === 'teampreview')) return 'team_preview'
-        if (SIDES.some(p => this.battle[p].requestState === 'switch')) return 'switching'
+        if (this.ps.ended) return 'ended'
+        if (SIDES.some(p => this.ps[p].requestState === 'teampreview')) return 'team_preview'
+        if (SIDES.some(p => this.ps[p].requestState === 'switch')) return 'switching'
         return 'waiting_action'
     }
 
@@ -880,18 +886,18 @@ export class BattleEngine {
     }
 
     get winner(): PlayerID | 'draw' | null {
-        if (!this.ready || !this.battle.ended) return null
-        const w = this.battle.winner
-        return w === this.battle.p1.name ? 'p1' : w === this.battle.p2.name ? 'p2' : 'draw'
+        if (!this.ready || !this.ps.ended) return null
+        const w = this.ps.winner
+        return w === this.ps.p1.name ? 'p1' : w === this.ps.p2.name ? 'p2' : 'draw'
     }
 
     private buildState(withLog: boolean): BattleState {
-        const f = this.battle.field
+        const f = this.ps.field
         const weatherId = f.weather as string
         const terrainId = f.terrain as string
         const pending: Partial<Record<PlayerID, SwitchReason>> = {}
         for (const p of SIDES) {
-            const side = this.battle[p]
+            const side = this.ps[p]
             if (this.ready && side.requestState === 'switch' && !side.isChoiceDone()) {
                 pending[p] = side.active.some(a => a && a.fainted) ? 'faint' : 'self_switch'
             }
@@ -918,9 +924,9 @@ export class BattleEngine {
                 terrain: TERRAIN_FROM_PS[terrainId] ?? null,
                 terrain_turns: terrainId ? { turns_remaining: (f.terrainState as { duration?: number }).duration ?? Infinity } : null,
                 conditions,
-                turn: this.battle.turn,
+                turn: this.ps.turn,
             },
-            turn: Math.max(1, this.battle.turn),
+            turn: Math.max(1, this.ps.turn),
             phase: this.phase,
             winner: this.winner,
             log: withLog ? this.events : [],
@@ -930,7 +936,7 @@ export class BattleEngine {
     }
 
     private buildSide(player: PlayerID): Side {
-        const side: PSSide = this.battle[player]
+        const side: PSSide = this.ps[player]
         if (!this.ready || !side) {
             return { id: player, name: this.config[player].name, team: [], active: [], conditions: {}, used_dynamax: false, dynamax_turns: 0 }
         }
@@ -960,14 +966,14 @@ export class BattleEngine {
     /** 원래 팀 순서 (Showdown 은 교체 시 순서를 바꾼다) */
     private teamOrder(player: PlayerID): PSPokemon[] {
         const idx = (p: PSPokemon) => Number(this.idOf(p).split('_')[1] ?? 0)
-        return this.battle[player].pokemon.slice().sort((a, b) => idx(a) - idx(b))
+        return this.ps[player].pokemon.slice().sort((a, b) => idx(a) - idx(b))
     }
 
     private viewCache = new WeakMap<PSPokemon, { at: number; v: BattlePokemon }>()
 
     /** 로그가 늘지 않았으면 (=상태 변화 없음) 같은 뷰 재사용 */
     private view(p: PSPokemon): BattlePokemon {
-        const at = this.battle.log.length
+        const at = this.ps.log.length
         const c = this.viewCache.get(p)
         if (c && c.at === at && this.cacheable) return c.v
         const v = this.buildView(p)
@@ -1067,8 +1073,14 @@ export class BattleEngine {
     }
 
     /** Showdown Pokemon 객체 (고급 사용) */
-    getShowdownPokemon(id: string): PSPokemon | undefined {
+    /** @internal Showdown 원본 Pokemon (엔진 안에서 쓰는 정확한 타입) */
+    psPokemon(id: string): PSPokemon | undefined {
         return this.byId.get(id)
+    }
+
+    /** Showdown 원본 Pokemon (@pkmn/sim). 자세한 타입은 @pkmn/sim 을 설치해 캐스팅한다 */
+    getShowdownPokemon(id: string): ShowdownPokemon | undefined {
+        return this.byId.get(id) as unknown as ShowdownPokemon | undefined
     }
 
     /** 행동하는 앞 슬롯 (rotation 은 가운데 1, 나머지는 0) */
@@ -1079,13 +1091,13 @@ export class BattleEngine {
     /** slot 생략 시 앞 포켓몬 (rotation 은 가운데) */
     getActive(player: PlayerID, slot = this.frontSlot): BattlePokemon {
         this.start()
-        const side = this.battle[player]
+        const side = this.ps[player]
         return this.view(side.active[slot] ?? side.pokemon[0]!)
     }
 
     getActivePokemon(player: PlayerID): BattlePokemon[] {
         this.start()
-        return this.battle[player].active.filter(Boolean).map(p => this.view(p))
+        return this.ps[player].active.filter(Boolean).map(p => this.view(p))
     }
 
     getSide(player: PlayerID): Side {
@@ -1103,7 +1115,7 @@ export class BattleEngine {
 
     /** 구름제거/에어록을 반영한 날씨 */
     effectiveWeather(): Weather {
-        return WEATHER_FROM_PS[this.battle.field.effectiveWeather() as string] ?? null
+        return WEATHER_FROM_PS[this.ps.field.effectiveWeather() as string] ?? null
     }
 
     /** 실제 스피드 (랭크·특성·도구·마비 반영, Showdown 계산) */
@@ -1120,14 +1132,14 @@ export class BattleEngine {
     /** Showdown 원본 요청 (doubles 등에서 직접 사용) */
     getRawRequest(player: PlayerID): unknown {
         this.start()
-        return this.ready ? this.battle[player].activeRequest : null
+        return this.ready ? this.ps[player].activeRequest : null
     }
 
     /** 팀 프리뷰 중이면 고를 파티와 출전 수. 아니면 null */
     getTeamPreview(player: PlayerID): TeamPreviewRequest | null {
         this.start()
-        if (!this.ready || this.battle.ended) return null
-        const side = this.battle[player]
+        if (!this.ready || this.ps.ended) return null
+        const side = this.ps[player]
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const req = side.activeRequest as any
         if (!req?.teamPreview || side.isChoiceDone()) return null
@@ -1162,8 +1174,8 @@ export class BattleEngine {
     /** 플레이어가 지금 내려야 할 결정 (singles / rotation). 필요 없으면 null. 팀 프리뷰는 getTeamPreview */
     getRequest(player: PlayerID): BattleRequest | null {
         this.start()
-        if (!this.ready || this.battle.ended) return null
-        const side = this.battle[player]
+        if (!this.ready || this.ps.ended) return null
+        const side = this.ps[player]
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const req = side.activeRequest as any
         if (!req || req.wait || side.isChoiceDone()) return null
@@ -1232,10 +1244,10 @@ export class BattleEngine {
 
     /** 교체로 내보낼 수 있는 벤치 (원래 파티 순서) */
     private benchOf(player: PlayerID): BattlePokemon[] {
-        const side = this.battle[player]
+        const side = this.ps[player]
         // 같은 턴에 이미 예약된 교체 대상은 다시 고를 수 없다 (탈출팩 등 턴 중 강제 교체)
         const queuedIn = new Set<PSPokemon>()
-        for (const a of this.battle.queue.list as { choice?: string; target?: PSPokemon; pokemon?: PSPokemon }[]) {
+        for (const a of this.ps.queue.list as { choice?: string; target?: PSPokemon; pokemon?: PSPokemon }[]) {
             if ((a.choice === 'switch' || a.choice === 'instaswitch') && a.target && a.pokemon?.side === side) queuedIn.add(a.target)
         }
         return side.pokemon
@@ -1248,7 +1260,7 @@ export class BattleEngine {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     private switchOptions(player: PlayerID, req: any): BattlePokemon[] {
         if (req.side?.pokemon?.some((p: { reviving?: boolean }) => p.reviving)) {
-            return this.battle[player].pokemon.filter(p => p.fainted).map(p => this.view(p))
+            return this.ps[player].pokemon.filter(p => p.fainted).map(p => this.view(p))
                 .sort((a, b) => Number(a.id.split('_')[1]) - Number(b.id.split('_')[1]))
         }
         return this.benchOf(player)
@@ -1328,7 +1340,7 @@ export class BattleEngine {
     toChoice(action: Action): string {
         if (action.type === 'raw') return action.choice
         if (action.type === 'team') {
-            const side = this.battle[action.player]
+            const side = this.ps[action.player]
             const idx = action.order.map(id => {
                 const p = this.byId.get(id)
                 const i = p ? side.pokemon.indexOf(p) : -1
@@ -1339,7 +1351,7 @@ export class BattleEngine {
         }
         if (action.type === 'switch') {
             const target = this.byId.get(action.switch_to_id)
-            const idx = target ? this.battle[action.player].pokemon.indexOf(target) : -1
+            const idx = target ? this.ps[action.player].pokemon.indexOf(target) : -1
             if (idx < 0) throw new BattleError(`${action.switch_to_id} 로 교체할 수 없습니다`)
             return this.rotation ? this.slotChoice(FRONT, `switch ${idx + 1}`) : `switch ${idx + 1}`
         }
@@ -1350,7 +1362,7 @@ export class BattleEngine {
         // rotation: 행동하는 슬롯만 기술, 나머지는 pass. 상대 쪽 대상은 항상 상대 앞(loc 2)
         const slot = action.rotate ? ROTATE_SLOT[action.rotate] : FRONT
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const reqMove = (this.battle[action.player].activeRequest as any)?.active?.[slot]?.moves?.[n - 1] as { target?: string } | undefined
+        const reqMove = (this.ps[action.player].activeRequest as any)?.active?.[slot]?.moves?.[n - 1] as { target?: string } | undefined
         const t = reqMove?.target ?? ''
         const loc = ['normal', 'any', 'adjacentFoe'].includes(t) ? ` ${FOE_FRONT_LOC}`
             : ['adjacentAlly', 'adjacentAllyOrSelf'].includes(t) ? ` -${slot + 1}` : ''
@@ -1364,7 +1376,7 @@ export class BattleEngine {
 
     submitAction(action: Action): void {
         this.start()
-        if (this.battle.ended) throw new BattleError('배틀이 이미 종료되었습니다')
+        if (this.ps.ended) throw new BattleError('배틀이 이미 종료되었습니다')
         let final: Action = action
         if (action.type === 'team') {
             const req = this.getTeamPreview(action.player)
@@ -1404,7 +1416,7 @@ export class BattleEngine {
 
     /** rotation 교체 요청: 슬롯을 하나씩 모았다가 모두 채우면(또는 더 보낼 포켓몬이 없으면) 한 번에 제출 */
     private pickRotationSwitch(action: Extract<Action, { type: 'switch' }>): void {
-        const side = this.battle[action.player]
+        const side = this.ps[action.player]
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const req = side.activeRequest as any
         const picks = this.pendingPicks(action.player, req)
@@ -1439,9 +1451,9 @@ export class BattleEngine {
     /** Showdown 선택 문자열 직접 제출 ('move 1', 'switch 3', 'move 2 terastallize, move 1 2' …) */
     submitChoice(player: PlayerID, choice: string): void {
         this.start()
-        const ok = this.battle.choose(player, choice)
+        const ok = this.ps.choose(player, choice)
         if (!ok) {
-            const err = this.battle[player].choice.error || 'invalid choice'
+            const err = this.ps[player].choice.error || 'invalid choice'
             throw new BattleError(`${player}: ${err} (${choice})`)
         }
     }
@@ -1492,15 +1504,15 @@ export class BattleEngine {
         opts: { terastallize?: boolean; mega?: boolean; ultra_burst?: boolean; zmove?: boolean; dynamax?: boolean } = {},
     ): DamageResult | null {
         this.start()
-        const user = this.battle[player].active[this.frontSlot]
-        const foe = this.battle[this.foeOf(player)].active[this.frontSlot]
+        const user = this.ps[player].active[this.frontSlot]
+        const foe = this.ps[this.foeOf(player)].active[this.frontSlot]
         const slot = user?.moveSlots[moveIndex]
         if (!user || !foe || foe.fainted || !slot) return null
         const move = Dex.moves.get(slot.id)
         if (move.category === 'Status') return null
-        const foeSide = this.battle[this.foeOf(player)].sideConditions
+        const foeSide = this.ps[this.foeOf(player)].sideConditions
         // 기믹을 고른 경우: 메가·울트라 폼, Z기술, 다이맥스(거다이맥스) 기술로 계산
-        const actions = this.battle.actions as unknown as { canMegaEvo(p: PSPokemon): string | null; canUltraBurst(p: PSPokemon): string | null }
+        const actions = this.ps.actions as unknown as { canMegaEvo(p: PSPokemon): string | null; canUltraBurst(p: PSPokemon): string | null }
         const formName = (opts.mega && actions.canMegaEvo(user)) || (opts.ultra_burst && actions.canUltraBurst(user)) || user.species.name
         const maxing = !!opts.dynamax || !!user.volatiles['dynamax']
         const gmax = maxing && user.gigantamax && user.canGigantamax ? user.canGigantamax : null
@@ -1511,10 +1523,10 @@ export class BattleEngine {
                 maxMove: maxing ? gmax ?? true : false,
                 gen: this.gen,
                 weather: this.effectiveWeather(),
-                terrain: TERRAIN_FROM_PS[this.battle.field.terrain as string] ?? null,
-                gravity: !!this.battle.field.pseudoWeather['gravity'],
-                magicRoom: !!this.battle.field.pseudoWeather['magicroom'],
-                wonderRoom: !!this.battle.field.pseudoWeather['wonderroom'],
+                terrain: TERRAIN_FROM_PS[this.ps.field.terrain as string] ?? null,
+                gravity: !!this.ps.field.pseudoWeather['gravity'],
+                magicRoom: !!this.ps.field.pseudoWeather['magicroom'],
+                wonderRoom: !!this.ps.field.pseudoWeather['wonderroom'],
                 reflect: !!foeSide['reflect'],
                 lightScreen: !!foeSide['lightscreen'],
                 auroraVeil: !!foeSide['auroraveil'],
@@ -1526,7 +1538,7 @@ export class BattleEngine {
 
     forfeit(player: PlayerID): void {
         this.start()
-        if (this.battle.ended) return
-        this.battle.win(this.foeOf(player))
+        if (this.ps.ended) return
+        this.ps.win(this.foeOf(player))
     }
 }

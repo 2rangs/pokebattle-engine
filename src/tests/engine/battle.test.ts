@@ -134,7 +134,7 @@ describe('BattleEngine (Showdown 시뮬레이터)', () => {
         expect(req).toMatchObject({ type: 'switch', reason: 'self_switch' })
         expect(req!.switches.map(p => p.id)).toEqual(['p1_2'])
         e.submitAction(sw(e, 'p1', 'p1_2'))
-        expect(e.battle.ended || e.getState().phase !== 'ended').toBe(true)
+        expect(e.ps.ended || e.getState().phase !== 'ended').toBe(true)
     })
 
     it('숨은 구속 (그림자밟기): 교체 선택지 없음', () => {
@@ -323,7 +323,7 @@ describe('AI / 한국어 로그', () => {
             const rng = new PRNG(i)
             const r = simulateBattle({ format: 'singles', seed: i, maxTurns: 300, p1: { name: 'A', team: generateChaosTeam({ rng }) }, p2: { name: 'B', team: generateChaosTeam({ rng }) } },
                 { p1: new RandomAI(i), p2: new RandomAI(i + 1) })
-            expect(r.engine.battle.ended).toBe(true)
+            expect(r.engine.ps.ended).toBe(true)
             expect(r.engine.unhandledProtocol.size).toBe(0)
         }
     })

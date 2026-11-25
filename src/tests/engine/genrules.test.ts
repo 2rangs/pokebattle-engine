@@ -64,8 +64,8 @@ describe('기믹 끄기', () => {
         const e = engine(7, 'Charizard @ Charizardite Y\nAbility: Blaze\n- Flamethrower', { megaEvolution: false, zMoves: false })
         e.submitAction({ type: 'move', player: 'p1', pokemon_id: 'p1_0', move_index: 0 })
         e.submitAction({ type: 'move', player: 'p2', pokemon_id: 'p2_0', move_index: 0 })
-        const again = replayInputLog(e.battle.inputLog)
-        expect(comparableLog(again)).toBe(comparableLog(e.battle))
+        const again = replayInputLog(e.ps.inputLog)
+        expect(comparableLog(again)).toBe(comparableLog(e.ps))
     })
 })
 
@@ -82,7 +82,7 @@ describe('1·2세대 세트 정리', () => {
 
     it('1세대: 특성·성격·도구 없음, 특수는 하나', () => {
         const e = make(1, set())
-        const p = e.battle.p1.pokemon[0]!
+        const p = e.ps.p1.pokemon[0]!
         expect(p.ability).toBe('noability')
         expect(p.item).toBe('')
         // 성격 보정 없음 (고집이어도 공격 ×1.1 아님), 특수: 특방 = 특공 (능력치 경험치도 하나)
@@ -94,7 +94,7 @@ describe('1·2세대 세트 정리', () => {
 
     it('2세대: 도구는 있고 특성·성격은 없다, 특방 DV·경험치는 특공과 같다', () => {
         const e = make(2, set({ ivs: { special_attack: 20, special_defense: 2 } }))
-        const p = e.battle.p1.pokemon[0]!
+        const p = e.ps.p1.pokemon[0]!
         expect(p.item).toBe('leftovers')
         expect(p.ability).toBe('noability')
         expect(p.set.ivs.spd).toBe(p.set.ivs.spa)
@@ -104,14 +104,14 @@ describe('1·2세대 세트 정리', () => {
     it('HP DV 는 다른 DV 로 정해진다 (1·2세대)', () => {
         const e = make(2, set({ ivs: { attack: 2, defense: 30, special_attack: 30, speed: 30, hp: 30 } }))
         // 공격 DV 1(홀) → 8, 방어 15 → 4, 스피드 15 → 2, 특수 15 → 1 = 15 → IV 30
-        expect(e.battle.p1.pokemon[0]!.set.ivs.hp).toBe(30)
+        expect(e.ps.p1.pokemon[0]!.set.ivs.hp).toBe(30)
         const even = make(2, set({ ivs: { attack: 4, defense: 4, special_attack: 4, speed: 4, hp: 30 } }))
-        expect(even.battle.p1.pokemon[0]!.set.ivs.hp).toBe(0)
+        expect(even.ps.p1.pokemon[0]!.set.ivs.hp).toBe(0)
     })
 
     it('3세대는 그대로 (특성·성격)', () => {
         const e = make(3, set())
-        const p = e.battle.p1.pokemon[0]!
+        const p = e.ps.p1.pokemon[0]!
         expect(p.ability).toBe('intimidate')
         expect(p.storedStats.atk).toBe(383) // 고집 ×1.1
     })
@@ -232,7 +232,7 @@ describe('기믹 겹치기 (stackGimmicks)', () => {
         const b = make(ZARD)
         b.turn({ mega: true, terastallize: true, dynamax: true })
         b.turn()
-        expect(comparableLog(replayInputLog(b.e.battle.inputLog))).toBe(comparableLog(b.e.battle))
+        expect(comparableLog(replayInputLog(b.e.ps.inputLog))).toBe(comparableLog(b.e.ps))
     })
 })
 
@@ -241,7 +241,7 @@ describe('기믹 AI · 겹치기 퍼즈', () => {
         const { simulateBattle, createAI, generateRandomTeam } = await import('../../index')
         const used = { mega: 0, zmove: 0, dynamax: 0, terastallize: 0, stacked: 0 }
         const count = (e: BattleEngine) => {
-            for (const line of e.battle.inputLog) {
+            for (const line of e.ps.inputLog) {
                 const m = /^>p[12] move \S+(.*)$/.exec(line)
                 if (!m) continue
                 const flags = m[1]!.trim().split(/\s+/).filter(Boolean)
@@ -269,7 +269,7 @@ describe('기믹 AI · 겹치기 퍼즈', () => {
             expect(r.winner).not.toBeNull()
             count(r.engine)
             const nodebug = (s: string) => s.split("\n").filter(l => !l.startsWith("|debug|")).join("\n")
-            if (i % 10 === 0) expect(nodebug(comparableLog(replayInputLog(r.engine.battle.inputLog)))).toBe(nodebug(comparableLog(r.engine.battle)))
+            if (i % 10 === 0) expect(nodebug(comparableLog(replayInputLog(r.engine.ps.inputLog)))).toBe(nodebug(comparableLog(r.engine.ps)))
         }
         expect(used.stacked).toBeGreaterThan(0)
         expect(used.terastallize).toBeGreaterThan(0)

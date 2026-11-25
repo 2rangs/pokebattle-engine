@@ -257,7 +257,7 @@ describe('rotation', () => {
                 { format: 'rotation', seed, options: seed % 3 === 0 ? { pickedTeamSize: 4 } : undefined, p1: { name: 'A', team: generateRandomTeam({ seed }) }, p2: { name: 'B', team: generateRandomTeam({ seed: seed + 100 }) } },
                 { p1: seed % 2 ? new HeuristicAI({ seed }) : new RandomAI(seed), p2: new RandomAI(seed + 1) },
             )
-            expect(r.engine.battle.ended).toBe(true)
+            expect(r.engine.ps.ended).toBe(true)
             expect([...r.engine.unhandledProtocol.keys()]).toEqual([])
         }
     })

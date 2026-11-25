@@ -8,6 +8,7 @@
 // 옵션 객체는 JSON 으로 저장할 수 있다 → 룸 설정으로 보관하고 같은 seed 로 같은 배틀을 다시 만들 수 있다.
 import { Dex } from '@pkmn/sim'
 import type { Species as PSSpecies } from '@pkmn/sim'
+import type { ShowdownSpecies } from '../types/showdown'
 import { BattleEngine, BattleError } from '../engine/BattleEngine'
 import type { EngineOptions } from '../engine/BattleEngine'
 import { toCustomStats, SetError } from '../showdown/sets'
@@ -83,7 +84,11 @@ const poolCache = new Map<number, PSSpecies[]>()
  * 'random' 팀에 쓰는 종: 그 세대까지 나온 일반 포켓몬 (과거작 포함).
  * 배틀 중에만 되는 폼(메가·거다이맥스 등)과 특정 도구·특성·기술이 있어야 하는 폼(아르세우스 타입 등)은 뺀다.
  */
-export function metronomeSpeciesPool(gen: Generation = 9): readonly PSSpecies[] {
+export function metronomeSpeciesPool(gen: Generation = 9): readonly ShowdownSpecies[] {
+    return speciesPool(gen) as unknown as readonly ShowdownSpecies[]
+}
+
+function speciesPool(gen: Generation): readonly PSSpecies[] {
     const cached = poolCache.get(gen)
     if (cached) return cached
     const pool = Dex.forGen(gen).species.all().filter(s => {
@@ -155,7 +160,7 @@ export function buildMetronomeTeam(side: MetronomeSideOptions, ctx: TeamContext,
     const dex = Dex.forGen(ctx.gen)
     const team = side.team ?? 'random'
     if (team === 'random') {
-        const pool = metronomeSpeciesPool(ctx.gen)
+        const pool = speciesPool(ctx.gen)
         const picked: PSSpecies[] = []
         while (picked.length < ctx.teamSize) {
             const s = ctx.rng.pick(pool)

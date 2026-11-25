@@ -51,6 +51,7 @@ npm install @kyasi/pokebattle-engine
 ```
 
 - **Node 18 or newer** (tested on 18, 20, 22 and 24), or any modern browser through a bundler (Vite, webpack, Next.js …).
+- **One runtime dependency:** `@smogon/calc`. The parts of Showdown's simulator a battle needs are bundled inside the package, so `@pkmn/sim` is not installed. It is an optional peer dependency: install it only if you want its full types for the raw Showdown objects (`engine.battle`, `getShowdownPokemon`), e.g. `engine.battle as unknown as import('@pkmn/sim').Battle`.
 - ESM and CommonJS both work: `import { BattleEngine } from '@kyasi/pokebattle-engine'` or `require('@kyasi/pokebattle-engine')`. The React hook is `@kyasi/pokebattle-engine/react` (React 18+, optional peer dependency).
 - TypeScript types are included. If your project type-checks library files (`skipLibCheck: false`) without Node types, add `@types/node`: `@pkmn/sim`'s own declarations mention Node's `Buffer`. Vite, Next.js and most templates set `skipLibCheck: true`, which avoids it.
 - The CLI comes with it: `npx pokebattle watch`.

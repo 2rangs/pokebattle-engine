@@ -34,13 +34,13 @@ describe('회귀 스냅샷: 세대별 랜덤배틀 전체 로그', () => {
             const lines = transcript(e)
             const ai = new HeuristicAI({ seed: gen })
             e.start()
-            for (let g = 0; g < 3000 && !e.battle.ended; g++) {
+            for (let g = 0; g < 3000 && !e.ps.ended; g++) {
                 for (const p of ['p1', 'p2'] as const) {
-                    if (e.battle.ended) break
+                    if (e.ps.ended) break
                     if (e.getRequest(p)) e.submitAction(ai.chooseAction(e, p)!)
                 }
             }
-            expect(e.battle.ended).toBe(true)
+            expect(e.ps.ended).toBe(true)
             expect([...e.unhandledProtocol.keys()]).toEqual([])
             expect({ summary: summary(e), log: lines }).toMatchSnapshot()
         })
@@ -51,15 +51,15 @@ describe('회귀 스냅샷: 세대별 랜덤배틀 전체 로그', () => {
         const lines = transcript(e)
         const rng = new PRNG(7)
         e.start()
-        for (let g = 0; g < 3000 && !e.battle.ended; g++) {
+        for (let g = 0; g < 3000 && !e.ps.ended; g++) {
             for (const p of ['p1', 'p2'] as const) {
-                if (e.battle.ended) break
+                if (e.ps.ended) break
                 const req = e.getRawRequest(p) as { wait?: boolean } | null
-                if (!req || req.wait || e.battle[p].isChoiceDone()) continue
+                if (!req || req.wait || e.ps[p].isChoiceDone()) continue
                 try { e.submitChoice(p, randomDoublesChoice(req, rng)) } catch { e.submitChoice(p, 'default') }
             }
         }
-        expect(e.battle.ended).toBe(true)
+        expect(e.ps.ended).toBe(true)
         expect({ summary: summary(e), log: lines }).toMatchSnapshot()
     })
 })

@@ -1,6 +1,7 @@
 // ─── PokemonSet (PokeAPI 슬러그) ↔ Showdown PokemonSet ─────────
 import { Dex, toID } from '@pkmn/sim'
 import type { PokemonSet as PSSet, StatsTable } from '@pkmn/sim'
+import type { ShowdownSet } from '../types/showdown'
 import type { PokemonSet, EVs, IVs, Nature, Stats } from '../types/pokemon'
 import { CUSTOM_STAT_MIN, CUSTOM_STAT_MAX } from '../engine/customstats'
 import type { PSCustomStats } from '../engine/customstats'
@@ -62,7 +63,12 @@ function cleanName(name: string): string {
  * 종/기술/특성/도구는 PokeAPI 슬러그·Showdown 이름·ID 를 모두 받는다.
  * strict 면 존재하지 않는 이름에서 SetError.
  */
-export function toShowdownSet(set: PokemonSet, strict = true): PSSet {
+export function toShowdownSet(set: PokemonSet, strict = true): ShowdownSet {
+    return toPSSet(set, strict)
+}
+
+/** @internal toShowdownSet 의 원본 타입 */
+export function toPSSet(set: PokemonSet, strict = true): PSSet {
     const species = Dex.species.get(speciesToShowdown(set.species))
     if (!species.exists) {
         throw new SetError(`알 수 없는 포켓몬: ${set.species}`)
@@ -123,7 +129,12 @@ export function toShowdownSet(set: PokemonSet, strict = true): PSSet {
  *  - 1세대: 지닌 도구 없음
  * 3세대 이상은 그대로 둔다.
  */
-export function adaptSetToGen(ps: PSSet, gen: number): PSSet {
+export function adaptSetToGen<S extends ShowdownSet>(set: S, gen: number): S {
+    return adaptPSSetToGen(set as unknown as PSSet, gen) as unknown as S
+}
+
+/** @internal */
+export function adaptPSSetToGen(ps: PSSet, gen: number): PSSet {
     if (gen > 2) return ps
     const out: PSSet = { ...ps, ability: 'No Ability', nature: '', evs: { ...ps.evs }, ivs: { ...ps.ivs } }
     if (gen === 1) out.item = ''
@@ -135,7 +146,8 @@ export function adaptSetToGen(ps: PSSet, gen: number): PSSet {
 }
 
 /** Showdown 세트 → 엔진 세트 (PokeAPI 슬러그) */
-export function fromShowdownSet(ps: PSSet): PokemonSet {
+export function fromShowdownSet(set: ShowdownSet): PokemonSet {
+    const ps = set as unknown as PSSet
     const species = Dex.species.get(ps.species)
     const slug = speciesSlug(species.exists ? species.id : toID(ps.species))
     return {

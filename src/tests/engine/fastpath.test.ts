@@ -14,12 +14,12 @@ function play(format: BattleFormat, seed: number, fast: boolean) {
     }, { fast, turnSnapshots: false })
     engine.start()
     let guard = 0
-    while (!engine.battle.ended && guard++ < 3000) {
+    while (!engine.ps.ended && guard++ < 3000) {
         for (const player of ['p1', 'p2'] as const) {
-            if (engine.battle.ended) break
+            if (engine.ps.ended) break
             if (format === 'doubles' || format === 'triples') {
                 const req = engine.getRawRequest(player) as { wait?: boolean } | null
-                if (req && !req.wait && !engine.battle[player].isChoiceDone()) engine.submitChoice(player, 'default')
+                if (req && !req.wait && !engine.ps[player].isChoiceDone()) engine.submitChoice(player, 'default')
             } else if (engine.getRequest(player)) {
                 engine.submitAction(rng.pick(engine.getAvailableActions(player)))
             }
@@ -34,23 +34,23 @@ describe('빠른 경로 (Showdown 핫패스 패치)', () => {
             for (let seed = 1; seed <= 6; seed++) {
                 const fast = play(format, seed, true)
                 const orig = play(format, seed, false)
-                expect(fast.battle.ended).toBe(true)
-                expect(comparableLog(fast.battle)).toBe(comparableLog(orig.battle))
+                expect(fast.ps.ended).toBe(true)
+                expect(comparableLog(fast.ps)).toBe(comparableLog(orig.ps))
             }
         })
     }
 
     it('fastPath 를 켜지 않은 Battle 은 원본 경로 그대로다', () => {
         const engine = play('singles', 3, true)
-        const plain = replayInputLog(engine.battle.inputLog)
+        const plain = replayInputLog(engine.ps.inputLog)
         expect((plain as unknown as { fastPath?: boolean }).fastPath).toBeUndefined()
-        expect((engine.battle as unknown as { fastPath?: boolean }).fastPath).toBe(true)
-        expect(comparableLog(plain)).toBe(comparableLog(engine.battle))
+        expect((engine.ps as unknown as { fastPath?: boolean }).fastPath).toBe(true)
+        expect(comparableLog(plain)).toBe(comparableLog(engine.ps))
     })
 
-    it('engine.battle.log 는 Showdown 로그 전체 (|gametype| 포함)', () => {
+    it('engine.ps.log 는 Showdown 로그 전체 (|gametype| 포함)', () => {
         const engine = play('singles', 2, true)
-        expect(engine.battle.log).toContain('|gametype|singles')
-        expect(engine.battle).toBeInstanceOf(Battle)
+        expect(engine.ps.log).toContain('|gametype|singles')
+        expect(engine.ps).toBeInstanceOf(Battle)
     })
 })

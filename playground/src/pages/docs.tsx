@@ -102,12 +102,12 @@ export const DOCS: DocPage[] = [
         <Ul items={t([
           'Node.js 또는 최신 브라우저. 배틀·데미지 계산·이름은 바로 동작합니다.',
           '무거운 데이터는 필요할 때만 불러옵니다: await preloadData() 는 랜덤배틀 세트·기술표, preloadData({ gens: [7] }) 는 그 세대 데이터. 번들에서는 각각 별도 청크입니다.',
-          '의존성: @pkmn/sim (필요한 부분만 번들), @smogon/calc.',
+          '설치되는 의존성은 @smogon/calc 하나입니다. Showdown 시뮬레이터는 필요한 부분만 패키지 안에 묶여 있어 @pkmn/sim 은 설치되지 않습니다 (engine.battle 같은 원본 객체의 자세한 타입이 필요할 때만 선택해서 설치).',
           'React는 /react 엔트리를 쓸 때만 필요합니다.',
         ], [
           'Node.js or a modern browser. Battles, the damage calculator and names work right away.',
           'Heavy data loads on demand: await preloadData() fetches random-battle sets and learnsets, preloadData({ gens: [7] }) a generation’s data. Each is a separate chunk in the bundle.',
-          'Dependencies: @pkmn/sim (only the needed parts are bundled), @smogon/calc.',
+          'The only installed dependency is @smogon/calc. The needed parts of Showdown’s simulator are bundled in the package, so @pkmn/sim is not installed (add it only if you want full types for raw objects such as engine.battle).',
           'React is only needed for the /react entry.',
         ])} />
         <Snippet code={`import { preloadData } from '@kyasi/pokebattle-engine'

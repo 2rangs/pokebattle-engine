@@ -35,10 +35,10 @@ export function simulateBattle(config: BattleConfig, opts: SimulateOptions): Sim
     const ais: Record<PlayerID, BattleAI> = { p1: opts.p1, p2: opts.p2 }
     const max = opts.maxDecisions ?? 5000
     let decisions = 0
-    while (!engine.battle.ended && decisions < max) {
+    while (!engine.ps.ended && decisions < max) {
         let progressed = false
         for (const player of ['p1', 'p2'] as PlayerID[]) {
-            if (engine.battle.ended) break
+            if (engine.ps.ended) break
             if (!engine.getRequest(player) && !engine.getTeamPreview(player)) continue
             const action = ais[player].chooseAction(engine, player) ?? engine.getAvailableActions(player)[0]
             if (!action) continue
@@ -48,7 +48,7 @@ export function simulateBattle(config: BattleConfig, opts: SimulateOptions): Sim
         }
         if (!progressed) break
     }
-    if (!engine.battle.ended) engine.battle.tie()
+    if (!engine.ps.ended) engine.ps.tie()
     const state = engine.getState()
     return { winner: state.winner, turns: state.turn, engine, log: state.log }
 }

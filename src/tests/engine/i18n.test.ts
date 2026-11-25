@@ -114,17 +114,17 @@ describe('로그·이벤트 버그 회귀', () => {
                 p2: { name: 'B', team: generateRandomTeam({ seed: rng.int(1e9) }) },
             })
             const at: { ev: BattleEvent; line: number }[] = []
-            engine.on('*', ev => at.push({ ev, line: engine.battle.log.length }))
+            engine.on('*', ev => at.push({ ev, line: engine.ps.log.length }))
             engine.start()
             let g = 0
-            while (!engine.battle.ended && g++ < 2000) {
-                for (const p of ['p1', 'p2'] as const) if (!engine.battle.ended && engine.getRequest(p)) engine.submitAction(rng.pick(engine.getAvailableActions(p)))
+            while (!engine.ps.ended && g++ < 2000) {
+                for (const p of ['p1', 'p2'] as const) if (!engine.ps.ended && engine.getRequest(p)) engine.submitAction(rng.pick(engine.getAvailableActions(p)))
             }
-            const log = engine.battle.log
+            const log = engine.ps.log
             for (const { ev, line } of at) {
                 if (ev.type === 'status_apply') expect(ev.status).not.toBe('fnt')
                 if (ev.type !== 'damage' || !ev.crit) continue
-                const p = engine.getShowdownPokemon(ev.pokemon_id)!
+                const p = engine.psPokemon(ev.pokemon_id)!
                 let k = line - 1
                 let found = false
                 for (; k >= 0 && !log[k]!.startsWith('|move|'); k--) if (log[k]!.startsWith('|-crit|') && log[k]!.includes(p.name)) found = true

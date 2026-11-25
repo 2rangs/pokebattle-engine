@@ -6,6 +6,7 @@ import { enableFastPath } from './fastpath'
 import { installRotationPatches } from './rotation'
 import { ensureCustomStatsRuleFor } from './customstats'
 import { ensureGimmickRulesFor } from './gimmickrules'
+import type { ShowdownBattle } from '../types/showdown'
 
 export interface ReplayOptions {
     /** 빠른 경로 사용 (기본 false = Showdown 원본 그대로) */
@@ -15,7 +16,12 @@ export interface ReplayOptions {
 }
 
 /** inputLog 를 재생한 Battle 을 반환한다 */
-export function replayInputLog(inputLog: readonly string[], options: ReplayOptions = {}): Battle {
+export function replayInputLog(inputLog: readonly string[], options: ReplayOptions = {}): ShowdownBattle {
+    return replayBattle(inputLog, options) as unknown as ShowdownBattle
+}
+
+/** @internal replayInputLog 의 원본 Battle */
+export function replayBattle(inputLog: readonly string[], options: ReplayOptions = {}): Battle {
     let battle: Battle | null = null
     for (const line of inputLog) {
         const sp = line.indexOf(' ')
@@ -54,6 +60,6 @@ export function replayInputLog(inputLog: readonly string[], options: ReplayOptio
 }
 
 /** 비교용 프로토콜 로그 (실제 시각 |t:| 제외) */
-export function comparableLog(battle: Battle): string {
+export function comparableLog(battle: { readonly log: readonly string[] }): string {
     return battle.log.filter(l => !l.startsWith('|t:|')).join('\n')
 }

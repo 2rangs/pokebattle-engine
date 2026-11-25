@@ -8,12 +8,12 @@ import type { Generation, PokemonSet } from '../../index'
 function play(engine: BattleEngine, seed = 1) {
     const ai = new RandomAI(seed)
     engine.start()
-    for (let g = 0; !engine.battle.ended && g < 3000; g++) {
+    for (let g = 0; !engine.ps.ended && g < 3000; g++) {
         for (const p of ['p1', 'p2'] as const) {
-            if (engine.battle.ended) break
-            if (engine.battle.gameType === 'doubles') {
+            if (engine.ps.ended) break
+            if (engine.ps.gameType === 'doubles') {
                 const req = engine.getRawRequest(p) as { wait?: boolean } | null
-                if (req && !req.wait && !engine.battle[p].isChoiceDone()) engine.submitChoice(p, 'default')
+                if (req && !req.wait && !engine.ps[p].isChoiceDone()) engine.submitChoice(p, 'default')
             } else if (engine.getRequest(p)) engine.submitAction(ai.chooseAction(engine, p)!)
         }
     }
@@ -51,8 +51,8 @@ describe('랜덤배틀 API', () => {
     it('createRandomBattle: 실제 랜덤배틀 포맷 규칙, 시드 재현, 고정 레벨', () => {
         const a = play(createRandomBattle({ seed: 11 }))
         const b = play(createRandomBattle({ seed: 11 }))
-        expect(a.battle.format.id).toBe('gen9randombattle')
-        expect(a.battle.log.filter(l => !l.startsWith('|t:|'))).toEqual(b.battle.log.filter(l => !l.startsWith('|t:|')))
+        expect(a.ps.format.id).toBe('gen9randombattle')
+        expect(a.ps.log.filter(l => !l.startsWith('|t:|'))).toEqual(b.ps.log.filter(l => !l.startsWith('|t:|')))
         const lv50 = createRandomBattle({ seed: 11, level: 50 })
         lv50.start()
         expect(lv50.getSide('p1').team.every(p => p.level === 50)).toBe(true)
@@ -62,15 +62,15 @@ describe('랜덤배틀 API', () => {
     for (const gen of [1, 2, 3, 4, 5, 6, 7, 8] as Generation[]) {
         it(`${gen}세대 랜덤배틀이 끝까지 돌고 모든 로그를 처리한다`, () => {
             const e = play(createRandomBattle({ gen, seed: gen * 7, engine: { turnSnapshots: false } }), gen)
-            expect(e.battle.ended).toBe(true)
-            expect(e.battle.gen).toBe(gen)
+            expect(e.ps.ended).toBe(true)
+            expect(e.ps.gen).toBe(gen)
             expect([...e.unhandledProtocol.keys()]).toEqual([])
         })
     }
 
     it('9세대 더블·모노타입 랜덤배틀', () => {
-        expect(play(createRandomBattle({ format: 'doubles', seed: 2 })).battle.format.id).toBe('gen9randomdoublesbattle')
-        expect(play(createRandomBattle({ format: 'monotype', seed: 2 })).battle.ended).toBe(true)
+        expect(play(createRandomBattle({ format: 'doubles', seed: 2 })).ps.format.id).toBe('gen9randomdoublesbattle')
+        expect(play(createRandomBattle({ format: 'monotype', seed: 2 })).ps.ended).toBe(true)
     })
 })
 
@@ -113,6 +113,6 @@ describe('세대별 기믹', () => {
         const team = [{ species: 'pikachu', moves: ['thunderbolt'] }, { species: 'pikachu', moves: ['thunderbolt'] }, { species: 'pikachu', moves: ['thunderbolt'] }] as unknown as PokemonSet[]
         expect(() => new BattleEngine({ format: 'doubles', gen: 2, p1: { name: 'a', team }, p2: { name: 'b', team } })).toThrow(/3세대/)
         expect(() => new BattleEngine({ format: 'rotation', gen: 6, p1: { name: 'a', team }, p2: { name: 'b', team } })).toThrow(/9세대/)
-        expect(new BattleEngine({ format: 'triples', gen: 5, p1: { name: 'a', team }, p2: { name: 'b', team } }).battle.format.id).toBe('gen5triplescustomgame')
+        expect(new BattleEngine({ format: 'triples', gen: 5, p1: { name: 'a', team }, p2: { name: 'b', team } }).ps.format.id).toBe('gen5triplescustomgame')
     })
 })

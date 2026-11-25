@@ -271,12 +271,12 @@ describe('장판: 들어올 때', () => {
         expect(enter(['toxic-spikes'], S('blissey', ['splash'])).mon.status).toBe('poison')
         expect(enter(['toxic-spikes', 'toxic-spikes'], S('blissey', ['splash'])).mon.status).toBe('toxic')
         const muk = enter(['toxic-spikes'], S('muk', ['splash']))
-        expect(muk.e.battle.p2.sideConditions['toxicspikes']).toBeUndefined()
+        expect(muk.e.ps.p2.sideConditions['toxicspikes']).toBeUndefined()
         expect(muk.events.find(ev => ev.type === 'side_end')).toMatchObject({ player: 'p2', condition: 'toxic_spikes', pokemon_id: 'p2_1' })
         expect(muk.ko).toContain('상대 질뻐기가 독압정을 흡수했다!')
         expect(muk.en).toContain('The opposing Muk absorbed the Toxic Spikes!')
         const crobat = enter(['toxic-spikes'], S('crobat', ['splash'])) // 독+비행: 땅에 닿지 않아 흡수도 못 한다
-        expect(crobat.e.battle.p2.sideConditions['toxicspikes']).toBeDefined()
+        expect(crobat.e.ps.p2.sideConditions['toxicspikes']).toBeDefined()
         for (const mon of [S('skarmory', ['splash']), S('blissey', ['splash'], { item: 'heavy-duty-boots' })]) {
             expect(enter(['toxic-spikes'], mon).mon.status).toBeNull()
         }
@@ -341,25 +341,25 @@ describe('AI: 교체 판단', () => {
     })
     it('HP 가 절반 이하면 꼬리자르기를 쓰지 않는다', () => {
         const acts = picks([S('cyclizar', ['shed-tail', 'splash'], fast), ...bench()], [S('snorlax', ['splash'])], e => {
-            const p = e.battle.p1.active[0]!; p.sethp(Math.floor(p.maxhp / 2))
+            const p = e.ps.p1.active[0]!; p.sethp(Math.floor(p.maxhp / 2))
         })
         expect(acts.some(a => moveIdx(a) === 0)).toBe(false)
     })
     it('흡반 상대에게는 울부짖기를 쓰지 않고, 랭크를 올린 상대에게는 쓴다', () => {
         const team = [S('arcanine', ['roar', 'splash']), ...bench()]
-        const cups = picks(team, [S('octillery', ['splash'], { ability: 'suction-cups' }), ...bench()], e => { e.battle.p2.active[0]!.boosts.spa = 2 })
+        const cups = picks(team, [S('octillery', ['splash'], { ability: 'suction-cups' }), ...bench()], e => { e.ps.p2.active[0]!.boosts.spa = 2 })
         expect(cups.some(a => moveIdx(a) === 0)).toBe(false)
-        const boosted = picks(team, [S('snorlax', ['splash']), ...bench()], e => { e.battle.p2.active[0]!.boosts.atk = 2 })
+        const boosted = picks(team, [S('snorlax', ['splash']), ...bench()], e => { e.ps.p2.active[0]!.boosts.atk = 2 })
         expect(boosted.filter(a => moveIdx(a) === 0).length).toBeGreaterThan(8)
     })
     it('배턴터치: 랭크를 쌓았으면 넘기고, 넘겨받을 포켓몬은 그 랭크를 쓰는 쪽', () => {
         const team = [S('ninjask', ['baton-pass', 'splash'], fast), S('alakazam', ['psychic']), S('machamp', ['close-combat'])]
-        const acts = picks(team, [S('snorlax', ['splash'])], e => { Object.assign(e.battle.p1.active[0]!.boosts, { atk: 4, spe: 2 }) })
+        const acts = picks(team, [S('snorlax', ['splash'])], e => { Object.assign(e.ps.p1.active[0]!.boosts, { atk: 4, spe: 2 }) })
         expect(acts.filter(a => moveIdx(a) === 0).length).toBeGreaterThan(8)
         const chosen = new Set<string>()
         for (let seed = 1; seed <= 12; seed++) {
             const { e } = setup(team, [S('snorlax', ['splash'])], { seed })
-            Object.assign(e.battle.p1.active[0]!.boosts, { atk: 4, spe: 2 })
+            Object.assign(e.ps.p1.active[0]!.boosts, { atk: 4, spe: 2 })
             turn(e, mv(e, 'p1', 0), mv(e, 'p2'))
             const a = new HeuristicAI({ seed }).chooseAction(e, 'p1')!
             if (a.type === 'switch') chosen.add(a.switch_to_id)

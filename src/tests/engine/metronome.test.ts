@@ -8,19 +8,19 @@ import type { BattleEvent, PokemonSet } from '../../index'
 function play(engine: BattleEngine, seed = 1) {
     const ai = new RandomAI(seed)
     engine.start()
-    for (let g = 0; !engine.battle.ended && g < 5000; g++) {
+    for (let g = 0; !engine.ps.ended && g < 5000; g++) {
         for (const p of ['p1', 'p2'] as const) {
-            if (engine.battle.ended) break
-            if (engine.battle.gameType === 'doubles') {
+            if (engine.ps.ended) break
+            if (engine.ps.gameType === 'doubles') {
                 const req = engine.getRawRequest(p) as { wait?: boolean } | null
-                if (req && !req.wait && !engine.battle[p].isChoiceDone()) engine.submitChoice(p, 'default')
+                if (req && !req.wait && !engine.ps[p].isChoiceDone()) engine.submitChoice(p, 'default')
             } else if (engine.getRequest(p)) engine.submitAction(ai.chooseAction(engine, p)!)
         }
     }
     return engine
 }
 
-const ids = (e: BattleEngine) => (['p1', 'p2'] as const).flatMap(p => e.battle[p].pokemon.map((_, i) => `${p}_${i}`))
+const ids = (e: BattleEngine) => (['p1', 'p2'] as const).flatMap(p => e.ps[p].pokemon.map((_, i) => `${p}_${i}`))
 
 describe('손가락흔들기 모드', () => {
     it('모든 포켓몬의 기술은 손가락흔들기 하나', () => {
@@ -33,7 +33,7 @@ describe('손가락흔들기 모드', () => {
         }
         // 선택할 수 있는 기술도 손가락흔들기 (PP 가 다하면 발버둥)
         const ai = new RandomAI(2)
-        for (let turn = 0; turn < 30 && !e.battle.ended; turn++) {
+        for (let turn = 0; turn < 30 && !e.ps.ended; turn++) {
             for (const p of ['p1', 'p2'] as const) {
                 const req = e.getRequest(p)
                 if (!req) continue
@@ -68,7 +68,7 @@ describe('손가락흔들기 모드', () => {
         expect(pika.stats.attack).toBe(75)               // 지정 안 한 스탯은 평소 계산 (Lv50, 노력치 0, 개체값 31)
         const lax = e.getPokemon('p1_1')!
         expect(lax.stats).toMatchObject({ hp: 999, attack: 5, speed: 1 })
-        const ps = e.getShowdownPokemon('p1_1')!
+        const ps = e.psPokemon('p1_1')!
         expect(ps.maxhp).toBe(999)
         expect(ps.baseMaxhp).toBe(999)
         expect(ps.storedStats).toMatchObject({ atk: 5, spe: 1 })
@@ -95,12 +95,12 @@ describe('손가락흔들기 모드', () => {
             p2: { team: [{ species: 'ditto', stats: { hp: 300 } }] },
         })
         e.start()
-        const aegi = e.getShowdownPokemon('p1_0')!
+        const aegi = e.psPokemon('p1_0')!
         aegi.formeChange('Aegislash-Blade', null, false)
         expect(aegi.species.name).toBe('Aegislash-Blade')
         expect(aegi.storedStats).toMatchObject({ atk: 777, def: 888 })
         expect(aegi.maxhp).toBe(500)
-        const ditto = e.getShowdownPokemon('p2_0')!
+        const ditto = e.psPokemon('p2_0')!
         ditto.transformInto(aegi)
         expect(ditto.storedStats).toMatchObject({ atk: 777, def: 888 })   // 변신은 상대 능력치 복사
         expect(ditto.maxhp).toBe(300)                                     // HP 는 그대로
@@ -147,12 +147,12 @@ describe('손가락흔들기 모드', () => {
         const c = createMetronomeBattle({ seed: 43, teamSize: 6 }); c.start()
         expect(species(a)).toEqual(species(b))
         expect(species(a)).not.toEqual(species(c))
-        expect(a.battle.p1.pokemon).toHaveLength(6)
-        for (const side of [a.battle.p1, a.battle.p2]) {
+        expect(a.ps.p1.pokemon).toHaveLength(6)
+        for (const side of [a.ps.p1, a.ps.p2]) {
             expect(new Set(side.pokemon.map(p => p.baseSpecies.baseSpecies)).size).toBe(6)
         }
         // 같은 시드 + 같은 선택 → 같은 배틀
-        expect(comparableLog(play(a, 7).battle)).toBe(comparableLog(play(b, 7).battle))
+        expect(comparableLog(play(a, 7).ps)).toBe(comparableLog(play(b, 7).ps))
         const pool = metronomeSpeciesPool()
         expect(pool.length).toBeGreaterThan(900)
         expect(pool.some(s => s.battleOnly || s.requiredItem)).toBe(false)
@@ -164,7 +164,7 @@ describe('손가락흔들기 모드', () => {
         expect(ids(e).filter(id => id.startsWith('p1')).map(id => e.getPokemon(id)!.species)).toEqual(['pikachu', 'charizard', 'mewtwo'])
         expect(e.getPokemon('p1_2')!.nickname).toBe('Boss')
         expect(e.getPokemon('p1_2')!.level).toBe(70)
-        expect(e.battle.p2.pokemon).toHaveLength(2)
+        expect(e.ps.p2.pokemon).toHaveLength(2)
     })
 
     it('입력 검사', () => {
@@ -198,17 +198,17 @@ describe('손가락흔들기 모드', () => {
     it('배틀이 끝까지 진행된다 (싱글·더블, HP 999)', () => {
         for (let seed = 1; seed <= 4; seed++) {
             const e = play(createMetronomeBattle({ seed, stats: { hp: 999 } }), seed)
-            expect(e.battle.ended, `seed ${seed}`).toBe(true)
+            expect(e.ps.ended, `seed ${seed}`).toBe(true)
         }
         const d = play(createMetronomeBattle({ seed: 11, format: 'doubles' }))
-        expect(d.battle.ended).toBe(true)
-        expect(d.battle.gameType).toBe('doubles')
+        expect(d.ps.ended).toBe(true)
+        expect(d.ps.gameType).toBe('doubles')
     })
 
     it('inputLog 재생으로 같은 배틀 (커스텀 능력치 포함)', () => {
         const e = play(createMetronomeBattle({ seed: 21, stats: { hp: 1500, speed: 5 }, p1: { team: ['pikachu'] } }))
-        expect(e.battle.ended).toBe(true)
-        expect(comparableLog(replayInputLog(e.battle.inputLog))).toBe(comparableLog(e.battle))
+        expect(e.ps.ended).toBe(true)
+        expect(comparableLog(replayInputLog(e.ps.inputLog))).toBe(comparableLog(e.ps))
     })
 
     it('테라스탈은 기본 금지, terastal: true 로 허용', () => {

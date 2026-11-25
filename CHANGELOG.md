@@ -13,3 +13,4 @@ First npm release.
 - React hook `useBattle` (`@kyasi/pokebattle-engine/react`).
 - CLI `npx pokebattle` (`play`, `watch`, `sim`).
 - ESM + CommonJS, TypeScript types; Node 18+.
+- One runtime dependency (`@smogon/calc`): the needed parts of Showdown's simulator are bundled, `@pkmn/sim` is an optional peer dependency (raw Showdown objects are typed as `ShowdownBattle` / `ShowdownPokemon` / `ShowdownSet` / `ShowdownSpecies`).

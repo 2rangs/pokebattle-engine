@@ -165,13 +165,13 @@ async function play(): Promise<void> {
     const ai = new HeuristicAI({ seed: seed + 1 })
     const rl = createInterface({ input: process.stdin, output: process.stdout })
     try {
-        while (!engine.battle.ended) {
+        while (!engine.ps.ended) {
             if (engine.getRequest('p1')) {
                 const action = await choose(engine, fmt, rl)
                 if (!action) return
                 engine.submitAction(action)
             }
-            if (!engine.battle.ended && engine.getRequest('p2')) engine.submitAction(ai.chooseAction(engine, 'p2')!)
+            if (!engine.ps.ended && engine.getRequest('p2')) engine.submitAction(ai.chooseAction(engine, 'p2')!)
         }
         console.log(`\n${paint('1', result(engine))}`)
     } finally {
@@ -239,9 +239,9 @@ function watch(): void {
     if (!json) console.log(paint('90', `${t('seed')}: ${seed}`))
     const ais: Record<PlayerID, BattleAI> = { p1: new HeuristicAI({ seed: seed + 1 }), p2: new HeuristicAI({ seed: seed + 2 }) }
     engine.start()
-    while (!engine.battle.ended) {
+    while (!engine.ps.ended) {
         for (const p of ['p1', 'p2'] as const) {
-            if (!engine.battle.ended && (engine.getRequest(p) || engine.getTeamPreview(p))) engine.submitAction(ais[p].chooseAction(engine, p)!)
+            if (!engine.ps.ended && (engine.getRequest(p) || engine.getTeamPreview(p))) engine.submitAction(ais[p].chooseAction(engine, p)!)
         }
     }
     if (!json) console.log(`\n${paint('1', result(engine))}`)
