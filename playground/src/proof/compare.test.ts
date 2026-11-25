@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest'
-import { preloadData } from '../../../dist/index.js'
+import { preloadData } from '../../../dist-web/index.js'
 import { compareBattles, engineRun, recordBattle, sha256Hex, showdownDirect } from './compare'
 
 beforeAll(() => preloadData())

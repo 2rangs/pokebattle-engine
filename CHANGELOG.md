@@ -13,3 +13,4 @@ First npm release.
 - React hook `useBattle` (`@kyasi/pokebattle-engine/react`).
 - CLI `npx pokebattle` (`play`, `watch`, `sim`).
 - ESM + CommonJS, TypeScript types; Node 18+.
+- Showdown (`@pkmn/sim`, `@pkmn/randoms`) and `@smogon/calc` are installed as dependencies; the package contains only the engine's own code.

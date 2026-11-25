@@ -1,7 +1,7 @@
 // ─── "같은 시드 + 같은 행동 → 같은 배틀" 을 눈앞에서 ─────────────
 // 배틀 데모와 같은 코드로 CPU 대 CPU 한 판을 돌리고 → 리플레이 링크로 만들고 → 링크만 가지고 새 엔진에서 다시 돌린다.
 // 두 프로토콜 로그의 SHA-256 이 같으면 링크 하나로 같은 배틀이 재현된 것. AI 는 다시 돌리지 않는다 (링크의 행동만).
-import { comparableLog } from '../../../dist/index.js'
+import { comparableLog } from '../../../dist-web/index.js'
 import type { Action, PlayerID } from '../battle/lib/engine'
 import { buildReplayData, controllerAI, createEngine, replaySetup, type BattleSetup, type Controllers } from '../battle/lib/frames'
 import { decodeReplay, encodeReplay } from '../battle/lib/replay'

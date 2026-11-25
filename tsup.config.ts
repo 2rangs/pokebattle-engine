@@ -11,7 +11,19 @@ export default defineConfig([
         // 소스맵은 패키지에 넣지 않는다 (24MB). dist 정리는 build 스크립트가 한 번만 (세 빌드가 병렬이라 clean 이 다른 빌드 결과를 지울 수 있다)
         sourcemap: false,
         splitting: true,
-        // @pkmn/sim·@pkmn/randoms 는 필요한 부분만 번들 (scripts/slim-sim.ts). @smogon/calc 는 그대로 의존성
+        // Showdown(@pkmn/sim·@pkmn/randoms)·@smogon/calc 는 패키지에 싣지 않고 npm 의존성으로 설치된다
+        external: ['@pkmn/sim', '@pkmn/randoms', '@smogon/calc'],
+    },
+    {
+        // 배틀 데모(playground)용: Showdown 을 필요한 부분만 잘라 함께 묶은 빌드 (scripts/slim-sim.ts).
+        // npm 패키지에는 넣지 않는다 (package.json files 는 dist 만)
+        entry: { index: 'src/index.ts' },
+        outDir: 'dist-web',
+        format: ['esm'],
+        tsconfig: './tsconfig.build.json',
+        dts: true,
+        sourcemap: false,
+        splitting: true,
         noExternal: ['@pkmn/sim', '@pkmn/randoms'],
         esbuildPlugins: [slimSim()],
         // Showdown 코드의 Node 전역(global.Config — 랜덤배틀의 PotD 규칙)이 브라우저에서도 동작하게

@@ -4,13 +4,13 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "predev": "test -f ../dist/index.js || npm --prefix .. run build",
+    "predev": "test -f ../dist-web/index.js || npm --prefix .. run build",
     "dev": "vite",
-    "prebuild": "test -f ../dist/index.js || npm --prefix .. run build",
+    "prebuild": "test -f ../dist-web/index.js || npm --prefix .. run build",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "pretest": "test -f ../dist/index.js || npm --prefix .. run build",
+    "pretest": "test -f ../dist-web/index.js || npm --prefix .. run build",
     "test": "node ../node_modules/vitest/vitest.mjs run"
   },
   "dependencies": {

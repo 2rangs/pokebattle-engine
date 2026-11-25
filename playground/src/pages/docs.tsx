@@ -116,8 +116,8 @@ await preloadData()                 // ${t('generateRandomTeam / createRandomBat
 await preloadData({ gens: [8] })    // ${t('8세대 배틀 전에 (9세대는 내장)', 'before a Gen 8 battle (Gen 9 is built in)')}`} />
         <H2>{t('번들 크기', 'Bundle size')}</H2>
         <P>{t(
-          <>엔진은 9세대 배틀에 필요한 Showdown 코드만 번들합니다. 쓰지 않는 스트림 코드(direct <C>eval</C> 포함)와 옛 세대 데이터가 빠져서, Vite/Rollup의 <C>eval</C> 경고가 사라지고 앱의 배틀 청크가 <b>8.7 MB → 3.4 MB</b>로 줄었습니다. 기술표(~2.8 MB), 랜덤배틀 세트(~1.1 MB), 1~8세대 데이터(60~140 kB씩)는 쓸 때만 받습니다.</>,
-          <>The engine bundles only the Showdown code a Gen 9 battle needs. The unused stream code (with its direct <C>eval</C>) and older generations’ data are left out, so the Vite/Rollup <C>eval</C> warning is gone and an app’s battle chunk went from <b>8.7 MB to 3.4 MB</b>. Learnsets (~2.8 MB), random-battle sets (~1.1 MB) and Gen 1–8 data (60–140 kB each) download only when used.</>,
+          <>패키지에는 이 엔진의 코드만 들어 있습니다(압축 약 880 kB). Showdown(<C>@pkmn/sim</C>, <C>@pkmn/randoms</C>)과 <C>@smogon/calc</C>는 npm이 함께 설치하는 일반 의존성이라 중복되지 않고 업데이트도 그대로 받습니다. 브라우저 앱에서는 번들러가 <C>@pkmn/sim</C>을 같이 묶어 배틀 청크가 <b>약 8.8 MB</b>가 되고, Showdown 스트림 코드 때문에 Vite/Rollup이 <C>eval</C> 경고를 한 번 냅니다(동작에는 문제없음). 랜덤배틀 세트(~1.1 MB)는 쓸 때만 받습니다. 이 사이트의 배틀 데모는 9세대 배틀에 필요한 Showdown 코드만 잘라 묶은 별도 빌드를 써서 3.4 MB입니다.</>,
+          <>The package contains only this engine's code (about 880 kB packed). Showdown (<C>@pkmn/sim</C>, <C>@pkmn/randoms</C>) and <C>@smogon/calc</C> are regular dependencies npm installs alongside it, so nothing is duplicated and you get their updates. In a browser app your bundler includes <C>@pkmn/sim</C>, so the battle chunk is <b>about 8.8 MB</b> and Vite/Rollup prints one harmless <C>eval</C> warning from Showdown's stream code. Random-battle sets (~1.1 MB) download only when used. This site's battle demo uses a separate build with only the Showdown code a Gen 9 battle needs: 3.4 MB.</>,
         )}</P>
       </>
     ),

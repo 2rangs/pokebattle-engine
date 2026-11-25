@@ -299,6 +299,9 @@ export class BattleEngine {
     private stackGimmicks = false
 
     constructor(config: BattleConfig, options: EngineOptions = {}) {
+        // Showdown 랜덤배틀 규칙(Pokemon of the Day)이 Node 전역 global 을 읽는다. 브라우저에는 없으니 globalThis 로
+        const g = globalThis as { global?: unknown }
+        if (g.global === undefined) g.global = globalThis
         this.config = config
         this.options = options
         this.seed = config.seed ?? Math.floor(Math.random() * 0x7fffffff)

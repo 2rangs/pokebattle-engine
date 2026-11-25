@@ -31,18 +31,15 @@ Measured with `npm run bench:compare -- --battles 60 --rounds 3` on Node 22; run
 
 ## Bundle size
 
-The engine bundles only the parts of `@pkmn/sim` a Gen 9 battle needs (`scripts/slim-sim.ts`): no server stream code (so no `eval` warning in Vite/Rollup), no Gen 1–8 data. The two big data sets that battles don't use load on demand:
+The package ships only this engine's own code (about 880 kB packed). Showdown (`@pkmn/sim`, `@pkmn/randoms`) and `@smogon/calc` are regular dependencies that npm installs next to it, so you get their updates and they are not duplicated.
 
-| Data | Size (minified) | Needed for |
-|---|---|---|
-| Showdown learnsets | ~2.8 MB | `getLearnset`, `generateRandomSet` (without a `learnset`), `generateChaosTeam` |
-| Random-battle sets | ~1.1 MB | `generateRandomTeam` |
+In a browser app your bundler includes `@pkmn/sim` itself: expect a battle chunk of about 8.8 MB, and Vite/Rollup prints one harmless direct-`eval` warning from Showdown's stream code. Random-battle sets (~1.1 MB) still load on demand:
 
 ```ts
-await preloadData()   // loads both (separate chunks); battles, the damage calculator and names work without it
+await preloadData()   // needed before generateRandomTeam / createRandomBattle; battles, the damage calculator and names work without it
 ```
 
-In an app build this took the battle page chunk from 8.7 MB to 3.4 MB. `npm run check:dist` builds and checks that the bundle plays byte-identical battles to the original `@pkmn/sim` and builds the same sets.
+The battle demo uses a separate build that bundles only the Showdown code a Gen 9 battle needs (`scripts/slim-sim.ts`, output `dist-web/`, not published): 3.4 MB, no `eval` warning. `npm run check:dist` checks that this build plays byte-identical battles to the original `@pkmn/sim` and builds the same sets.
 
 ## Install
 

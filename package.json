@@ -54,7 +54,7 @@
     "CHANGELOG.md"
   ],
   "scripts": {
-    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsup",
+    "build": "node -e \"for (const d of ['dist','dist-web']) require('fs').rmSync(d,{recursive:true,force:true})\" && tsup",
     "build:watch": "tsup --watch",
     "prepare": "npm run build",
     "cli": "tsx src/cli/index.ts",
@@ -83,7 +83,6 @@
   ],
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
-    "@pkmn/randoms": "^0.11.0",
     "@types/node": "^25.5.0",
     "@types/react": "^19.2.14",
     "publint": "^0.3.25",
@@ -103,6 +102,7 @@
   },
   "sideEffects": false,
   "dependencies": {
+    "@pkmn/randoms": "^0.11.0",
     "@pkmn/sim": "^0.11.0",
     "@smogon/calc": "^0.12.0"
   },

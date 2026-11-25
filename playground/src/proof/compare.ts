@@ -5,8 +5,8 @@
 //  3. 엔진: 같은 설정으로 BattleEngine(기본값 = 빠른 경로)을 만들고 같은 선택을 넣는다.
 //  4. 두 프로토콜 로그(|t:| 시각 줄 제외)를 SHA-256 으로 비교하고, 2·3 의 시간을 턴 수로 나눈다.
 // 시간은 워밍업 한 번 뒤 번갈아 여러 번 재서 각자 가장 빠른 값. 해시·기록은 시간에 넣지 않는다.
-import { BattleEngine, generateRandomTeam, PRNG, replayInputLog, comparableLog } from '../../../dist/index.js'
-import type { BattleConfig } from '../../../dist/index.js'
+import { BattleEngine, generateRandomTeam, PRNG, replayInputLog, comparableLog } from '../../../dist-web/index.js'
+import type { BattleConfig } from '../../../dist-web/index.js'
 
 export interface Recorded {
   seed: number

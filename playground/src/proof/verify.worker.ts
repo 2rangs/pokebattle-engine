@@ -1,5 +1,5 @@
 // 웹 워커: 비교를 메인 스레드 밖에서 돌린다 (화면이 멈추지 않게). 취소는 메인에서 terminate().
-import { preloadData } from '../../../dist/index.js'
+import { preloadData } from '../../../dist-web/index.js'
 import { compareBattles, type CompareResult, type Progress, type ShowdownRunner } from './compare'
 
 export type Reference = 'bundled' | 'npm'

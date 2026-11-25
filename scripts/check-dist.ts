@@ -1,18 +1,18 @@
 // ─── 번들(dist)이 원본 @pkmn/sim 과 같은 배틀을 하는지 확인 ─────
 // npm run build && npx tsx scripts/check-dist.ts [--battles 300]
-// dist 는 @pkmn/sim 을 필요한 부분만 번들한다 (scripts/slim-sim.ts). 그 엔진으로 배틀을 돌리고,
+// dist-web 은 @pkmn/sim 을 필요한 부분만 번들한다 (scripts/slim-sim.ts, 배틀 데모용). 그 엔진으로 배틀을 돌리고,
 // 같은 입력을 node_modules 의 원본 @pkmn/sim 에 재생해서 프로토콜 로그가 바이트 단위로 같은지 본다.
 // 기술표를 쓰는 기능(generateRandomSet / generateChaosTeam)도 원본과 같은 결과인지 본다.
 import { Battle, Dex } from '@pkmn/sim'
 import { randomDoublesChoice } from '../src/utils/random-choice.ts'
 
-const dist = await import('../dist/index.js')
+const dist = await import('../dist-web/index.js')
 
 // 브라우저에는 Node 전역 global 이 없다 (globalThis 로 바뀌어 있어야 한다)
 {
     const { readdirSync, readFileSync } = await import('node:fs')
-    const offenders = readdirSync('dist').filter(f => /\.(c?js)$/.test(f) && f !== 'cli.js')
-        .filter(f => /(^|[^.\w$])global\.\w/.test(readFileSync(`dist/${f}`, 'utf8')))
+    const offenders = readdirSync('dist-web').filter(f => /\.(c?js)$/.test(f) && f !== 'cli.js')
+        .filter(f => /(^|[^.\w$])global\.\w/.test(readFileSync(`dist-web/${f}`, 'utf8')))
     if (offenders.length) { console.error(`Node-only 'global.' in browser bundle: ${offenders.join(', ')}`); process.exit(1) }
 }
 const i = process.argv.indexOf('--battles')

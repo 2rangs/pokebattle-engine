@@ -11,6 +11,7 @@ node_modules/
 
 # Build output (배포 파일은 npm publish로만)
 dist/
+dist-web/
 build/
 lib/
 !playground/src/battle/lib/
