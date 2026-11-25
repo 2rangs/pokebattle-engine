@@ -328,7 +328,7 @@ npm run smoke:pack                       # pack, install into a fresh project, u
 ## Releasing
 
 1. Update `version` in `package.json` and add a section to `CHANGELOG.md`.
-2. Commit, then push a tag with the same version: `git tag v1.0.0 && git push origin v1.0.0`.
+2. Commit, then push a tag with the same version: `git tag v0.1.0 && git push origin v0.1.0`.
 3. `.github/workflows/release.yml` publishes to npm with provenance. It needs an `NPM_TOKEN` secret (npm automation or granular token) in the repository settings. `prepublishOnly` re-runs the type check, tests, build, package lint and the install test first.
 
 CI runs the tests on Node 20, 22 and 24, and installs the packed package into a fresh project on Node 18, 20, 22 and 24.

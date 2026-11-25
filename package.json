@@ -1,6 +1,6 @@
 {
   "name": "@kyasi/pokebattle-engine",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Pokémon Showdown-accurate battle engine for JS/TS: typed events, Korean/English/Japanese logs, damage calc (@smogon/calc), AI, random/metronome battles, CLI. Pokémon Showdown 시뮬레이터 기반 배틀 엔진.",
   "author": "kyasi",
   "license": "MIT",
