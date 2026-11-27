@@ -47,9 +47,11 @@ const RULES: Record<string, unknown> = {
             for (const p of this.getAllPokemon()) {
                 // 테라스탈: 메가스톤·Z크리스탈을 지녀도 (9세대 메커닉에서만)
                 p.canTerastallize = this.gen === 9 ? p.teraType : null
-                // 메가레쿠쟈: 화룡점정을 알면 (9세대 Showdown 은 과거 태그가 있어야 허락한다)
+                // 메가레쿠쟈: 화룡점정을 알면 (9세대 Showdown 은 과거 태그가 있어야 허락한다).
+                // 원래 게임은 Z크리스탈을 지닌 레쿠쟈의 메가진화를 막지만, 기믹 겹치기에서는 그 조합(메가진화 + Z기술)이 핵심이라 허락한다.
+                // 메가스톤이 필요 없는 레쿠쟈만 도구 하나로 둘을 함께 쓸 수 있다.
                 const alt = p.baseSpecies.otherFormes && this.dex.species.get(p.baseSpecies.otherFormes[0]!)
-                if (!p.canMegaEvo && alt?.isMega && alt.requiredMove && p.baseMoves.includes(toID(alt.requiredMove)) && !p.getItem().zMove) {
+                if (!p.canMegaEvo && alt?.isMega && alt.requiredMove && p.baseMoves.includes(toID(alt.requiredMove))) {
                     p.canMegaEvo = alt.name
                 }
             }
@@ -164,6 +166,12 @@ export function installStackPatches(): void {
     const formeChange = P.formeChange as AnyFn
     P.formeChange = function (this: any, ...args: any[]) {
         if (!stacking(this.battle)) return formeChange.apply(this, args)
+        // Z크리스탈을 지닌 레쿠쟈의 메가진화: Showdown 은 원인 아이템이 Z크리스탈이면 울트라버스트(-burst)로 기록한다
+        // (원래 게임에서는 일어나지 않는 조합). 메가 모습이면 Z크리스탈 표시를 가린 아이템으로 넘겨 -mega 로 기록되게 한다
+        const source = args[1]
+        if (args[2] && source?.effectType === 'Item' && source.zMove && this.battle.dex.species.get(args[0]).isMega) {
+            args[1] = Object.assign(Object.create(source), { zMove: null })
+        }
         const tera = this.canTerastallize
         const out = formeChange.apply(this, args)
         const sp = this.species

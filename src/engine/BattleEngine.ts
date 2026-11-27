@@ -1318,14 +1318,21 @@ export class BattleEngine {
                 if (req.can_ultra_burst) actions.push({ ...base, ultra_burst: true })
                 if (req.can_dynamax) actions.push({ ...base, dynamax: true })
                 if (req.can_zmove && m.zmove) actions.push({ ...base, zmove: true })
-                // 기믹 겹치기: 쓸 수 있는 기믹(Z기술 제외)을 한꺼번에
+                // 기믹 겹치기: 쓸 수 있는 기믹의 모든 조합 (두 개 이상. 하나짜리는 위에서 냈다).
+                // 함께 못 쓰는 것: 다이맥스 + Z기술 (다이맥스하면 기술이 다이맥스 기술), 메가진화 + 울트라버스트 (모습 변화는 하나)
                 if (this.stackGimmicks) {
-                    const all = {
-                        ...(req.can_mega_evolve && { mega: true }), ...(req.can_ultra_burst && { ultra_burst: true }),
-                        ...(req.can_dynamax && { dynamax: true }), ...(req.can_terastallize && { terastallize: true }),
+                    const keys = [
+                        ...(req.can_mega_evolve ? ['mega'] : []), ...(req.can_ultra_burst ? ['ultra_burst'] : []),
+                        ...(req.can_dynamax ? ['dynamax'] : []), ...(req.can_zmove && m.zmove ? ['zmove'] : []),
+                        ...(req.can_terastallize ? ['terastallize'] : []),
+                    ] as const
+                    for (let mask = 1; mask < 1 << keys.length; mask++) {
+                        const pick = keys.filter((_, i) => mask & (1 << i))
+                        if (pick.length < 2) continue
+                        if (pick.includes('dynamax') && pick.includes('zmove')) continue
+                        if (pick.includes('mega') && pick.includes('ultra_burst')) continue
+                        actions.push({ ...base, ...Object.fromEntries(pick.map(k => [k, true])) })
                     }
-                    if (Object.keys(all).length > 1) actions.push({ ...base, ...all })
-                    if (req.can_zmove && m.zmove && req.can_terastallize) actions.push({ ...base, zmove: true, terastallize: true })
                 }
             }
             // 쓸 수 있는 기술이 하나도 없으면(숨은 사용 불가 포함) 발버둥
