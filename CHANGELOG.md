@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Stacked gimmicks (`options.stackGimmicks`): a Rayquaza that knows Dragon Ascent can Mega Evolve while holding a Z-Crystal, so Mega Evolution and a Z-Move can be combined (same turn or across turns). The games block this outside stacking, and so does the engine. That Mega Evolution is logged as `-mega` / `kind: 'mega'`, not Ultra Burst.
+- `getAvailableActions` lists every legal gimmick combination in stacked battles (e.g. Mega + Z-Move, Mega + Tera, Mega + Z-Move + Tera), not only a few; Z-Move + Dynamax and Mega + Ultra Burst stay excluded.
+
 ## 0.1.0
 
 First npm release.

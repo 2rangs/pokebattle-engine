@@ -228,6 +228,52 @@ describe('기믹 겹치기 (stackGimmicks)', () => {
         expect(moveReq(b.e).can_mega_evolve).toBe(true)
     })
 
+    // 원래 게임은 Z크리스탈을 지닌 레쿠쟈의 메가진화를 막는다. 겹치기에서는 메가진화 + Z기술이 레쿠쟈만 가능한 조합이라 허락한다
+    const RAY_Z = 'Rayquaza @ Flyinium Z\nAbility: Air Lock\nTera Type: Flying\n- Dragon Ascent\n- Extreme Speed'
+
+    it('메가레쿠쟈 + Z기술: Z크리스탈을 지녀도 메가진화, 한 턴에 함께', () => {
+        const b = make(RAY_Z)
+        const r = moveReq(b.e)
+        expect([r.can_mega_evolve, r.can_zmove]).toEqual([true, true])
+        // 가능한 행동 목록에도 메가진화 + Z기술 조합이 있다
+        expect(b.e.getAvailableActions('p1').some(a => a.type === 'move' && a.mega && a.zmove && a.move_index === 0)).toBe(true)
+        b.turn({ mega: true, zmove: true })
+        // 울트라버스트가 아니라 메가진화로 기록된다 (Showdown 은 원인 아이템이 Z크리스탈이면 -burst 로 적는다)
+        expect(b.events.find(ev => ev.type === 'mega_evolve')).toMatchObject({ kind: 'mega', species: 'rayquaza-mega' })
+        expect(b.events.some(ev => ev.type === 'move_use' && (ev as unknown as { move: { name: string } }).move.name.startsWith('supersonic-skystrike'))).toBe(true)
+        expect(b.e.getPokemon('p1_0')!.species).toBe('rayquaza-mega')
+    })
+
+    it('메가레쿠쟈 + Z기술: 턴을 나눠서도', () => {
+        const b = make(RAY_Z)
+        b.turn({ mega: true })
+        expect(moveReq(b.e).can_zmove).toBe(true)
+        b.turn({ zmove: true })
+        expect(b.events.some(ev => ev.type === 'move_use' && (ev as unknown as { move: { name: string } }).move.name.startsWith('supersonic-skystrike'))).toBe(true)
+    })
+
+    it('겹치기 없이 (7세대): Z크리스탈을 지닌 레쿠쟈는 메가진화 불가 (원래 게임)', () => {
+        const e = engine(7, RAY_Z)
+        expect(moveReq(e).can_mega_evolve).toBeFalsy()
+        expect(moveReq(e).can_zmove).toBe(true)
+    })
+
+    it('가능한 행동 목록: 겹칠 수 있는 기믹 조합을 모두 (Z기술 + 다이맥스, 메가 + 울트라는 제외)', () => {
+        const b = make(RAY_Z)
+        const sets = b.e.getAvailableActions('p1').filter(a => a.type === 'move' && a.move_index === 0)
+            .map(a => (['mega', 'ultra_burst', 'dynamax', 'zmove', 'terastallize'] as const).filter(k => a.type === 'move' && a[k]).join('+'))
+        for (const want of ['mega+zmove', 'mega+terastallize', 'mega+dynamax', 'zmove+terastallize', 'mega+zmove+terastallize', 'mega+dynamax+terastallize']) {
+            expect(sets).toContain(want)
+        }
+        expect(sets.some(s => s.includes('dynamax') && s.includes('zmove'))).toBe(false)
+        // 모두 Showdown 이 받아들인다
+        for (const a of b.e.getAvailableActions('p1')) {
+            const side = b.e.ps.p1
+            expect(side.choose(b.e.toChoice(a)), b.e.toChoice(a)).not.toBe(false)
+            side.clearChoice()
+        }
+    })
+
     it('입력 로그 재생이 같은 배틀을 만든다', () => {
         const b = make(ZARD)
         b.turn({ mega: true, terastallize: true, dynamax: true })

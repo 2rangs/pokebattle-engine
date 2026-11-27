@@ -29,6 +29,19 @@ export interface ChangeEntry {
 }
 
 export const CHANGELOG: readonly ChangeEntry[] = [
+  // ─── 2026-11-27 ─────────────────────────────────────────
+  {
+    date: '2026-11-27',
+    kind: 'fixed',
+    area: 'demo',
+    title: ['샌드박스: Z크리스탈을 지닌 레쿠쟈도 메가진화', 'Sandbox: Rayquaza holding a Z-Crystal can Mega Evolve'],
+    points: [
+      ['기믹 겹치기에서 화룡점정을 아는 레쿠쟈가 Z크리스탈을 지니면 메가진화 버튼이 나오지 않던 문제를 고쳤습니다. 이제 메가진화와 Z기술을 같은 턴에도, 턴을 나눠서도 쓸 수 있습니다.', 'With stacked gimmicks, a Rayquaza that knows Dragon Ascent no longer loses its Mega Evolution button when it holds a Z-Crystal. Mega Evolution and a Z-Move now work in the same turn or across turns.'],
+      ['이때 메가진화가 "울트라버스트"로 기록되던 것도 메가진화 문장으로 바로잡았습니다.', 'That Mega Evolution is now logged as Mega Evolution instead of Ultra Burst.'],
+      ['일반 배틀(7세대 등)은 원래 게임대로 Z크리스탈을 지닌 레쿠쟈의 메가진화를 막습니다.', 'Regular battles (Gen 7 and so on) still block it, as in the games.'],
+    ],
+    link: { href: '#/battle', label: ['배틀 데모', 'Battle demo'] },
+  },
   // ─── 2026-11-25 ─────────────────────────────────────────
   {
     date: '2026-11-25',
